@@ -196,7 +196,7 @@ const PlanSidebar = memo(function PlanSidebar({
         <div className="p-3 space-y-4">
           {/* Explanation */}
           {activePlan?.explanation ? (
-            <p className="text-[13px] leading-relaxed text-muted-foreground/80">
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
               {activePlan.explanation}
             </p>
           ) : null}
@@ -204,7 +204,7 @@ const PlanSidebar = memo(function PlanSidebar({
           {/* Plan Steps */}
           {activePlan && activePlan.steps.length > 0 ? (
             <div className="space-y-1">
-              <p className="mb-2 text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase">
+              <p className="mb-2 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
                 步骤
               </p>
               {activePlan.steps.map((step) => (
@@ -221,10 +221,10 @@ const PlanSidebar = memo(function PlanSidebar({
                     className={cn(
                       "text-[13px] leading-snug",
                       step.status === "completed"
-                        ? "text-muted-foreground/60 line-through decoration-muted-foreground/30"
+                        ? "text-muted-foreground/70 line-through decoration-muted-foreground/40"
                         : step.status === "inProgress"
                           ? "text-foreground"
-                          : "text-muted-foreground/80",
+                          : "text-foreground/80",
                     )}
                   >
                     {step.step}
@@ -243,11 +243,11 @@ const PlanSidebar = memo(function PlanSidebar({
                 onClick={() => setProposedPlanExpanded((v) => !v)}
               >
                 {proposedPlanExpanded ? (
-                  <ChevronDownIcon className="size-3 shrink-0 text-muted-foreground/40 transition-transform" />
+                  <ChevronDownIcon className="size-3 shrink-0 text-muted-foreground transition-transform" />
                 ) : (
-                  <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/40 transition-transform" />
+                  <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform" />
                 )}
-                <span className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase group-hover:text-muted-foreground/80">
+                <span className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase group-hover:text-foreground/80">
                   {planTitle ?? "Full Plan"}
                 </span>
               </button>
@@ -266,8 +266,8 @@ const PlanSidebar = memo(function PlanSidebar({
           {/* Empty state */}
           {!activePlan && !planMarkdown ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-[13px] text-muted-foreground/50">暂无活动计划。</p>
-              <p className="mt-1 text-[11px] text-muted-foreground/40">计划生成后会显示在这里。</p>
+              <p className="text-[13px] text-muted-foreground/80">暂无活动计划。</p>
+              <p className="mt-1 text-[11px] text-muted-foreground/60">计划生成后会显示在这里。</p>
             </div>
           ) : null}
         </div>
