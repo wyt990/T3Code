@@ -266,11 +266,7 @@ export interface CodexAppServerCommandLayerOptions extends CodexAppServerClientO
 
 export const layerCommand = (
   options: CodexAppServerCommandLayerOptions,
-): Layer.Layer<
-  CodexAppServerClient,
-  CodexError.CodexAppServerSpawnError,
-  ChildProcessSpawner.ChildProcessSpawner
-> =>
+) =>
   Layer.effect(
     CodexAppServerClient,
     Effect.acquireRelease(
@@ -294,7 +290,7 @@ export const layerCommand = (
       // Best-effort cleanup: on Windows the probe process may already have exited
       // when scope finalizers run, and `kill` can fail with platform-specific errors.
       // Treat release-time kill failures as non-fatal to avoid noisy probe errors.
-      (handle) => handle.kill().pipe(Effect.ignoreLogged),
+      (handle) => handle.kill().pipe(Effect.ignore({ log: true })),
     ).pipe(
       Effect.flatMap((handle) =>
         make(makeChildStdio(handle), options, makeTerminationError(handle)),
