@@ -78,7 +78,7 @@ interface TimelineRowSharedState {
   timestampFormat: TimestampFormat;
   routeThreadKey: string;
   markdownCwd: string | undefined;
-  resolvedTheme: "light" | "dark";
+  resolvedTheme: "light" | "dark" | "shuxiang";
   workspaceRoot: string | undefined;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertUserMessage: (messageId: MessageId) => void;
@@ -110,7 +110,7 @@ interface MessagesTimelineProps {
   onImageExpand: (preview: ExpandedImagePreview) => void;
   activeThreadEnvironmentId: EnvironmentId;
   markdownCwd: string | undefined;
-  resolvedTheme: "light" | "dark";
+  resolvedTheme: "light" | "dark" | "shuxiang";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
   onIsAtEndChange: (isAtEnd: boolean) => void;
@@ -582,7 +582,7 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
 }: {
   turnSummary: TurnDiffSummary | undefined;
   routeThreadKey: string;
-  resolvedTheme: "light" | "dark";
+  resolvedTheme: "light" | "dark" | "shuxiang";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   if (!turnSummary) return null;
@@ -612,7 +612,7 @@ function AssistantChangedFilesSectionInner({
   turnSummary: TurnDiffSummary;
   checkpointFiles: TurnDiffSummary["files"];
   routeThreadKey: string;
-  resolvedTheme: "light" | "dark";
+  resolvedTheme: "light" | "dark" | "shuxiang";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   const allDirectoriesExpanded = useUiStateStore(

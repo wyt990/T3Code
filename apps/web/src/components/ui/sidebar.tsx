@@ -1,7 +1,7 @@
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
-import { PanelLeftCloseIcon, PanelLeftIcon } from "lucide-react";
+import { ChevronLeftIcon, PanelLeftCloseIcon, PanelLeftIcon } from "lucide-react";
 import * as React from "react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -184,7 +184,8 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none";
   resizable?: boolean | SidebarResizableOptions;
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  const { isMobile, state, openMobile, setOpenMobile, open, toggleSidebar } = useSidebar();
+  const isCollapsed = !open;
   const resolvedResizable = React.useMemo<SidebarResolvedResizableOptions | null>(() => {
     if (isMobile || collapsible === "none" || !resizable) {
       return null;
@@ -273,7 +274,35 @@ function Sidebar({
               : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
           )}
           data-slot="sidebar-gap"
-        />
+        >
+          {/* Expand button - rendered inside sidebar-gap so it stays visible when sidebar collapses */}
+          {isCollapsed && (
+            <button
+              type="button"
+              aria-label="展开侧边栏"
+              title="展开侧边栏"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleSidebar();
+              }}
+              className={cn(
+                "fixed top-1/2 -translate-y-1/2 z-50 flex cursor-pointer",
+                "items-center justify-center rounded-md p-1",
+                "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent",
+                "transition-all duration-200",
+                side === "left" ? "left-0 translate-x-1/2" : "right-0 -translate-x-1/2",
+              )}
+              data-sidebar="expand-button"
+            >
+              {side === "left" ? (
+                <ChevronLeftIcon className="size-3" />
+              ) : (
+                <ChevronLeftIcon className="size-3 rotate-180" />
+              )}
+            </button>
+          )}
+        </div>
         <div
           className={cn(
             "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
@@ -337,7 +366,7 @@ function SidebarRail({
   onPointerUp,
   ...props
 }: React.ComponentProps<"button">) {
-  const { open, toggleSidebar } = useSidebar();
+  const { open, toggleSidebar, state } = useSidebar();
   const sidebarInstance = React.useContext(SidebarInstanceContext);
   const railRef = React.useRef<HTMLButtonElement | null>(null);
   const suppressClickRef = React.useRef(false);
@@ -357,8 +386,19 @@ function SidebarRail({
   } | null>(null);
   const resolvedResizable = sidebarInstance?.resizable ?? null;
   const canResize = resolvedResizable !== null && open;
-  const railLabel = canResize ? "Resize Sidebar" : "Toggle Sidebar";
-  const railTitle = canResize ? "Drag to resize sidebar" : "Toggle Sidebar";
+  const railLabel = canResize ? "调整侧边栏宽度" : "切换侧边栏";
+  const railTitle = canResize ? "拖动以调整侧边栏宽度" : "切换侧边栏";
+  const isCollapsed = state === "collapsed";
+  const side = sidebarInstance?.side ?? "left";
+
+  const handleCollapseSidebar = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleSidebar();
+    },
+    [toggleSidebar],
+  );
 
   const stopResize = React.useCallback(
     (pointerId: number) => {
@@ -565,31 +605,60 @@ function SidebarRail({
   }, []);
 
   return (
-    <button
-      aria-label={railLabel}
+    <div
       className={cn(
-        /* disable pointer events only when offcanvas sidebar is collapsed, that's when the rail sits over the native scrollbar on windows and linux. icon mode stays fully clickable. */
-        "-translate-x-1/2 group-data-[side=left]:-right-4 absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=right]:left-0 sm:flex [[data-collapsible=offcanvas][data-state=collapsed]_&]:pointer-events-none",
-        "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
-        "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
-        "group-data-[collapsible=offcanvas]:translate-x-0 hover:group-data-[collapsible=offcanvas]:bg-sidebar group-data-[collapsible=offcanvas]:after:left-full",
-        "[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
-        "[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",
-        className,
+        "group/rail pointer-events-auto -translate-x-1/2 absolute inset-y-0 z-20 hidden w-10 sm:block",
+        "group-data-[side=left]:-right-4 group-data-[side=right]:left-0",
+        "group-data-[side=left]:group-data-[state=collapsed]:-right-2 group-data-[side=right]:group-data-[state=collapsed]:left-[-0.5rem]",
+        "group-data-[collapsible=offcanvas]:translate-x-0",
+        "[[data-collapsible=offcanvas][data-state=collapsed]_&]:pointer-events-none",
       )}
-      data-sidebar="rail"
-      data-slot="sidebar-rail"
-      onClick={handleClick}
-      onPointerCancel={handlePointerCancel}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      ref={railRef}
-      tabIndex={-1}
-      title={railTitle}
-      type="button"
-      {...props}
-    />
+    >
+      <button
+        aria-label={railLabel}
+        className={cn(
+          "absolute inset-y-0 z-[21] w-4 transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] after:-translate-x-1/2 hover:after:bg-sidebar-border",
+          side === "left" ? "left-0" : "right-0",
+          "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
+          "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
+          "group-data-[collapsible=offcanvas]:hover:bg-sidebar group-data-[collapsible=offcanvas]:after:left-full",
+          className,
+        )}
+        data-sidebar="rail"
+        data-slot="sidebar-rail"
+        onClick={handleClick}
+        onPointerCancel={handlePointerCancel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        ref={railRef}
+        tabIndex={-1}
+        title={railTitle}
+        type="button"
+        {...props}
+      />
+      {!isCollapsed && (
+        <button
+          type="button"
+          aria-label="折叠侧边栏"
+          title="折叠侧边栏"
+          onClick={handleCollapseSidebar}
+          className={cn(
+            "pointer-events-auto absolute top-1/2 z-50 hidden -translate-y-1/2 cursor-pointer sm:flex",
+            "items-center justify-center rounded-md p-1",
+            "text-sidebar-foreground hover:text-sidebar-foreground",
+            "bg-sidebar shadow-sm",
+            "ring-1 ring-sidebar-border/70 hover:bg-sidebar-accent hover:ring-sidebar-border",
+            "transition-opacity duration-200",
+            "opacity-0 group-hover/rail:opacity-100",
+            side === "left" ? "right-0 translate-x-1/2" : "left-0 -translate-x-1/2",
+          )}
+          data-sidebar="collapse-button"
+        >
+          <PanelLeftCloseIcon className="size-3" />
+        </button>
+      )}
+    </div>
   );
 }
 

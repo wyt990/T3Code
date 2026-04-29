@@ -25,7 +25,6 @@ squashfs-root/
 doc/
 dist/
 .claude/
-.cursor/
 .devcontainer/
 .github/
 .plans/

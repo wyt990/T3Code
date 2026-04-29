@@ -428,7 +428,12 @@ function getSafeExternalUrl(rawUrl: unknown): string | null {
 }
 
 function getSafeTheme(rawTheme: unknown): DesktopTheme | null {
-  if (rawTheme === "light" || rawTheme === "dark" || rawTheme === "system") {
+  if (
+    rawTheme === "light" ||
+    rawTheme === "dark" ||
+    rawTheme === "system" ||
+    rawTheme === "shuxiang"
+  ) {
     return rawTheme;
   }
 
@@ -1701,7 +1706,9 @@ function registerIpcHandlers(): void {
       return;
     }
 
-    nativeTheme.themeSource = theme;
+    // Electron nativeTheme only supports "light" | "dark" | "system"
+    // Treat "shuxiang" as "light" since it's a warm light theme
+    nativeTheme.themeSource = theme === "shuxiang" ? "light" : theme;
   });
 
   ipcMain.removeHandler(CONTEXT_MENU_CHANNEL);

@@ -183,7 +183,8 @@ const PlanSidebar = memo(function PlanSidebar({
             size="icon-xs"
             variant="ghost"
             onClick={onClose}
-            aria-label={`Close ${label.toLowerCase()} sidebar`}
+            aria-label={`关闭 ${label.toLowerCase()} 侧边栏`}
+            title={`关闭 ${label} 侧边栏 (隐藏后可通过 composer 区域的 ${label} 按钮重新打开)`}
             className="text-muted-foreground/50 hover:text-foreground/70"
           >
             <PanelRightCloseIcon className="size-3.5" />

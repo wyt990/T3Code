@@ -1,6 +1,7 @@
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { initialTabsState } from "./uiTabsState";
 import {
   clearThreadUi,
   hydratePersistedProjectState,
@@ -22,6 +23,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectOrder: [],
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
+    tabs: initialTabsState,
     ...overrides,
   };
 }

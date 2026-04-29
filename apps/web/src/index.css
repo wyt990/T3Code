@@ -96,6 +96,14 @@
   --success-foreground: var(--color-emerald-700);
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
+  /* Sidebar colors */
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
 
   @variant dark {
     color-scheme: dark;
@@ -125,6 +133,53 @@
     --success-foreground: var(--color-emerald-400);
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
+    /* Sidebar colors */
+    --sidebar: var(--background);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-border: var(--border);
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+  }
+
+  /* 书香主题 - 书卷黄背景，如泛黄书页，带淡淡颗粒感 */
+  &.shuxiang {
+    color-scheme: light;
+    --background: #f8f4e9;
+    --app-chrome-background: #f8f4e9;
+    --foreground: #3d3a32;
+    --card: #fdfbf5;
+    --card-foreground: #3d3a32;
+    --popover: #fdfbf5;
+    --popover-foreground: #3d3a32;
+    --primary: #8b5a2b;
+    --primary-foreground: #fef9f3;
+    --secondary: #ece6d5;
+    --secondary-foreground: #4a463c;
+    --muted: #ece6d5;
+    --muted-foreground: #6b6659;
+    --accent: #d4c4a8;
+    --accent-foreground: #4a463c;
+    --destructive: #b84b4b;
+    --destructive-foreground: #fef9f3;
+    --border: #d6cfc2;
+    --input: #c9c2b3;
+    --ring: #8b5a2b;
+    --info: #5b7c99;
+    --info-foreground: #3d5266;
+    --success: #5b8b5b;
+    --success-foreground: #3d5c3d;
+    --warning: #b88b4b;
+    --warning-foreground: #6b4f2b;
+    /* Sidebar colors - match main background for consistent depth */
+    --sidebar: #f8f4e9;
+    --sidebar-foreground: #3d3a32;
+    --sidebar-border: #d6cfc2;
+    --sidebar-accent: #ece6d5;
+    --sidebar-accent-foreground: #4a463c;
+    --sidebar-primary: #8b5a2b;
+    --sidebar-primary-foreground: #fef9f3;
   }
 }
 
@@ -162,6 +217,13 @@ body::after {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 256px 256px;
+}
+
+/* 书香主题 - 增强纸张颗粒感 */
+html.shuxiang body::after {
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='paper'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)'/%3E%3C/svg%3E");
+  background-size: 512px 512px;
 }
 
 pre,

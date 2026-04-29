@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
-type Theme = "light" | "dark" | "system";
+type Theme = "light" | "dark" | "system" | "shuxiang";
 type ThemeSnapshot = {
   theme: Theme;
   systemDark: boolean;
@@ -34,7 +34,7 @@ function getSystemDark() {
 function getStored(): Theme {
   if (!hasThemeStorage()) return DEFAULT_THEME_SNAPSHOT.theme;
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === "light" || raw === "dark" || raw === "system") return raw;
+  if (raw === "light" || raw === "dark" || raw === "system" || raw === "shuxiang") return raw;
   return DEFAULT_THEME_SNAPSHOT.theme;
 }
 
@@ -92,8 +92,17 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
   if (suppressTransitions) {
     document.documentElement.classList.add("no-transitions");
   }
-  const isDark = theme === "dark" || (theme === "system" && getSystemDark());
-  document.documentElement.classList.toggle("dark", isDark);
+
+  // Remove all theme classes first
+  document.documentElement.classList.remove("dark", "shuxiang");
+
+  // Apply the appropriate theme class
+  if (theme === "dark" || (theme === "system" && getSystemDark())) {
+    document.documentElement.classList.add("dark");
+  } else if (theme === "shuxiang") {
+    document.documentElement.classList.add("shuxiang");
+  }
+
   syncBrowserChromeTheme();
   syncDesktopTheme(theme);
   if (suppressTransitions) {
@@ -175,7 +184,7 @@ export function useTheme() {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const theme = snapshot.theme;
 
-  const resolvedTheme: "light" | "dark" =
+  const resolvedTheme: "light" | "dark" | "shuxiang" =
     theme === "system" ? (snapshot.systemDark ? "dark" : "light") : theme;
 
   const setTheme = useCallback((next: Theme) => {

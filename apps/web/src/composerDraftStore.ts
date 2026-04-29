@@ -46,8 +46,9 @@ const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 const isRuntimeMode = Schema.is(RuntimeMode);
 export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
 
-export const DraftId = Schema.String.pipe(Schema.brand("DraftId"));
-export type DraftId = typeof DraftId.Type;
+import { DraftId } from "./draftId";
+
+export { DraftId };
 
 const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
 
@@ -2876,6 +2877,26 @@ export function markPromotedDraftThreadByRef(threadRef: ScopedThreadRef): void {
       draftStore.markDraftThreadPromoting(DraftId.make(draftId), threadRef);
     }
   }
+}
+
+/**
+ * Read-only lookup: returns every draft id whose draft session would be
+ * promoted by `markPromotedDraftThreadByRef(threadRef)`. Callers driving
+ * downstream UI updates (e.g. `promoteDraftTab` in the tab store) use this to
+ * mirror the promotion side-effect without re-implementing the iteration.
+ */
+export function listDraftIdsForServerThreadRef(threadRef: ScopedThreadRef): DraftId[] {
+  const draftStore = useComposerDraftStore.getState();
+  const out: DraftId[] = [];
+  for (const [draftId, draftThread] of Object.entries(draftStore.draftThreadsByThreadKey)) {
+    if (
+      draftThread.environmentId === threadRef.environmentId &&
+      draftThread.threadId === threadRef.threadId
+    ) {
+      out.push(DraftId.make(draftId));
+    }
+  }
+  return out;
 }
 
 export function markPromotedDraftThreads(serverThreadIds: Iterable<ThreadId>): void {

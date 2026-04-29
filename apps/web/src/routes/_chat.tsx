@@ -8,12 +8,13 @@ import {
   startNewThreadFromContext,
 } from "../lib/chatThreadActions";
 import { isTerminalFocused } from "../lib/terminalFocus";
-import { resolveShortcutCommand } from "../keybindings";
+import { isSidebarFocused, resolveShortcutCommand } from "../keybindings";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { resolveSidebarNewThreadEnvMode } from "~/components/Sidebar.logic";
 import { useSettings } from "~/hooks/useSettings";
 import { useServerKeybindings } from "~/rpc/serverState";
+import { useTabKeyboardShortcuts } from "~/components/TabBar/useTabKeyboardShortcuts";
 
 function ChatRouteGlobalShortcuts() {
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -28,6 +29,8 @@ function ChatRouteGlobalShortcuts() {
   );
   const appSettings = useSettings();
 
+  useTabKeyboardShortcuts({ keybindings });
+
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -35,6 +38,7 @@ function ChatRouteGlobalShortcuts() {
         context: {
           terminalFocus: isTerminalFocused(),
           terminalOpen,
+          sidebarFocus: isSidebarFocused(),
         },
       });
 

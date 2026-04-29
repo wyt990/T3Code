@@ -73,6 +73,7 @@ import {
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { useUiStateStore } from "../uiStateStore";
 import {
+  isSidebarFocused,
   resolveShortcutCommand,
   shortcutLabelForCommand,
   shouldShowThreadJumpHintsForModifiers,
@@ -95,6 +96,7 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { stackedThreadToast, toastManager } from "./ui/toast";
+import { navigateToThreadWithTabAwareness } from "./TabBar/tabNavigation";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { Kbd } from "./ui/kbd";
@@ -205,6 +207,34 @@ const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> =
   separate: "保持独立",
 };
 
+const TABS_AT_CAP_TOAST_TIMEOUT_MS = 8000;
+
+const showTabsAtCapToast: (args: {
+  threadRef: ScopedThreadRef;
+  suggestedReplacementTabId: string | null;
+  onReplaceLru: () => void;
+}) => void = ({ suggestedReplacementTabId, onReplaceLru }) => {
+  toastManager.add(
+    stackedThreadToast({
+      type: "warning",
+      title: "已达 6 个标签上限",
+      description:
+        suggestedReplacementTabId === null
+          ? "请先关闭一个标签后再打开此会话。"
+          : "替换最久未访问的标签以打开此会话？",
+      timeout: TABS_AT_CAP_TOAST_TIMEOUT_MS,
+      ...(suggestedReplacementTabId === null
+        ? {}
+        : {
+            actionProps: {
+              children: "替换最久未访问",
+              onClick: onReplaceLru,
+            },
+          }),
+    }),
+  );
+};
+
 function formatProjectMemberActionLabel(
   member: SidebarProjectGroupMember,
   groupedProjectCount: number,
@@ -240,11 +270,15 @@ function buildThreadJumpLabelMap(input: {
     return EMPTY_THREAD_JUMP_LABELS;
   }
 
+  // The label generated here is rendered inside the sidebar tree, so the
+  // `thread.jump.*` rule's `when: "sidebarFocus"` clause always evaluates to
+  // true in this scope; we explicitly opt in.
   const shortcutLabelOptions = {
     platform: input.platform,
     context: {
       terminalFocus: false,
       terminalOpen: input.terminalOpen,
+      sidebarFocus: true,
     },
   } as const;
   const mapping = new Map<string, string>();
@@ -1568,9 +1602,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         clearSelection();
       }
       setSelectionAnchor(scopedThreadKey(threadRef));
-      void router.navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
+      navigateToThreadWithTabAwareness(threadRef, {
+        useUiStateStore,
+        navigateToThread: (target) => {
+          void router.navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(target),
+          });
+        },
+        showAtCapToast: showTabsAtCapToast,
       });
     },
     [clearSelection, router, setSelectionAnchor],
@@ -1604,9 +1644,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         clearSelection();
       }
       setSelectionAnchor(threadKey);
-      void router.navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
+      navigateToThreadWithTabAwareness(threadRef, {
+        useUiStateStore,
+        navigateToThread: (target) => {
+          void router.navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(target),
+          });
+        },
+        showAtCapToast: showTabsAtCapToast,
       });
     },
     [clearSelection, rangeSelectTo, router, setSelectionAnchor, toggleThreadSelection],
@@ -2818,6 +2864,9 @@ export default function Sidebar() {
           ).terminalOpen
         : false,
       modelPickerOpen,
+      // Sampled at the moment of the keydown event so `thread.jump.*` only
+      // fires while focus is inside the sidebar tree (Phase 3.1).
+      sidebarFocus: isSidebarFocused(),
     }),
     [modelPickerOpen, routeThreadRef],
   );
@@ -2841,9 +2890,15 @@ export default function Sidebar() {
         clearSelection();
       }
       setSelectionAnchor(scopedThreadKey(threadRef));
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
+      navigateToThreadWithTabAwareness(threadRef, {
+        useUiStateStore,
+        navigateToThread: (target) => {
+          void navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(target),
+          });
+        },
+        showAtCapToast: showTabsAtCapToast,
       });
     },
     [clearSelection, navigate, setSelectionAnchor],
@@ -3022,6 +3077,13 @@ export default function Sidebar() {
           ).terminalOpen
         : false,
       modelPickerOpen,
+      // Used by `shouldShowThreadJumpHintsNow` to decide whether to surface
+      // the `mod+1..6` jump-hint badges in the sidebar tree. We keep this on
+      // because the badges only appear next to thread rows that live inside
+      // the sidebar — if the user actually presses the shortcut from
+      // elsewhere, the keydown handler re-evaluates `sidebarFocus` against
+      // `document.activeElement` and routes to `tabs.switch.*` instead.
+      sidebarFocus: true,
     }),
     [modelPickerOpen, routeThreadRef],
   );

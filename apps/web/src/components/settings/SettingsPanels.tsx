@@ -94,6 +94,10 @@ const THEME_OPTIONS = [
     value: "dark",
     label: "深色",
   },
+  {
+    value: "shuxiang",
+    label: "书香",
+  },
 ] as const;
 
 const TIMESTAMP_FORMAT_LABELS = {
@@ -825,7 +829,12 @@ export function GeneralSettingsPanel() {
             <Select
               value={theme}
               onValueChange={(value) => {
-                if (value === "system" || value === "light" || value === "dark") {
+                if (
+                  value === "system" ||
+                  value === "light" ||
+                  value === "dark" ||
+                  value === "shuxiang"
+                ) {
                   setTheme(value);
                 }
               }}

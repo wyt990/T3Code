@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { resolveAvailableMethods, type InstallMethod } from "@t3tools/shared/installer";
 import { runProcess } from "../processRunner.ts";
 import type {
@@ -9,6 +9,8 @@ import type {
 } from "@t3tools/contracts";
 import { ProviderInstaller } from "./Services/ProviderInstaller.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+
+const NO_PROXY: ProxySettings = { enabled: false, httpProxy: "", httpsProxy: "" };
 
 const INSTALL_TIMEOUT_MS = 120_000; // 2 minutes
 
@@ -152,7 +154,13 @@ export const ProviderInstallerLive = Layer.effect(
       install: (_provider: ProviderKind, options?) =>
         Stream.unwrap(
           Effect.gen(function* () {
-            const settings = yield* serverSettings.getSettings;
+            // If settings can't be read (corrupt file, missing perms), fall back to
+            // an unproxied install rather than failing the whole stream — the install
+            // path must remain reachable for users trying to recover from a broken
+            // settings state.
+            const settings = yield* serverSettings.getSettings.pipe(
+              Effect.catch(() => Effect.succeed({ proxy: NO_PROXY })),
+            );
             const { events } = yield* runInstall(options, settings.proxy);
             return Stream.fromIterable(events);
           }),

@@ -264,9 +264,7 @@ export interface CodexAppServerCommandLayerOptions extends CodexAppServerClientO
   readonly env?: Record<string, string>;
 }
 
-export const layerCommand = (
-  options: CodexAppServerCommandLayerOptions,
-) =>
+export const layerCommand = (options: CodexAppServerCommandLayerOptions) =>
   Layer.effect(
     CodexAppServerClient,
     Effect.acquireRelease(

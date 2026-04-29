@@ -1,5 +1,29 @@
 import { Debouncer } from "@tanstack/react-pacer";
+import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { create } from "zustand";
+
+import type { DraftId } from "./draftId";
+import {
+  activateTab as activateTabReducer,
+  closeTab as closeTabReducer,
+  closeTabsByThreadIds as closeTabsByThreadIdsReducer,
+  createTab as createTabReducer,
+  hydrateTabsState,
+  initialTabsState,
+  mergeTabs as mergeTabsReducer,
+  persistTabsState,
+  promoteDraftTab as promoteDraftTabReducer,
+  reorderTabs as reorderTabsReducer,
+  setCustomTitle as setCustomTitleReducer,
+  setFocusedTab as setFocusedTabReducer,
+  setSplitRatio as setSplitRatioReducer,
+  setTabDiffOpen as setTabDiffOpenReducer,
+  splitMergedTabs as splitMergedTabsReducer,
+  type CreateTabOptions,
+  type PersistedTabsState,
+  type TabTarget,
+  type UiTabsState,
+} from "./uiTabsState";
 
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
 const LEGACY_PERSISTED_STATE_KEYS = [
@@ -20,6 +44,7 @@ export interface PersistedUiState {
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
+  tabs?: PersistedTabsState;
 }
 
 export interface UiProjectState {
@@ -32,7 +57,11 @@ export interface UiThreadState {
   threadChangedFilesExpandedById: Record<string, Record<string, boolean>>;
 }
 
-export interface UiState extends UiProjectState, UiThreadState {}
+export interface UiTabsRootState {
+  tabs: UiTabsState;
+}
+
+export interface UiState extends UiProjectState, UiThreadState, UiTabsRootState {}
 
 export interface SyncProjectInput {
   /** Physical project key (env + cwd). Used for manual sort order. */
@@ -52,6 +81,7 @@ const initialState: UiState = {
   projectOrder: [],
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
+  tabs: initialTabsState,
 };
 
 const persistedCollapsedProjectCwds = new Set<string>();
@@ -91,6 +121,7 @@ function readPersistedState(): UiState {
       threadChangedFilesExpandedById: sanitizePersistedThreadChangedFilesExpanded(
         parsed.threadChangedFilesExpandedById,
       ),
+      tabs: hydrateTabsState(parsed.tabs) ?? initialTabsState,
     };
   } catch {
     return initialState;
@@ -180,6 +211,7 @@ export function persistState(state: UiState): void {
         expandedProjectCwds,
         projectOrderCwds,
         threadChangedFilesExpandedById,
+        tabs: persistTabsState(state.tabs),
       } satisfies PersistedUiState),
     );
     if (!legacyKeysCleanedUp) {
@@ -612,6 +644,26 @@ interface UiStateStore extends UiState {
     draggedProjectIds: readonly string[],
     targetProjectIds: readonly string[],
   ) => void;
+  createTab: (target: TabTarget, options: CreateTabOptions) => void;
+  closeTab: (tabId: string) => void;
+  activateTab: (tabId: string) => void;
+  setFocusedTab: (tabId: string) => void;
+  reorderTabs: (draggedTabId: string, targetTabId: string) => void;
+  setTabCustomTitle: (tabId: string, customTitle: string | null) => void;
+  mergeTabs: (leftTabId: string, rightTabId: string) => boolean;
+  splitMergedTabs: (tabId: string) => void;
+  setTabSplitRatio: (leftTabId: string, rightTabId: string, ratio: number) => void;
+  setTabDiffOpen: (tabId: string, open: boolean) => void;
+  closeTabsByThreadIds: (environmentId: EnvironmentId, threadIds: readonly ThreadId[]) => void;
+  promoteDraftTab: (draftId: DraftId, threadRef: ScopedThreadRef) => void;
+}
+
+function updateTabs(state: UiState, updater: (tabs: UiTabsState) => UiTabsState): UiState {
+  const nextTabs = updater(state.tabs);
+  if (nextTabs === state.tabs) {
+    return state;
+  }
+  return { ...state, tabs: nextTabs };
 }
 
 export const useUiStateStore = create<UiStateStore>((set) => ({
@@ -630,6 +682,44 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setProjectExpanded(state, projectId, expanded)),
   reorderProjects: (draggedProjectIds, targetProjectIds) =>
     set((state) => reorderProjects(state, draggedProjectIds, targetProjectIds)),
+  createTab: (target, options) =>
+    set((state) => updateTabs(state, (tabs) => createTabReducer(tabs, target, options))),
+  closeTab: (tabId) => set((state) => updateTabs(state, (tabs) => closeTabReducer(tabs, tabId))),
+  activateTab: (tabId) =>
+    set((state) => updateTabs(state, (tabs) => activateTabReducer(tabs, tabId))),
+  setFocusedTab: (tabId) =>
+    set((state) => updateTabs(state, (tabs) => setFocusedTabReducer(tabs, tabId))),
+  reorderTabs: (draggedTabId, targetTabId) =>
+    set((state) =>
+      updateTabs(state, (tabs) => reorderTabsReducer(tabs, draggedTabId, targetTabId)),
+    ),
+  setTabCustomTitle: (tabId, customTitle) =>
+    set((state) => updateTabs(state, (tabs) => setCustomTitleReducer(tabs, tabId, customTitle))),
+  mergeTabs: (leftTabId, rightTabId) => {
+    let merged = false;
+    set((state) =>
+      updateTabs(state, (tabs) => {
+        const result = mergeTabsReducer(tabs, leftTabId, rightTabId);
+        merged = result.ok;
+        return result.state;
+      }),
+    );
+    return merged;
+  },
+  splitMergedTabs: (tabId) =>
+    set((state) => updateTabs(state, (tabs) => splitMergedTabsReducer(tabs, tabId))),
+  setTabSplitRatio: (leftTabId, rightTabId, ratio) =>
+    set((state) =>
+      updateTabs(state, (tabs) => setSplitRatioReducer(tabs, leftTabId, rightTabId, ratio)),
+    ),
+  setTabDiffOpen: (tabId, open) =>
+    set((state) => updateTabs(state, (tabs) => setTabDiffOpenReducer(tabs, tabId, open))),
+  closeTabsByThreadIds: (environmentId, threadIds) =>
+    set((state) =>
+      updateTabs(state, (tabs) => closeTabsByThreadIdsReducer(tabs, environmentId, threadIds)),
+    ),
+  promoteDraftTab: (draftId, threadRef) =>
+    set((state) => updateTabs(state, (tabs) => promoteDraftTabReducer(tabs, draftId, threadRef))),
 }));
 
 useUiStateStore.subscribe((state) => debouncedPersistState.maybeExecute(state));

@@ -247,7 +247,7 @@ interface MarkdownFileLinkProps {
   displayPath: string;
   filePath: string;
   label: string;
-  theme: "light" | "dark";
+  theme: "light" | "dark" | "shuxiang";
   className?: string | undefined;
 }
 
@@ -442,7 +442,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
             <VscodeEntryIcon
               pathValue={filePath}
               kind="file"
-              theme={theme}
+              theme={theme === "shuxiang" ? "light" : theme}
               className={cn(MARKDOWN_FILE_LINK_ICON_CLASS_NAME, "text-current")}
             />
             <span className={MARKDOWN_FILE_LINK_LABEL_CLASS_NAME}>{label}</span>

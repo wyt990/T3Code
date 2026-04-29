@@ -627,7 +627,9 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
                           lineDiffType: "none",
                           overflow: diffWordWrap ? "wrap" : "scroll",
                           theme: resolveDiffThemeName(resolvedTheme),
-                          themeType: resolvedTheme as DiffThemeType,
+                          themeType: (resolvedTheme === "shuxiang"
+                            ? "light"
+                            : resolvedTheme) as DiffThemeType,
                           unsafeCSS: DIFF_PANEL_UNSAFE_CSS,
                         }}
                       />

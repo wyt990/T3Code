@@ -984,7 +984,13 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(
             WS_METHODS.claudeCodeInstall,
             Effect.gen(function* () {
-              const settings = yield* serverSettings.getSettings;
+              // Settings read may fail (corrupt file, missing perms); fall back to an
+              // unproxied install rather than surfacing infra errors as RPC failures.
+              const settings = yield* serverSettings.getSettings.pipe(
+                Effect.catch(() =>
+                  Effect.succeed({ proxy: { enabled: false, httpProxy: "", httpsProxy: "" } }),
+                ),
+              );
               return yield* installClaudeCode(
                 input.platform,
                 settings.proxy ?? { enabled: false, httpProxy: "", httpsProxy: "" },
@@ -1001,8 +1007,8 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 type: string;
                 method: string;
                 message: string;
-                stdout?: string;
-                stderr?: string;
+                stdout?: string | undefined;
+                stderr?: string | undefined;
               }[] = [];
               const stream = providerInstaller.install("opencode", { preferredMethod: "npm" });
               yield* Stream.runForEach(stream, (event) =>

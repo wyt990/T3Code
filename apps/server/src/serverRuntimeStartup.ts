@@ -32,6 +32,7 @@ import { ServerSettingsService } from "./serverSettings.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
+import { reconcileStartupStaleRunningSessions } from "./provider/reconcileStartupStaleRunningSessions.ts";
 import { ProviderSessionReaper } from "./provider/Services/ProviderSessionReaper.ts";
 import {
   formatHeadlessServeOutput,
@@ -329,8 +330,11 @@ export const makeServerRuntimeStartup = Effect.gen(function* () {
       "reactors.start",
       orchestrationReactor
         .start()
-        .pipe(Scope.provide(reactorScope))
-        .pipe(Effect.andThen(providerSessionReaper.start().pipe(Scope.provide(reactorScope)))),
+        .pipe(
+          Scope.provide(reactorScope),
+          Effect.andThen(providerSessionReaper.start().pipe(Scope.provide(reactorScope))),
+          Effect.andThen(reconcileStartupStaleRunningSessions),
+        ),
     );
 
     const welcomeBase = yield* resolveWelcomeBase;

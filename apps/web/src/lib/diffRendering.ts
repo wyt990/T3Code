@@ -5,7 +5,8 @@ export const DIFF_THEME_NAMES = {
 
 export type DiffThemeName = (typeof DIFF_THEME_NAMES)[keyof typeof DIFF_THEME_NAMES];
 
-export function resolveDiffThemeName(theme: "light" | "dark"): DiffThemeName {
+export function resolveDiffThemeName(theme: "light" | "dark" | "shuxiang"): DiffThemeName {
+  // Treat shuxiang as light theme for diff rendering (warm light background)
   return theme === "dark" ? DIFF_THEME_NAMES.dark : DIFF_THEME_NAMES.light;
 }
 

@@ -105,7 +105,7 @@ function groupCommandItems(
 
 export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   items: ComposerCommandItem[];
-  resolvedTheme: "light" | "dark";
+  resolvedTheme: "light" | "dark" | "shuxiang";
   isLoading: boolean;
   triggerKind: ComposerTriggerKind | null;
   groupSlashCommandSections?: boolean;
@@ -200,7 +200,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
 
 const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   item: ComposerCommandItem;
-  resolvedTheme: "light" | "dark";
+  resolvedTheme: "light" | "dark" | "shuxiang";
   isActive: boolean;
   onHighlight: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
@@ -230,7 +230,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <VscodeEntryIcon
           pathValue={props.item.path}
           kind={props.item.pathKind}
-          theme={props.resolvedTheme}
+          theme={props.resolvedTheme === "shuxiang" ? "light" : props.resolvedTheme}
         />
       ) : null}
       {props.item.type === "slash-command" ? (

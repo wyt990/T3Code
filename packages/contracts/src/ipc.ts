@@ -82,7 +82,7 @@ export type DesktopUpdateStatus =
   | "error";
 
 export type DesktopRuntimeArch = "arm64" | "x64" | "other";
-export type DesktopTheme = "light" | "dark" | "system";
+export type DesktopTheme = "light" | "dark" | "system" | "shuxiang";
 export type DesktopUpdateChannel = "latest" | "nightly";
 export type DesktopAppStageLabel = "Alpha" | "Dev" | "Nightly";
 

@@ -4,6 +4,12 @@ export interface OrchestrationBatchEffects {
   promoteDraftThreadIds: ThreadId[];
   clearDeletedThreadIds: ThreadId[];
   removeTerminalStateThreadIds: ThreadId[];
+  /**
+   * Threads whose tabs (if any) should be auto-closed. Currently the union of
+   * deleted and archived threads — both reasons make the thread unreachable
+   * from the active UI, so leaving the tab open would dangle.
+   */
+  closeTabsForThreadIds: ThreadId[];
   needsProviderInvalidation: boolean;
 }
 
@@ -16,6 +22,7 @@ export function deriveOrchestrationBatchEffects(
       clearPromotedDraft: boolean;
       clearDeletedThread: boolean;
       removeTerminalState: boolean;
+      closeTab: boolean;
     }
   >();
   let needsProviderInvalidation = false;
@@ -33,6 +40,7 @@ export function deriveOrchestrationBatchEffects(
           clearPromotedDraft: true,
           clearDeletedThread: false,
           removeTerminalState: false,
+          closeTab: false,
         });
         break;
       }
@@ -42,6 +50,7 @@ export function deriveOrchestrationBatchEffects(
           clearPromotedDraft: false,
           clearDeletedThread: true,
           removeTerminalState: true,
+          closeTab: true,
         });
         break;
       }
@@ -51,6 +60,7 @@ export function deriveOrchestrationBatchEffects(
           clearPromotedDraft: false,
           clearDeletedThread: false,
           removeTerminalState: true,
+          closeTab: true,
         });
         break;
       }
@@ -60,6 +70,7 @@ export function deriveOrchestrationBatchEffects(
           clearPromotedDraft: false,
           clearDeletedThread: false,
           removeTerminalState: false,
+          closeTab: false,
         });
         break;
       }
@@ -73,6 +84,7 @@ export function deriveOrchestrationBatchEffects(
   const promoteDraftThreadIds: ThreadId[] = [];
   const clearDeletedThreadIds: ThreadId[] = [];
   const removeTerminalStateThreadIds: ThreadId[] = [];
+  const closeTabsForThreadIds: ThreadId[] = [];
   for (const [threadId, effect] of threadLifecycleEffects) {
     if (effect.clearPromotedDraft) {
       promoteDraftThreadIds.push(threadId);
@@ -83,12 +95,16 @@ export function deriveOrchestrationBatchEffects(
     if (effect.removeTerminalState) {
       removeTerminalStateThreadIds.push(threadId);
     }
+    if (effect.closeTab) {
+      closeTabsForThreadIds.push(threadId);
+    }
   }
 
   return {
     promoteDraftThreadIds,
     clearDeletedThreadIds,
     removeTerminalStateThreadIds,
+    closeTabsForThreadIds,
     needsProviderInvalidation,
   };
 }

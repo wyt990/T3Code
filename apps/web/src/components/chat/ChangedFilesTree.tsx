@@ -13,7 +13,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   turnId: TurnId;
   files: ReadonlyArray<TurnDiffFileChange>;
   allDirectoriesExpanded: boolean;
-  resolvedTheme: "light" | "dark";
+  resolvedTheme: "light" | "dark" | "shuxiang";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   const { files, allDirectoriesExpanded, onOpenTurnDiff, resolvedTheme, turnId } = props;
@@ -106,7 +106,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
         <VscodeEntryIcon
           pathValue={node.path}
           kind="file"
-          theme={resolvedTheme}
+          theme={resolvedTheme === "shuxiang" ? "light" : resolvedTheme}
           className="size-3.5 text-muted-foreground/70"
         />
         <span className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90">

@@ -731,7 +731,12 @@ const getWsServerUrl = (
     );
   });
 
-it.layer(Layer.mergeAll(NodeServices.layer, ProviderInstallerLive))("server router seam", (it) => {
+it.layer(
+  Layer.mergeAll(
+    NodeServices.layer,
+    ProviderInstallerLive.pipe(Layer.provide(ServerSettingsService.layerTest())),
+  ),
+)("server router seam", (it) => {
   it.effect("serves static index content for GET / when staticDir is configured", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -1896,7 +1901,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ProviderInstallerLive))("server rout
         assert.deepEqual(first.config.keybindings, []);
         assert.deepEqual(first.config.issues, []);
         assert.deepEqual(first.config.providers, providers);
-        assert.equal(first.config.observability.logsDirectoryPath.endsWith("/logs"), true);
+        // Use a path-separator-agnostic check so the assertion works on both
+        // POSIX (`/logs`) and Windows (`\logs`).
+        assert.match(first.config.observability.logsDirectoryPath, /[/\\]logs$/);
         assert.equal(first.config.observability.localTracingEnabled, true);
         assert.equal(first.config.observability.otlpTracesUrl, "http://localhost:4318/v1/traces");
         assert.equal(first.config.observability.otlpTracesEnabled, true);
@@ -2113,9 +2120,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, ProviderInstallerLive))("server rout
 
       assertTrue(result._tag === "Failure");
       assertTrue(result.failure._tag === "ProjectSearchEntriesError");
-      assertInclude(
+      // The server resolves the cwd via `path.resolve`, which on Windows
+      // prepends a drive letter to absolute POSIX-style paths. Match only
+      // the meaningful tokens so the assertion holds across platforms.
+      assertInclude(result.failure.message, "Workspace root does not exist:");
+      assert.match(
         result.failure.message,
-        "Workspace root does not exist: /definitely/not/a/real/workspace/path",
+        /definitely[/\\]not[/\\]a[/\\]real[/\\]workspace[/\\]path/,
       );
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );

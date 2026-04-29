@@ -415,7 +415,7 @@ export interface ChatComposerProps {
   activeThreadActivities: Thread["activities"] | undefined;
 
   // Misc
-  resolvedTheme: "light" | "dark";
+  resolvedTheme: "light" | "dark" | "shuxiang";
   settings: UnifiedSettings;
   keybindings: ResolvedKeybindingsConfig;
   terminalOpen: boolean;

@@ -4,8 +4,10 @@ import {
   type KeybindingWhenNode,
   MODEL_PICKER_JUMP_KEYBINDING_COMMANDS,
   type ResolvedKeybindingsConfig,
+  TABS_SWITCH_KEYBINDING_COMMANDS,
   THREAD_JUMP_KEYBINDING_COMMANDS,
   type ModelPickerJumpKeybindingCommand,
+  type TabsSwitchKeybindingCommand,
   type ThreadJumpKeybindingCommand,
 } from "@t3tools/contracts";
 import { isMacPlatform } from "./lib/utils";
@@ -30,7 +32,18 @@ export interface ShortcutModifierStateLike {
 export interface ShortcutMatchContext {
   terminalFocus: boolean;
   terminalOpen: boolean;
-  [key: string]: boolean;
+  /**
+   * Whether keyboard focus is currently inside the sidebar tree. Used by
+   * `thread.jump.*` to scope its `mod+1..6` binding so it does not steal
+   * the same shortcut from `tabs.switch.*` outside the sidebar.
+   */
+  sidebarFocus?: boolean;
+  /**
+   * Whether the model picker dialog is currently open. Used by
+   * `modelPicker.jump.*` to scope `mod+1..6`.
+   */
+  modelPickerOpen?: boolean;
+  [key: string]: boolean | undefined;
 }
 
 interface ShortcutMatchOptions {
@@ -112,6 +125,8 @@ function resolveContext(options: ShortcutMatchOptions | undefined): ShortcutMatc
   return {
     terminalFocus: false,
     terminalOpen: false,
+    sidebarFocus: false,
+    modelPickerOpen: false,
     ...options?.context,
   };
 }
@@ -129,6 +144,22 @@ function evaluateWhenNode(node: KeybindingWhenNode, context: ShortcutMatchContex
     case "or":
       return evaluateWhenNode(node.left, context) || evaluateWhenNode(node.right, context);
   }
+}
+
+/**
+ * Helper used by global keydown listeners to derive a fresh `sidebarFocus`
+ * value at the moment the event fires. Returns `true` when keyboard focus
+ * is inside the sidebar tree (any element marked with `data-sidebar="sidebar"`).
+ *
+ * The check is opt-in (callers must invoke it explicitly) so existing
+ * call-sites that do not care about sidebar scoping continue to work
+ * unchanged.
+ */
+export function isSidebarFocused(): boolean {
+  if (typeof document === "undefined") return false;
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return false;
+  return active.closest('[data-sidebar="sidebar"]') !== null;
 }
 
 function matchesWhenClause(
@@ -310,6 +341,15 @@ export function modelPickerJumpIndexFromCommand(command: string): number | null 
   const index = MODEL_PICKER_JUMP_KEYBINDING_COMMANDS.indexOf(
     command as ModelPickerJumpKeybindingCommand,
   );
+  return index === -1 ? null : index;
+}
+
+export function tabsSwitchCommandForIndex(index: number): TabsSwitchKeybindingCommand | null {
+  return TABS_SWITCH_KEYBINDING_COMMANDS[index] ?? null;
+}
+
+export function tabsSwitchIndexFromCommand(command: string): number | null {
+  const index = TABS_SWITCH_KEYBINDING_COMMANDS.indexOf(command as TabsSwitchKeybindingCommand);
   return index === -1 ? null : index;
 }
 

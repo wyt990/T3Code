@@ -17,6 +17,7 @@ import {
   MAX_WHEN_EXPRESSION_DEPTH,
   ResolvedKeybindingRule,
   ResolvedKeybindingsConfig,
+  TABS_SWITCH_KEYBINDING_COMMANDS,
   THREAD_JUMP_KEYBINDING_COMMANDS,
   type ServerConfigIssue,
 } from "@t3tools/contracts";
@@ -57,6 +58,17 @@ type WhenToken =
   | { type: "lparen" }
   | { type: "rparen" };
 
+// Default keybinding precedence
+// ─────────────────────────────────────────────────────────────────────────
+// `mod+1`..`mod+6` is shared between three commands disambiguated by `when`:
+//   1. `modelPicker.jump.N`  when modelPickerOpen
+//   2. `thread.jump.N`       when sidebarFocus (keyboard focus inside the
+//                            sidebar tree). Originally global, scoped here so
+//                            `tabs.switch.N` is the dominant binding for the
+//                            "switch tab" intuition.
+//   3. `tabs.switch.N`       otherwise (chat area / composer / global)
+// `mod+w` collides with `terminal.close` (when terminalFocus); `tabs.close`
+// fires only when terminal is not focused.
 export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+j", command: "terminal.toggle" },
   { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
@@ -74,11 +86,23 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   ...THREAD_JUMP_KEYBINDING_COMMANDS.map((command, index) => ({
     key: `mod+${index + 1}`,
     command,
+    when: "sidebarFocus",
   })),
   ...MODEL_PICKER_JUMP_KEYBINDING_COMMANDS.map((command, index) => ({
     key: `mod+${index + 1}`,
     command,
     when: "modelPickerOpen",
+  })),
+  // Tab-bar shortcuts. `tabs.switch.N` falls through to chat area when the
+  // model picker is closed and keyboard focus is outside the sidebar.
+  { key: "mod+w", command: "tabs.close", when: "!terminalFocus && !modelPickerOpen" },
+  { key: "ctrl+tab", command: "tabs.next" },
+  { key: "ctrl+shift+tab", command: "tabs.prev" },
+  { key: "mod+\\", command: "tabs.toggleSplit", when: "!terminalFocus" },
+  ...TABS_SWITCH_KEYBINDING_COMMANDS.map((command, index) => ({
+    key: `mod+${index + 1}`,
+    command,
+    when: "!sidebarFocus && !modelPickerOpen",
   })),
 ];
 

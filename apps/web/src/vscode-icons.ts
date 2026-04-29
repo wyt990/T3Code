@@ -104,10 +104,12 @@ function extensionCandidates(fileName: string): string[] {
 
 function resolveLanguageFallbackDefinition(
   pathValue: string,
-  theme: "light" | "dark",
+  theme: "light" | "dark" | "shuxiang",
 ): string | null {
+  // Treat shuxiang as light theme (warm light background)
+  const isLightTheme = theme === "light" || theme === "shuxiang";
   const basename = basenameOfPath(pathValue).toLowerCase();
-  const languageIds = theme === "light" ? lightLanguageIds : darkLanguageIds;
+  const languageIds = isLightTheme ? lightLanguageIds : darkLanguageIds;
 
   const fromBasenameLanguage = languageIdByFileName[basename];
   if (fromBasenameLanguage) {
@@ -137,10 +139,12 @@ function iconFilenameForDefinitionKey(definitionKey: string | undefined): string
   return iconPath.slice(slashIndex + 1);
 }
 
-function resolveFileDefinition(pathValue: string, theme: "light" | "dark"): string {
+function resolveFileDefinition(pathValue: string, theme: "light" | "dark" | "shuxiang"): string {
+  // Treat shuxiang as light theme (warm light background)
+  const isLightTheme = theme === "light" || theme === "shuxiang";
   const basename = basenameOfPath(pathValue).toLowerCase();
-  const fileNames = theme === "light" ? lightFileNames : darkFileNames;
-  const fileExtensions = theme === "light" ? lightFileExtensions : darkFileExtensions;
+  const fileNames = isLightTheme ? lightFileNames : darkFileNames;
+  const fileExtensions = isLightTheme ? lightFileExtensions : darkFileExtensions;
 
   const fromFileName = fileNames[basename] ?? darkFileNames[basename];
   if (fromFileName) return fromFileName;
@@ -153,12 +157,14 @@ function resolveFileDefinition(pathValue: string, theme: "light" | "dark"): stri
   const fromLanguage = resolveLanguageFallbackDefinition(pathValue, theme);
   if (fromLanguage) return fromLanguage;
 
-  return theme === "light" ? defaultLightFileIconDefinition : defaultDarkFileIconDefinition;
+  return isLightTheme ? defaultLightFileIconDefinition : defaultDarkFileIconDefinition;
 }
 
-function resolveFolderDefinition(pathValue: string, theme: "light" | "dark"): string {
+function resolveFolderDefinition(pathValue: string, theme: "light" | "dark" | "shuxiang"): string {
+  // Treat shuxiang as light theme (warm light background)
+  const isLightTheme = theme === "light" || theme === "shuxiang";
   const basename = basenameOfPath(pathValue).toLowerCase();
-  const folderNames = theme === "light" ? lightFolderNames : darkFolderNames;
+  const folderNames = isLightTheme ? lightFolderNames : darkFolderNames;
   return (
     folderNames[basename] ??
     darkFolderNames[basename] ??
@@ -169,7 +175,7 @@ function resolveFolderDefinition(pathValue: string, theme: "light" | "dark"): st
 export function getVscodeIconUrlForEntry(
   pathValue: string,
   kind: "file" | "directory",
-  theme: "light" | "dark",
+  theme: "light" | "dark" | "shuxiang",
 ): string {
   const definitionKey =
     kind === "directory"

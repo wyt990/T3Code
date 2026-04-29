@@ -47,6 +47,29 @@ export const MODEL_PICKER_KEYBINDING_COMMANDS = [
 ] as const;
 export type ModelPickerKeybindingCommand = (typeof MODEL_PICKER_KEYBINDING_COMMANDS)[number];
 
+// Tab-aware commands: switching, closing, navigating among open tabs and
+// toggling split-view of the currently active tab. The `tabs.switch.*`
+// commands are a fixed set keyed by 1-based tab index (1..6) matching the
+// tab cap defined in the design doc.
+export const TABS_SWITCH_KEYBINDING_COMMANDS = [
+  "tabs.switch.1",
+  "tabs.switch.2",
+  "tabs.switch.3",
+  "tabs.switch.4",
+  "tabs.switch.5",
+  "tabs.switch.6",
+] as const;
+export type TabsSwitchKeybindingCommand = (typeof TABS_SWITCH_KEYBINDING_COMMANDS)[number];
+
+export const TABS_KEYBINDING_COMMANDS = [
+  "tabs.close",
+  "tabs.next",
+  "tabs.prev",
+  "tabs.toggleSplit",
+  ...TABS_SWITCH_KEYBINDING_COMMANDS,
+] as const;
+export type TabsKeybindingCommand = (typeof TABS_KEYBINDING_COMMANDS)[number];
+
 const STATIC_KEYBINDING_COMMANDS = [
   "terminal.toggle",
   "terminal.split",
@@ -59,6 +82,7 @@ const STATIC_KEYBINDING_COMMANDS = [
   "editor.openFavorite",
   ...MODEL_PICKER_KEYBINDING_COMMANDS,
   ...THREAD_KEYBINDING_COMMANDS,
+  ...TABS_KEYBINDING_COMMANDS,
 ] as const;
 
 export const SCRIPT_RUN_COMMAND_PATTERN = Schema.TemplateLiteral([

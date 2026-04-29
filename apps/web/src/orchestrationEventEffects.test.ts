@@ -71,6 +71,7 @@ describe("deriveOrchestrationBatchEffects", () => {
     expect(effects.promoteDraftThreadIds).toEqual([createdThreadId]);
     expect(effects.clearDeletedThreadIds).toEqual([deletedThreadId]);
     expect(effects.removeTerminalStateThreadIds).toEqual([deletedThreadId, archivedThreadId]);
+    expect(effects.closeTabsForThreadIds).toEqual([deletedThreadId, archivedThreadId]);
     expect(effects.needsProviderInvalidation).toBe(false);
   });
 
@@ -109,6 +110,7 @@ describe("deriveOrchestrationBatchEffects", () => {
     expect(effects.promoteDraftThreadIds).toEqual([threadId]);
     expect(effects.clearDeletedThreadIds).toEqual([]);
     expect(effects.removeTerminalStateThreadIds).toEqual([]);
+    expect(effects.closeTabsForThreadIds).toEqual([]);
     expect(effects.needsProviderInvalidation).toBe(true);
   });
 
@@ -130,5 +132,56 @@ describe("deriveOrchestrationBatchEffects", () => {
     expect(effects.promoteDraftThreadIds).toEqual([]);
     expect(effects.clearDeletedThreadIds).toEqual([]);
     expect(effects.removeTerminalStateThreadIds).toEqual([]);
+    expect(effects.closeTabsForThreadIds).toEqual([]);
+  });
+
+  it("merges multiple deletes and archives into a single closeTabsForThreadIds list", () => {
+    const a = ThreadId.make("thread-a");
+    const b = ThreadId.make("thread-b");
+    const c = ThreadId.make("thread-c");
+
+    const effects = deriveOrchestrationBatchEffects([
+      makeEvent("thread.deleted", {
+        threadId: a,
+        deletedAt: "2026-02-27T00:00:01.000Z",
+      }),
+      makeEvent("thread.archived", {
+        threadId: b,
+        archivedAt: "2026-02-27T00:00:02.000Z",
+        updatedAt: "2026-02-27T00:00:02.000Z",
+      }),
+      makeEvent("thread.deleted", {
+        threadId: c,
+        deletedAt: "2026-02-27T00:00:03.000Z",
+      }),
+    ]);
+
+    expect(effects.closeTabsForThreadIds).toEqual([a, b, c]);
+  });
+
+  it("does not close tabs for created/unarchived/turn-completed events", () => {
+    const created = ThreadId.make("thread-created");
+    const unarchived = ThreadId.make("thread-unarchived");
+
+    const effects = deriveOrchestrationBatchEffects([
+      makeEvent("thread.created", {
+        threadId: created,
+        projectId: ProjectId.make("project-1"),
+        title: "Created",
+        modelSelection: { provider: "codex", model: "gpt-5-codex" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdAt: "2026-02-27T00:00:00.000Z",
+        updatedAt: "2026-02-27T00:00:00.000Z",
+      }),
+      makeEvent("thread.unarchived", {
+        threadId: unarchived,
+        updatedAt: "2026-02-27T00:00:01.000Z",
+      }),
+    ]);
+
+    expect(effects.closeTabsForThreadIds).toEqual([]);
   });
 });

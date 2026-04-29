@@ -16,9 +16,13 @@ import {
   CornerLeftUpIcon,
   FolderIcon,
   FolderPlusIcon,
+  GalleryHorizontalEndIcon,
+  MergeIcon,
   MessageSquareIcon,
   SettingsIcon,
+  SplitIcon,
   SquarePenIcon,
+  XIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -69,7 +73,11 @@ import {
   useStore,
 } from "../store";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
-import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
+import {
+  buildDraftThreadRouteParams,
+  buildThreadRouteParams,
+  resolveThreadRouteTarget,
+} from "../threadRoutes";
 import {
   ADDON_ICON_CLASS,
   buildBrowseGroups,
@@ -92,6 +100,13 @@ import { ProjectFavicon } from "./ProjectFavicon";
 import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
 import { useServerKeybindings } from "../rpc/serverState";
 import { resolveShortcutCommand } from "../keybindings";
+import { useUiStateStore } from "../uiStateStore";
+import {
+  buildTabBarItemGroups,
+  pickAutoMergeCandidate,
+  resolveTabTitle,
+} from "./TabBar/TabBar.logic";
+import { findMergedPair } from "../uiTabsState";
 import {
   Command,
   CommandDialog,
@@ -708,7 +723,16 @@ function OpenCommandPaletteDialog() {
     },
   });
 
-  const rootGroups = buildRootGroups({ actionItems, recentThreadItems });
+  // ── Tab actions (Phase 3.4) ────────────────────────────────────────────────
+  // Surface the most-used tab operations alongside the existing palette
+  // actions. Per-tab "Switch to..." entries live in their own group below.
+  const tabActionItems = buildTabPaletteActionItems({ navigate });
+  for (const item of tabActionItems) {
+    actionItems.push(item);
+  }
+  const tabSwitchItems = useTabSwitchPaletteItems({ navigate });
+
+  const rootGroups = buildRootGroups({ actionItems, recentThreadItems, tabSwitchItems });
   const activeGroups = currentView ? currentView.groups : rootGroups;
 
   const filteredGroups = filterCommandPaletteGroups({
@@ -1122,4 +1146,153 @@ function OpenCommandPaletteDialog() {
       </Command>
     </CommandDialogPopup>
   );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tab palette items (Phase 3.4)
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface TabPaletteDeps {
+  navigate: ReturnType<typeof useNavigate>;
+}
+
+/**
+ * Build the imperative tab actions (close/merge/split) that share the
+ * "actions" group with the existing settings/add-project entries. They only
+ * read the live tabs state at execution time so they always operate on what
+ * the user sees in the bar at the moment they trigger the action.
+ */
+function buildTabPaletteActionItems(_deps: TabPaletteDeps): CommandPaletteActionItem[] {
+  return [
+    {
+      kind: "action",
+      value: "action:tab:close-current",
+      searchTerms: ["close tab", "close current tab", "关闭标签", "关闭当前标签"],
+      title: "关闭当前标签",
+      icon: <XIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "tabs.close",
+      run: async () => {
+        const store = useUiStateStore.getState();
+        const activeId = store.tabs.group.activeTabId;
+        if (!activeId) return;
+        store.closeTab(activeId);
+      },
+    },
+    {
+      kind: "action",
+      value: "action:tab:merge-with-right",
+      searchTerms: ["merge tabs", "split", "合并标签", "与右侧合并"],
+      title: "合并当前标签与右侧",
+      icon: <MergeIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        const store = useUiStateStore.getState();
+        const tabs = store.tabs;
+        const activeId = tabs.group.activeTabId;
+        const candidate = pickAutoMergeCandidate(tabs);
+        if (!candidate) return;
+        // Prefer merging the active tab with its right neighbour; otherwise
+        // fall back to the right-most adjacent merge candidate.
+        const idx = activeId ? tabs.group.tabIds.indexOf(activeId) : -1;
+        const rightId = idx >= 0 ? tabs.group.tabIds[idx + 1] : undefined;
+        if (activeId && rightId) {
+          if (store.mergeTabs(activeId, rightId)) return;
+        }
+        store.mergeTabs(candidate.leftTabId, candidate.rightTabId);
+      },
+    },
+    {
+      kind: "action",
+      value: "action:tab:split-current",
+      searchTerms: ["split", "unmerge", "分离合并", "分离当前合并标签"],
+      title: "分离当前合并标签",
+      icon: <SplitIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        const store = useUiStateStore.getState();
+        const tabs = store.tabs;
+        const activeId = tabs.group.activeTabId;
+        if (!activeId) return;
+        const pair = findMergedPair(tabs.group.mergedPairs, activeId);
+        if (!pair) return;
+        store.splitMergedTabs(activeId);
+      },
+    },
+  ];
+}
+
+/**
+ * Build one "Switch to ..." entry per currently open tab. The list updates
+ * reactively because we read directly from the store inside the component;
+ * the surrounding palette re-renders alongside any tab mutation.
+ */
+function useTabSwitchPaletteItems(deps: TabPaletteDeps): CommandPaletteActionItem[] {
+  const tabsState = useUiStateStore((store) => store.tabs);
+  const allTabs = useMemo(
+    () =>
+      tabsState.group.tabIds.flatMap((id) => {
+        const tab = tabsState.tabsById[id];
+        return tab ? [tab] : [];
+      }),
+    [tabsState],
+  );
+
+  const groups = useMemo(
+    () => buildTabBarItemGroups(allTabs, tabsState.group.mergedPairs),
+    [allTabs, tabsState.group.mergedPairs],
+  );
+
+  return useMemo(() => {
+    const items: CommandPaletteActionItem[] = [];
+    let visualIndex = 0;
+    for (const group of groups) {
+      if (group.kind === "single") {
+        const title = resolveTabTitle({ tab: group.tab });
+        visualIndex += 1;
+        items.push({
+          kind: "action",
+          value: `action:tab:switch:${group.tab.id}`,
+          searchTerms: [title, String(visualIndex), "switch tab", "切换到标签"],
+          title: `切换到标签 ${visualIndex}：${title}`,
+          icon: <GalleryHorizontalEndIcon className={ITEM_ICON_CLASS} />,
+          run: async () => {
+            await navigateToTabTarget({ tab: group.tab, navigate: deps.navigate });
+          },
+        });
+      } else {
+        const leftTitle = resolveTabTitle({ tab: group.leftTab });
+        const rightTitle = resolveTabTitle({ tab: group.rightTab });
+        const combined = `${leftTitle} ｜ ${rightTitle}`;
+        visualIndex += 1;
+        items.push({
+          kind: "action",
+          value: `action:tab:switch:${group.pair.leftTabId}`,
+          searchTerms: [leftTitle, rightTitle, String(visualIndex), "merged tab", "切换到标签"],
+          title: `切换到标签 ${visualIndex}（合并）：${combined}`,
+          icon: <GalleryHorizontalEndIcon className={ITEM_ICON_CLASS} />,
+          run: async () => {
+            await navigateToTabTarget({ tab: group.leftTab, navigate: deps.navigate });
+          },
+        });
+      }
+    }
+    return items;
+  }, [deps.navigate, groups]);
+}
+
+async function navigateToTabTarget(args: {
+  tab: { id: string; target: import("../uiTabsState").TabTarget };
+  navigate: ReturnType<typeof useNavigate>;
+}): Promise<void> {
+  const { tab, navigate } = args;
+  useUiStateStore.getState().activateTab(tab.id);
+  if (tab.target.kind === "server") {
+    await navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(tab.target.threadRef),
+    });
+    return;
+  }
+  await navigate({
+    to: "/draft/$draftId",
+    params: buildDraftThreadRouteParams(tab.target.draftId),
+  });
 }

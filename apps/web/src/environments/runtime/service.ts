@@ -4,6 +4,7 @@ import {
   type OrchestrationEvent,
   type OrchestrationShellSnapshot,
   type OrchestrationShellStreamEvent,
+  type ScopedThreadRef,
   type ServerConfig,
   type TerminalEvent,
   ThreadId,
@@ -19,8 +20,8 @@ import {
 } from "@t3tools/client-runtime";
 
 import {
+  listDraftIdsForServerThreadRef,
   markPromotedDraftThreadByRef,
-  markPromotedDraftThreadsByRef,
   useComposerDraftStore,
 } from "~/composerDraftStore";
 import { ensureLocalApi } from "~/localApi";
@@ -593,9 +594,25 @@ function syncThreadUiFromStore() {
       seedVisitedAt: thread.updatedAt ?? thread.createdAt,
     })),
   );
-  markPromotedDraftThreadsByRef(
-    threads.map((thread) => scopeThreadRef(thread.environmentId, thread.id)),
-  );
+  for (const thread of threads) {
+    promoteDraftThreadAndTabByRef(scopeThreadRef(thread.environmentId, thread.id));
+  }
+}
+
+/**
+ * Promote a server-thread reference in both the composer-draft store and the
+ * tab store. Called wherever runtime/recovery flows discover that a server
+ * thread now exists for a previously draft-only target so that the UI tab and
+ * the composer-draft session both upgrade in lockstep.
+ */
+function promoteDraftThreadAndTabByRef(threadRef: ScopedThreadRef): void {
+  const draftIds = listDraftIdsForServerThreadRef(threadRef);
+  markPromotedDraftThreadByRef(threadRef);
+  if (draftIds.length === 0) return;
+  const uiStore = useUiStateStore.getState();
+  for (const draftId of draftIds) {
+    uiStore.promoteDraftTab(draftId, threadRef);
+  }
 }
 
 function reconcileSnapshotDerivedState() {
@@ -675,7 +692,7 @@ function applyRecoveredEventBatch(
 
   const draftStore = useComposerDraftStore.getState();
   for (const threadId of batchEffects.promoteDraftThreadIds) {
-    markPromotedDraftThreadByRef(scopeThreadRef(environmentId, threadId));
+    promoteDraftThreadAndTabByRef(scopeThreadRef(environmentId, threadId));
   }
   for (const threadId of batchEffects.clearDeletedThreadIds) {
     draftStore.clearDraftThread(scopeThreadRef(environmentId, threadId));
@@ -690,6 +707,11 @@ function applyRecoveredEventBatch(
   }
   for (const threadId of batchEffects.removeTerminalStateThreadIds) {
     useTerminalStateStore.getState().removeTerminalState(scopeThreadRef(environmentId, threadId));
+  }
+  if (batchEffects.closeTabsForThreadIds.length > 0) {
+    useUiStateStore
+      .getState()
+      .closeTabsByThreadIds(environmentId, batchEffects.closeTabsForThreadIds);
   }
 
   reconcileThreadDetailSubscriptionEvictionForEnvironment(environmentId);
@@ -732,7 +754,7 @@ function applyShellEvent(event: OrchestrationShellStreamEvent, environmentId: En
     case "thread-upserted":
       syncThreadUiFromStore();
       if (!previousThread && threadRef) {
-        markPromotedDraftThreadByRef(threadRef);
+        promoteDraftThreadAndTabByRef(threadRef);
       }
       if (previousThread?.archivedAt === null && event.thread.archivedAt !== null && threadRef) {
         useTerminalStateStore.getState().removeTerminalState(threadRef);

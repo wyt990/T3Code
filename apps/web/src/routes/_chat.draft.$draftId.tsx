@@ -1,12 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
-import ChatView from "../components/ChatView";
+
 import { threadHasStarted } from "../components/ChatView.logic";
+import { TabbedShell } from "../components/TabBar";
 import { useComposerDraftStore, DraftId } from "../composerDraftStore";
-import { SidebarInset } from "../components/ui/sidebar";
 import { createThreadSelectorAcrossEnvironments } from "../storeSelectors";
 import { useStore } from "../store";
 import { buildThreadRouteParams } from "../threadRoutes";
+import type { TabTarget } from "../uiTabsState";
 
 function DraftChatThreadRouteView() {
   const navigate = useNavigate();
@@ -53,32 +54,21 @@ function DraftChatThreadRouteView() {
     void navigate({ to: "/", replace: true });
   }, [canonicalThreadRef, draftSession, navigate]);
 
-  if (canonicalThreadRef) {
-    return (
-      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
-        <ChatView
-          environmentId={canonicalThreadRef.environmentId}
-          threadId={canonicalThreadRef.threadId}
-          routeKind="server"
-        />
-      </SidebarInset>
-    );
-  }
+  const urlTarget = useMemo<TabTarget | null>(() => {
+    if (canonicalThreadRef) {
+      return { kind: "server", threadRef: canonicalThreadRef };
+    }
+    if (draftSession) {
+      return { kind: "draft", draftId };
+    }
+    return null;
+  }, [canonicalThreadRef, draftId, draftSession]);
 
-  if (!draftSession) {
+  if (!urlTarget) {
     return null;
   }
 
-  return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
-      <ChatView
-        draftId={draftId}
-        environmentId={draftSession.environmentId}
-        threadId={draftSession.threadId}
-        routeKind="draft"
-      />
-    </SidebarInset>
-  );
+  return <TabbedShell urlTarget={urlTarget} />;
 }
 
 export const Route = createFileRoute("/_chat/draft/$draftId")({

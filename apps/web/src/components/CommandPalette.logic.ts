@@ -334,10 +334,23 @@ export function getCommandPaletteMode(input: {
 export function buildRootGroups(input: {
   actionItems: ReadonlyArray<CommandPaletteActionItem | CommandPaletteSubmenuItem>;
   recentThreadItems: ReadonlyArray<CommandPaletteActionItem>;
+  /**
+   * "Switch to tab N" entries — one per currently open tab. Rendered as a
+   * dedicated group above recent threads so users can search by tab title
+   * without having to scroll past the action submenu.
+   */
+  tabSwitchItems?: ReadonlyArray<CommandPaletteActionItem>;
 }): CommandPaletteGroup[] {
   const groups: CommandPaletteGroup[] = [];
   if (input.actionItems.length > 0) {
     groups.push({ value: "actions", label: "操作", items: input.actionItems });
+  }
+  if (input.tabSwitchItems && input.tabSwitchItems.length > 0) {
+    groups.push({
+      value: "tabs",
+      label: "切换到标签",
+      items: input.tabSwitchItems,
+    });
   }
   if (input.recentThreadItems.length > 0) {
     groups.push({

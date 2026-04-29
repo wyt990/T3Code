@@ -34,14 +34,12 @@ import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/proje
 import { truncate } from "@t3tools/shared/String";
 import { Debouncer } from "@tanstack/react-pacer";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import { useGitStatus } from "~/lib/gitStatusState";
 import { usePrimaryEnvironmentId } from "../environments/primary";
 import { readEnvironmentApi } from "../environmentApi";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
-import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import {
   collapseExpandedComposerCursor,
   parseStandaloneComposerSlashCommand,
@@ -96,10 +94,9 @@ import { useTheme } from "../hooks/useTheme";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useCommandPaletteStore } from "../commandPaletteStore";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
-import { useMediaQuery } from "../hooks/useMediaQuery";
-import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
+import { recallChatViewScrollOffset, rememberChatViewScrollOffset } from "../chatViewScrollMemory";
 import PlanSidebar from "./PlanSidebar";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import { ChevronDownIcon } from "lucide-react";
@@ -122,7 +119,6 @@ import {
   useSavedEnvironmentRegistryStore,
   useSavedEnvironmentRuntimeStore,
 } from "../environments/runtime";
-import { buildDraftThreadRouteParams } from "../threadRoutes";
 import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
@@ -177,7 +173,6 @@ import {
 } from "~/rpc/serverState";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
-import { RightPanelSheet } from "./RightPanelSheet";
 
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
@@ -315,23 +310,64 @@ function formatOutgoingPrompt(params: {
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
-type ChatViewProps =
-  | {
-      environmentId: EnvironmentId;
-      threadId: ThreadId;
-      onDiffPanelOpen?: () => void;
-      reserveTitleBarControlInset?: boolean;
-      routeKind: "server";
-      draftId?: never;
-    }
-  | {
-      environmentId: EnvironmentId;
-      threadId: ThreadId;
-      onDiffPanelOpen?: () => void;
-      reserveTitleBarControlInset?: boolean;
-      routeKind: "draft";
-      draftId: DraftId;
-    };
+interface ChatViewSharedProps {
+  /**
+   * Whether the diff panel is currently open. Owned by the route/tab layer;
+   * ChatView reflects it via header buttons and conditional layout.
+   */
+  diffOpen: boolean;
+  /**
+   * Toggle the diff panel for the current thread. The caller is responsible
+   * for any URL/route updates that should accompany the toggle.
+   */
+  onToggleDiff: () => void;
+  /**
+   * Open the diff panel pinned to a specific turn (and optional file).
+   * The caller is responsible for any URL/route updates.
+   */
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  /**
+   * Switch the surrounding navigation to a server thread. Returns a promise
+   * the caller can await when navigation must complete before proceeding.
+   */
+  onRequestThreadNavigation: (target: ScopedThreadRef) => Promise<void>;
+  /**
+   * Switch the surrounding navigation to a draft thread. Returns a promise
+   * the caller can await when navigation must complete before proceeding.
+   */
+  onRequestDraftNavigation: (draftId: DraftId) => Promise<void>;
+  /**
+   * Whether this ChatView instance currently owns global keyboard focus.
+   * Defaults to true at single-tab call sites; multi-tab callers gate the
+   * value to avoid duplicate shortcut handling across split panels.
+   */
+  isFocused: boolean;
+  /**
+   * Request focus for this ChatView instance. Currently a no-op at single-tab
+   * call sites; the multi-tab shell promotes the corresponding tab on call.
+   */
+  onRequestFocus: () => void;
+}
+
+type ChatViewProps = ChatViewSharedProps &
+  (
+    | {
+        environmentId: EnvironmentId;
+        threadId: ThreadId;
+        onDiffPanelOpen?: () => void;
+        reserveTitleBarControlInset?: boolean;
+        routeKind: "server";
+        draftId?: never;
+      }
+    | {
+        environmentId: EnvironmentId;
+        threadId: ThreadId;
+        onDiffPanelOpen?: () => void;
+        reserveTitleBarControlInset?: boolean;
+        routeKind: "draft";
+        draftId: DraftId;
+      }
+  );
 
 interface TerminalLaunchContext {
   threadId: ThreadId;
@@ -591,6 +627,12 @@ export default function ChatView(props: ChatViewProps) {
     routeKind,
     onDiffPanelOpen,
     reserveTitleBarControlInset = true,
+    diffOpen,
+    onToggleDiff: onToggleDiffProp,
+    onOpenTurnDiff: onOpenTurnDiffProp,
+    onRequestThreadNavigation,
+    onRequestDraftNavigation,
+    isFocused,
   } = props;
   const draftId = routeKind === "draft" ? props.draftId : null;
   const routeThreadRef = useMemo(
@@ -617,11 +659,6 @@ export default function ChatView(props: ChatViewProps) {
   );
   const timestampFormat = settings.timestampFormat;
   const autoOpenPlanSidebar = settings.autoOpenPlanSidebar;
-  const navigate = useNavigate();
-  const rawSearch = useSearch({
-    strict: false,
-    select: (params) => parseDiffRouteSearch(params),
-  });
   const { resolvedTheme } = useTheme();
   // Granular store selectors — avoid subscribing to prompt changes.
   const composerRuntimeMode = useComposerDraftStore(
@@ -684,7 +721,10 @@ export default function ChatView(props: ChatViewProps) {
   const [pendingUserInputQuestionIndexByRequestId, setPendingUserInputQuestionIndexByRequestId] =
     useState<Record<string, number>>({});
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
-  const shouldUsePlanSidebarSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
+  // Plan sidebar is always rendered as an inline flex column beside the chat
+  // column. A floating sheet (fixed-positioned overlay) would cover the chat
+  // content — being narrower is less disruptive than being occluded.
+  const chatViewRootRef = useRef<HTMLDivElement>(null);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
   // When set, the thread-change reset effect will open the sidebar instead of closing it.
@@ -792,7 +832,6 @@ export default function ChatView(props: ChatViewProps) {
     composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE;
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
-  const diffOpen = rawSearch.diff === "1";
   const activeThreadId = activeThread?.id ?? null;
   const activeThreadRef = useMemo(
     () => (activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null),
@@ -945,10 +984,7 @@ export default function ChatView(props: ChatViewProps) {
           },
         );
         if (routeKind !== "draft" || draftId !== storedDraftSession.draftId) {
-          await navigate({
-            to: "/draft/$draftId",
-            params: buildDraftThreadRouteParams(storedDraftSession.draftId),
-          });
+          await onRequestDraftNavigation(storedDraftSession.draftId);
         }
         return storedDraftSession.threadId;
       }
@@ -979,10 +1015,7 @@ export default function ChatView(props: ChatViewProps) {
         interactionMode: DEFAULT_INTERACTION_MODE,
         ...input,
       });
-      await navigate({
-        to: "/draft/$draftId",
-        params: buildDraftThreadRouteParams(nextDraftId),
-      });
+      await onRequestDraftNavigation(nextDraftId);
       return nextThreadId;
     },
     [
@@ -991,7 +1024,7 @@ export default function ChatView(props: ChatViewProps) {
       getDraftSession,
       getDraftSessionByLogicalProjectKey,
       isServerThread,
-      navigate,
+      onRequestDraftNavigation,
       projectGroupingSettings,
       routeKind,
       setDraftThreadContext,
@@ -1483,19 +1516,8 @@ export default function ChatView(props: ChatViewProps) {
     if (!diffOpen) {
       onDiffPanelOpen?.();
     }
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: {
-        environmentId,
-        threadId,
-      },
-      replace: true,
-      search: (previous) => {
-        const rest = stripDiffSearchParams(previous);
-        return diffOpen ? { ...rest, diff: undefined } : { ...rest, diff: "1" };
-      },
-    });
-  }, [diffOpen, environmentId, isServerThread, navigate, onDiffPanelOpen, threadId]);
+    onToggleDiffProp();
+  }, [diffOpen, isServerThread, onDiffPanelOpen, onToggleDiffProp]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -1985,6 +2007,54 @@ export default function ChatView(props: ChatViewProps) {
     legendListRef.current?.scrollToEnd?.({ animated });
   }, []);
 
+  // Phase 3.6 — per-tab scroll position persistence.
+  //
+  // Switching tabs unmounts this ChatView, so any mid-thread scroll position
+  // would otherwise be lost. We snapshot the current LegendList offset on
+  // unmount keyed by `routeKind:routeThreadKey`, and restore it on mount once
+  // (after first paint) when the user was *not* anchored to the bottom — in
+  // that case maintainScrollAtEnd already takes care of pinning new content,
+  // so we deliberately skip restoration to avoid fighting it.
+  const scrollMemoryKeyRef = useRef({ routeKind, scopedThreadKey: routeThreadKey });
+  scrollMemoryKeyRef.current = { routeKind, scopedThreadKey: routeThreadKey };
+  useEffect(() => {
+    const memoryKey = { routeKind, scopedThreadKey: routeThreadKey };
+    const saved = recallChatViewScrollOffset(memoryKey);
+    if (saved === undefined) return;
+    let cancelled = false;
+    const handle = requestAnimationFrame(() => {
+      if (cancelled) return;
+      const ref = legendListRef.current?.getNativeScrollRef();
+      if (!ref) return;
+      if ("scrollToOffset" in ref && typeof ref.scrollToOffset === "function") {
+        ref.scrollToOffset({ offset: saved, animated: false });
+      } else if ("scrollTo" in ref && typeof ref.scrollTo === "function") {
+        ref.scrollTo({ y: saved, animated: false });
+      }
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(handle);
+    };
+  }, [routeKind, routeThreadKey]);
+  useEffect(() => {
+    return () => {
+      const ref = legendListRef.current?.getNativeScrollRef();
+      const key = scrollMemoryKeyRef.current;
+      if (!ref) return;
+      // When the user is sitting at the bottom of the thread, persist `0`
+      // (i.e. forget) so reopening the tab still scrolls to the latest
+      // message via maintainScrollAtEnd.
+      if (isAtEndRef.current) {
+        rememberChatViewScrollOffset(key, 0);
+        return;
+      }
+      if ("getCurrentScrollOffset" in ref && typeof ref.getCurrentScrollOffset === "function") {
+        rememberChatViewScrollOffset(key, ref.getCurrentScrollOffset());
+      }
+    };
+  }, []);
+
   // Debounce *showing* the scroll-to-bottom pill so it doesn't flash during
   // thread switches.  LegendList fires scroll events with isAtEnd=false while
   // initialScrollAtEnd is settling; hiding is always immediate.
@@ -2239,6 +2309,9 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
+      if (!isFocused) {
+        return;
+      }
       if (!activeThreadId || useCommandPaletteStore.getState().open || event.defaultPrevented) {
         return;
       }
@@ -2325,6 +2398,7 @@ export default function ChatView(props: ChatViewProps) {
     keybindings,
     onToggleDiff,
     toggleTerminalVisibility,
+    isFocused,
   ]);
 
   const onRevertToTurnCount = useCallback(
@@ -3083,13 +3157,7 @@ export default function ChatView(props: ChatViewProps) {
       .then(() => {
         // Signal that the plan sidebar should open on the new thread when enabled.
         planSidebarOpenOnNextThreadRef.current = autoOpenPlanSidebar;
-        return navigate({
-          to: "/$environmentId/$threadId",
-          params: {
-            environmentId: activeThread.environmentId,
-            threadId: nextThreadId,
-          },
-        });
+        return onRequestThreadNavigation(scopeThreadRef(activeThread.environmentId, nextThreadId));
       })
       .catch(async (err: unknown) => {
         await api.orchestration
@@ -3117,7 +3185,7 @@ export default function ChatView(props: ChatViewProps) {
     isConnecting,
     isSendBusy,
     isServerThread,
-    navigate,
+    onRequestThreadNavigation,
     resetLocalDispatch,
     runtimeMode,
     autoOpenPlanSidebar,
@@ -3194,21 +3262,9 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
       onDiffPanelOpen?.();
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: {
-          environmentId,
-          threadId,
-        },
-        search: (previous) => {
-          const rest = stripDiffSearchParams(previous);
-          return filePath
-            ? { ...rest, diff: "1", diffTurnId: turnId, diffFilePath: filePath }
-            : { ...rest, diff: "1", diffTurnId: turnId };
-        },
-      });
+      onOpenTurnDiffProp(turnId, filePath);
     },
-    [environmentId, isServerThread, navigate, onDiffPanelOpen, threadId],
+    [isServerThread, onDiffPanelOpen, onOpenTurnDiffProp],
   );
   // Both the Map and the revert handler are read from refs at call-time so
   // the callback reference is fully stable and never busts context identity.
@@ -3230,7 +3286,10 @@ export default function ChatView(props: ChatViewProps) {
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
+    <div
+      ref={chatViewRootRef}
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background"
+    >
       {/* Top bar */}
       <header
         className={cn(
@@ -3443,8 +3502,8 @@ export default function ChatView(props: ChatViewProps) {
         </div>
         {/* end chat column */}
 
-        {/* Plan sidebar */}
-        {planSidebarOpen && !shouldUsePlanSidebarSheet ? (
+        {/* Plan sidebar — always inline so it never floats over the chat column */}
+        {planSidebarOpen ? (
           <PlanSidebar
             activePlan={activePlan}
             activeProposedPlan={sidebarProposedPlan}
@@ -3477,21 +3536,6 @@ export default function ChatView(props: ChatViewProps) {
           onAddTerminalContext={addTerminalContextToDraft}
         />
       ))}
-      {shouldUsePlanSidebarSheet ? (
-        <RightPanelSheet open={planSidebarOpen} onClose={closePlanSidebar}>
-          <PlanSidebar
-            activePlan={activePlan}
-            activeProposedPlan={sidebarProposedPlan}
-            label={planSidebarLabel}
-            environmentId={environmentId}
-            markdownCwd={gitCwd ?? undefined}
-            workspaceRoot={activeWorkspaceRoot}
-            timestampFormat={timestampFormat}
-            mode="sheet"
-            onClose={closePlanSidebar}
-          />
-        </RightPanelSheet>
-      ) : null}
 
       {expandedImage && (
         <ExpandedImageDialog preview={expandedImage} onClose={closeExpandedImage} />
