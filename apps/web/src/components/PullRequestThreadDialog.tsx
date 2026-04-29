@@ -188,7 +188,7 @@ export function PullRequestThreadDialog({
     >
       <DialogPopup className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Checkout Pull Request</DialogTitle>
+          <DialogTitle>检出拉取请求</DialogTitle>
           <DialogDescription>
             Resolve a GitHub pull request, then create the draft thread in the main repo or in a
             dedicated worktree.
@@ -196,10 +196,10 @@ export function PullRequestThreadDialog({
         </DialogHeader>
         <DialogPanel className="space-y-4">
           <label className="grid gap-1.5">
-            <span className="text-xs font-medium text-foreground">Pull request</span>
+            <span className="text-xs font-medium text-foreground">拉取请求</span>
             <Input
               ref={referenceInputRef}
-              placeholder="https://github.com/owner/repo/pull/42, gh pr checkout 42, or #42"
+              placeholder="https://github.com/owner/repo/pull/42, gh pr checkout 42, 或 #42"
               value={reference}
               onChange={(event) => {
                 setReferenceDirty(true);
@@ -237,7 +237,7 @@ export function PullRequestThreadDialog({
           {isResolving ? (
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <Spinner className="size-3.5" />
-              Resolving pull request...
+              正在解析拉取请求...
             </div>
           ) : null}
 
@@ -251,7 +251,7 @@ export function PullRequestThreadDialog({
             onClick={() => onOpenChange(false)}
             disabled={preparePullRequestThreadMutation.isPending}
           >
-            Cancel
+            取消
           </Button>
           <Button
             type="button"
@@ -267,7 +267,7 @@ export function PullRequestThreadDialog({
               preparePullRequestThreadMutation.isPending
             }
           >
-            {preparingMode === "local" ? "Preparing local..." : "Local"}
+            {preparingMode === "local" ? "正在准备本地..." : "本地"}
           </Button>
           <Button
             type="button"
@@ -282,7 +282,7 @@ export function PullRequestThreadDialog({
               preparePullRequestThreadMutation.isPending
             }
           >
-            {preparingMode === "worktree" ? "Preparing worktree..." : "Worktree"}
+            {preparingMode === "worktree" ? "正在准备工作区..." : "工作区"}
           </Button>
         </DialogFooter>
       </DialogPopup>

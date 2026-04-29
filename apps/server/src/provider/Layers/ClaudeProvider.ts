@@ -59,9 +59,11 @@ const ClaudeModelListJson = Schema.Struct({
   customModels: Schema.Array(ClaudeCustomModel),
   openaiCompat: Schema.optional(ClaudeOpenaiCompat),
   zenFreeModels: Schema.optional(ClaudeZenFreeModels),
-  settings: Schema.optional(Schema.Struct({
-    model: Schema.String,
-  })),
+  settings: Schema.optional(
+    Schema.Struct({
+      model: Schema.String,
+    }),
+  ),
 });
 type ClaudeModelListJson = typeof ClaudeModelListJson.Type;
 
@@ -239,7 +241,9 @@ export function resolveClaudeBinaryPath(binaryPath: string): string {
     path.join(os.homedir(), ".local", "bin"),
     process.env.APPDATA ? path.join(process.env.APPDATA, "npm") : null,
     process.env.PATH?.split(path.delimiter) ?? [],
-  ].flat().filter((p): p is string => p !== null);
+  ]
+    .flat()
+    .filter((p): p is string => p !== null);
 
   for (const searchPath of searchPaths) {
     const cmdPath = path.join(searchPath, cmdName);
@@ -1037,9 +1041,8 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     Effect.orElseSucceed(() => [] as ReadonlyArray<ServerProviderModel>),
   );
 
-  const discoveredModels = cliModels.length > 0
-    ? cliModels
-    : getBuiltInClaudeModelsForVersion(parsedVersion);
+  const discoveredModels =
+    cliModels.length > 0 ? cliModels : getBuiltInClaudeModelsForVersion(parsedVersion);
 
   const models = providerModelsFromSettings(
     discoveredModels,

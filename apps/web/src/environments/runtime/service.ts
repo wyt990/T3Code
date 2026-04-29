@@ -285,6 +285,10 @@ function attachThreadDetailSubscription(entry: ThreadDetailSubscriptionEntry): b
         useStore.getState().syncServerThreadDetail(item.snapshot.thread, entry.environmentId);
         return;
       }
+      if (item.kind === "heartbeat") {
+        // Heartbeat received, connection is alive
+        return;
+      }
       applyEnvironmentThreadDetailEvent(item.event, entry.environmentId);
     },
   );

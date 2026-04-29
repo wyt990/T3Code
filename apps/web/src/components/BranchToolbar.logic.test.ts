@@ -18,7 +18,7 @@ const localEnvironmentId = EnvironmentId.make("environment-local");
 const remoteEnvironmentId = EnvironmentId.make("environment-remote");
 
 describe("resolveDraftEnvModeAfterBranchChange", () => {
-  it("switches to local mode when returning from an existing worktree to the main worktree", () => {
+  it("从现有工作区返回主工作区时切换到本地模式", () => {
     expect(
       resolveDraftEnvModeAfterBranchChange({
         nextWorktreePath: null,
@@ -28,7 +28,7 @@ describe("resolveDraftEnvModeAfterBranchChange", () => {
     ).toBe("local");
   });
 
-  it("keeps new-worktree mode when selecting a base branch before worktree creation", () => {
+  it("在创建工作区之前选择基础分支时保持新建工作区模式", () => {
     expect(
       resolveDraftEnvModeAfterBranchChange({
         nextWorktreePath: null,
@@ -38,7 +38,7 @@ describe("resolveDraftEnvModeAfterBranchChange", () => {
     ).toBe("worktree");
   });
 
-  it("uses worktree mode when selecting a branch already attached to a worktree", () => {
+  it("选择已附加到工作区的分支时使用工作区模式", () => {
     expect(
       resolveDraftEnvModeAfterBranchChange({
         nextWorktreePath: "/repo/.t3/worktrees/feature-a",
@@ -50,7 +50,7 @@ describe("resolveDraftEnvModeAfterBranchChange", () => {
 });
 
 describe("resolveBranchToolbarValue", () => {
-  it("defaults new-worktree mode to current git branch when no explicit base branch is set", () => {
+  it("新建工作区模式下未设置显式基础分支时默认为当前 git 分支", () => {
     expect(
       resolveBranchToolbarValue({
         envMode: "worktree",
@@ -61,7 +61,7 @@ describe("resolveBranchToolbarValue", () => {
     ).toBe("main");
   });
 
-  it("keeps an explicitly selected worktree base branch", () => {
+  it("保持显式选择的工作区基础分支", () => {
     expect(
       resolveBranchToolbarValue({
         envMode: "worktree",
@@ -72,7 +72,7 @@ describe("resolveBranchToolbarValue", () => {
     ).toBe("feature/base");
   });
 
-  it("shows the actual checked-out branch when not selecting a new worktree base", () => {
+  it("未选择新工作区基础时显示实际检出的分支", () => {
     expect(
       resolveBranchToolbarValue({
         envMode: "local",
@@ -85,7 +85,7 @@ describe("resolveBranchToolbarValue", () => {
 });
 
 describe("resolveEnvironmentOptionLabel", () => {
-  it("prefers the primary environment's machine label", () => {
+  it("优先使用主环境的机器标签", () => {
     expect(
       resolveEnvironmentOptionLabel({
         isPrimary: true,
@@ -96,7 +96,7 @@ describe("resolveEnvironmentOptionLabel", () => {
     ).toBe("Julius's Mac mini");
   });
 
-  it("falls back to 'This device' for generic primary labels", () => {
+  it("通用主环境标签回退为'这台设备'", () => {
     expect(
       resolveEnvironmentOptionLabel({
         isPrimary: true,
@@ -104,10 +104,10 @@ describe("resolveEnvironmentOptionLabel", () => {
         runtimeLabel: "Local environment",
         savedLabel: "Local",
       }),
-    ).toBe("This device");
+    ).toBe("这台设备");
   });
 
-  it("keeps configured labels for non-primary environments", () => {
+  it("非主环境保持配置的标签", () => {
     expect(
       resolveEnvironmentOptionLabel({
         isPrimary: false,
@@ -120,7 +120,7 @@ describe("resolveEnvironmentOptionLabel", () => {
 });
 
 describe("resolveEffectiveEnvMode", () => {
-  it("treats draft threads already attached to a worktree as current-checkout mode", () => {
+  it("已附加到工作区的草稿对话视为当前检出模式", () => {
     expect(
       resolveEffectiveEnvMode({
         activeWorktreePath: "/repo/.t3/worktrees/feature-a",
@@ -130,7 +130,7 @@ describe("resolveEffectiveEnvMode", () => {
     ).toBe("local");
   });
 
-  it("keeps explicit new-worktree mode for draft threads without a worktree path", () => {
+  it("无工作区路径的草稿对话保持显式新建工作区模式", () => {
     expect(
       resolveEffectiveEnvMode({
         activeWorktreePath: null,
@@ -142,51 +142,51 @@ describe("resolveEffectiveEnvMode", () => {
 });
 
 describe("resolveEnvModeLabel", () => {
-  it("uses explicit workspace labels", () => {
-    expect(resolveEnvModeLabel("local")).toBe("Current checkout");
-    expect(resolveEnvModeLabel("worktree")).toBe("New worktree");
+  it("使用显式的工作区标签", () => {
+    expect(resolveEnvModeLabel("local")).toBe("当前检查");
+    expect(resolveEnvModeLabel("worktree")).toBe("新建工作区");
   });
 });
 
 describe("resolveCurrentWorkspaceLabel", () => {
-  it("describes the main repo checkout when no worktree path is active", () => {
-    expect(resolveCurrentWorkspaceLabel(null)).toBe("Current checkout");
+  it("无活动工作区路径时描述为主仓库检出", () => {
+    expect(resolveCurrentWorkspaceLabel(null)).toBe("当前检查");
   });
 
-  it("describes the active checkout as a worktree when one is attached", () => {
-    expect(resolveCurrentWorkspaceLabel("/repo/.t3/worktrees/feature-a")).toBe("Current worktree");
+  it("附加工作区时描述为活动工作区检出", () => {
+    expect(resolveCurrentWorkspaceLabel("/repo/.t3/worktrees/feature-a")).toBe("当前工作区");
   });
 });
 
 describe("resolveLockedWorkspaceLabel", () => {
-  it("uses a shorter label for the main repo checkout", () => {
-    expect(resolveLockedWorkspaceLabel(null)).toBe("Local checkout");
+  it("主仓库检出使用较短标签", () => {
+    expect(resolveLockedWorkspaceLabel(null)).toBe("本地检查");
   });
 
-  it("uses a shorter label for an attached worktree", () => {
-    expect(resolveLockedWorkspaceLabel("/repo/.t3/worktrees/feature-a")).toBe("Worktree");
+  it("附加工作区使用较短标签", () => {
+    expect(resolveLockedWorkspaceLabel("/repo/.t3/worktrees/feature-a")).toBe("当前工作区");
   });
 });
 
 describe("deriveLocalBranchNameFromRemoteRef", () => {
-  it("strips the remote prefix from a remote ref", () => {
+  it("从远程引用中移除远程前缀", () => {
     expect(deriveLocalBranchNameFromRemoteRef("origin/feature/demo")).toBe("feature/demo");
   });
 
-  it("supports remote names that contain slashes", () => {
+  it("支持包含斜杠的远程名称", () => {
     expect(deriveLocalBranchNameFromRemoteRef("my-org/upstream/feature/demo")).toBe(
       "upstream/feature/demo",
     );
   });
 
-  it("returns the original name when ref is malformed", () => {
+  it("引用格式错误时返回原始名称", () => {
     expect(deriveLocalBranchNameFromRemoteRef("origin/")).toBe("origin/");
     expect(deriveLocalBranchNameFromRemoteRef("/feature/demo")).toBe("/feature/demo");
   });
 });
 
 describe("dedupeRemoteBranchesWithLocalMatches", () => {
-  it("hides remote refs when the matching local branch exists", () => {
+  it("存在匹配的本地分支时隐藏远程引用", () => {
     const input: GitBranch[] = [
       {
         name: "feature/demo",
@@ -218,7 +218,7 @@ describe("dedupeRemoteBranchesWithLocalMatches", () => {
     ]);
   });
 
-  it("keeps all entries when no local match exists for a remote ref", () => {
+  it("远程引用无匹配本地分支时保留所有条目", () => {
     const input: GitBranch[] = [
       {
         name: "feature/local",
@@ -242,7 +242,7 @@ describe("dedupeRemoteBranchesWithLocalMatches", () => {
     ]);
   });
 
-  it("keeps non-origin remote refs visible even when a matching local branch exists", () => {
+  it("即使存在匹配的本地分支也保持非 origin 远程引用可见", () => {
     const input: GitBranch[] = [
       {
         name: "feature/demo",
@@ -266,7 +266,7 @@ describe("dedupeRemoteBranchesWithLocalMatches", () => {
     ]);
   });
 
-  it("keeps non-origin remote refs visible when git tracks with first-slash local naming", () => {
+  it("git 使用首斜杠本地命名跟踪时保持非 origin 远程引用可见", () => {
     const input: GitBranch[] = [
       {
         name: "upstream/feature",
@@ -292,7 +292,7 @@ describe("dedupeRemoteBranchesWithLocalMatches", () => {
 });
 
 describe("resolveBranchSelectionTarget", () => {
-  it("reuses an existing secondary worktree for the selected branch", () => {
+  it("为选定的分支复用现有的次级工作区", () => {
     expect(
       resolveBranchSelectionTarget({
         activeProjectCwd: "/repo",
@@ -309,7 +309,7 @@ describe("resolveBranchSelectionTarget", () => {
     });
   });
 
-  it("switches back to the main repo when the branch already lives there", () => {
+  it("分支已存在于主仓库时切换回主仓库", () => {
     expect(
       resolveBranchSelectionTarget({
         activeProjectCwd: "/repo",
@@ -326,7 +326,7 @@ describe("resolveBranchSelectionTarget", () => {
     });
   });
 
-  it("checks out the default branch in the main repo when leaving a secondary worktree", () => {
+  it("离开次级工作区时在主仓库检出默认分支", () => {
     expect(
       resolveBranchSelectionTarget({
         activeProjectCwd: "/repo",
@@ -343,7 +343,7 @@ describe("resolveBranchSelectionTarget", () => {
     });
   });
 
-  it("keeps checkout in the current worktree for non-default branches", () => {
+  it("非默认分支保持在当前工作区检出", () => {
     expect(
       resolveBranchSelectionTarget({
         activeProjectCwd: "/repo",
@@ -362,7 +362,7 @@ describe("resolveBranchSelectionTarget", () => {
 });
 
 describe("shouldIncludeBranchPickerItem", () => {
-  it("keeps the synthetic checkout PR item visible for gh pr checkout input", () => {
+  it("gh pr checkout 输入时保持合成的检出 PR 条目可见", () => {
     expect(
       shouldIncludeBranchPickerItem({
         itemValue: "__checkout_pull_request__:1359",
@@ -373,7 +373,7 @@ describe("shouldIncludeBranchPickerItem", () => {
     ).toBe(true);
   });
 
-  it("keeps the synthetic create-branch item visible for arbitrary branch input", () => {
+  it("任意分支输入时保持合成的创建分支条目可见", () => {
     expect(
       shouldIncludeBranchPickerItem({
         itemValue: "__create_new_branch__:feature/demo",
@@ -384,7 +384,7 @@ describe("shouldIncludeBranchPickerItem", () => {
     ).toBe(true);
   });
 
-  it("still filters ordinary branch items by query text", () => {
+  it("仍按查询文本过滤普通分支条目", () => {
     expect(
       shouldIncludeBranchPickerItem({
         itemValue: "main",

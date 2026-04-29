@@ -210,13 +210,13 @@ export function buildExpiredTerminalContextToastCopy(
   const noun = count === 1 ? "Expired terminal context" : "Expired terminal contexts";
   if (variant === "empty") {
     return {
-      title: `${noun} won't be sent`,
-      description: "Remove it or re-add it to include terminal output.",
+      title: `${noun}将不会被发送`,
+      description: "删除或重新添加以包含终端输出。",
     };
   }
   return {
-    title: `${noun} omitted from message`,
-    description: "Re-add it if you want that terminal output included.",
+    title: `${noun}已从消息中省略`,
+    description: "重新添加以包含该终端输出。",
   };
 }
 

@@ -175,8 +175,8 @@ function MarkdownCodeBlock({ code, children }: { code: string; children: ReactNo
         type="button"
         className="chat-markdown-copy-button"
         onClick={handleCopy}
-        title={copied ? "Copied" : "Copy code"}
-        aria-label={copied ? "Copied" : "Copy code"}
+        title={copied ? "已复制" : "复制代码"}
+        aria-label={copied ? "已复制" : "复制代码"}
       >
         {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
       </button>
@@ -345,7 +345,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
     if (!api) {
       toastManager.add({
         type: "error",
-        title: "Open in editor is unavailable",
+        title: "在编辑器中打开不可用",
       });
       return;
     }
@@ -354,8 +354,8 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Unable to open file",
-          description: error instanceof Error ? error.message : "An error occurred.",
+          title: "无法打开文件",
+          description: error instanceof Error ? error.message : "发生错误。",
         }),
       );
     });
@@ -366,8 +366,8 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: `Failed to copy ${title.toLowerCase()}`,
-          description: "Clipboard API unavailable.",
+          title: `复制${title.toLowerCase()}失败`,
+          description: "剪贴板API不可用。",
         }),
       );
       return;
@@ -377,7 +377,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       () => {
         toastManager.add({
           type: "success",
-          title: `${title} copied`,
+          title: `${title} 已复制`,
           description: value,
         });
       },
@@ -385,8 +385,8 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: `Failed to copy ${title.toLowerCase()}`,
-            description: error instanceof Error ? error.message : "An error occurred.",
+            title: `复制${title.toLowerCase()}失败`,
+            description: error instanceof Error ? error.message : "发生错误。",
           }),
         );
       },
@@ -403,9 +403,9 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
 
       const clicked = await api.contextMenu.show(
         [
-          { id: "open", label: "Open in editor" },
-          { id: "copy-relative", label: "Copy relative path" },
-          { id: "copy-full", label: "Copy full path" },
+          { id: "open", label: "在编辑器中打开" },
+          { id: "copy-relative", label: "复制相对路径" },
+          { id: "copy-full", label: "复制完整路径" },
         ] as const,
         { x: event.clientX, y: event.clientY },
       );
@@ -415,11 +415,11 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
         return;
       }
       if (clicked === "copy-relative") {
-        handleCopy(displayPath, "Relative path");
+        handleCopy(displayPath, "相对路径");
         return;
       }
       if (clicked === "copy-full") {
-        handleCopy(targetPath, "Full path");
+        handleCopy(targetPath, "完整路径");
       }
     },
     [displayPath, handleCopy, handleOpen, targetPath],

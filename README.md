@@ -309,6 +309,47 @@ Web 应用通过 WebSocket 使用请求/响应模式与服务器通信，采用 
 - **测试**：Vitest、Playwright（浏览器测试）
 - **代码检查/格式化**：oxlint、oxfmt
 
+## 版本号管理
+
+### 版本号定义位置
+
+版本号在以下 `package.json` 文件中定义：
+
+| 文件                              | 说明           |
+| --------------------------------- | -------------- |
+| `apps/server/package.json`        | 服务器包版本   |
+| `apps/desktop/package.json`       | 桌面应用包版本 |
+| `apps/web/package.json`           | Web 前端包版本 |
+| `packages/contracts/package.json` | 共享契约包版本 |
+
+### 更新版本号
+
+**不要手动逐个修改** `package.json` 文件。使用项目提供的脚本统一更新：
+
+```bash
+bun run scripts/update-release-package-versions.ts <版本号>
+```
+
+**示例：**
+
+```bash
+# 更新到 0.0.22 版本
+bun run scripts/update-release-package-versions.ts 0.0.22
+
+# 更新到 1.0.0 版本
+bun run scripts/update-release-package-versions.ts 1.0.0
+```
+
+脚本会自动检查并更新所有发布包的版本号，如果版本号已匹配则跳过。
+
+### 版本号规范
+
+- **稳定版**：`X.Y.Z` 格式（如 `0.0.22`、`1.0.0`）
+- **预发布版**：`X.Y.Z-alpha.N`、`X.Y.Z-beta.N` 格式
+- **Nightly 版**：`X.Y.Z-nightly.YYYYMMDD.N` 格式（由 CI 自动生成）
+
+详细的发布流程请参考 [docs/Git操作指南.md](./docs/Git操作指南.md) 和 [docs/release.md](./docs/release.md)。
+
 ## 注意事项
 
 本项目处于非常早期阶段，可能会有 bug。

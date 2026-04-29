@@ -12,12 +12,12 @@
     },
     "start": {
       "dependsOn": ["build", "@t3tools/web#build", "t3#build"],
-      "cache": false,
+      "cache": true,
       "persistent": true,
     },
     "smoke-test": {
       "dependsOn": ["build", "@t3tools/web#build", "t3#build"],
-      "cache": false,
+      "cache": true,
       "outputs": [],
     },
   },

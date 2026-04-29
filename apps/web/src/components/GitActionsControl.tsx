@@ -129,7 +129,7 @@ function getMenuActionDisabledReason({
   hasOriginRemote: boolean;
 }): string | null {
   if (!item.disabled) return null;
-  if (isBusy) return "Git action in progress.";
+  if (isBusy) return "Git 操作正在进行中。";
   if (!gitStatus) return "Git status is unavailable.";
 
   const hasBranch = gitStatus.branch !== null;
@@ -140,54 +140,53 @@ function getMenuActionDisabledReason({
 
   if (item.id === "commit") {
     if (!hasChanges) {
-      return "Worktree is clean. Make changes before committing.";
+      return "工作区是干净的。提交前请先进行更改。";
     }
     return "Commit is currently unavailable.";
   }
 
   if (item.id === "push") {
     if (!hasBranch) {
-      return "Detached HEAD: checkout a branch before pushing.";
+      return "分离的HEAD：推送前请先检出一个分支。";
     }
     if (hasChanges) {
-      return "Commit or stash local changes before pushing.";
+      return "推送前请提交或暂存本地更改。";
     }
     if (isBehind) {
-      return "Branch is behind upstream. Pull/rebase before pushing.";
+      return "分支落后于上游。推送前请先拉取/变基。";
     }
     if (!gitStatus.hasUpstream && !hasOriginRemote) {
-      return 'Add an "origin" remote before pushing.';
+      return '推送前请先添加 "origin" 远程。';
     }
     if (!isAhead) {
-      return "No local commits to push.";
+      return "没有本地提交可推送。";
     }
     return "Push is currently unavailable.";
   }
 
   if (hasOpenPr) {
-    return "View PR is currently unavailable.";
+    return "查看拉取请求当前不可用。";
   }
   if (!hasBranch) {
-    return "Detached HEAD: checkout a branch before creating a PR.";
+    return "分离的HEAD：创建拉取请求前请先检出一个分支。";
   }
   if (hasChanges) {
-    return "Commit local changes before creating a PR.";
+    return "创建拉取请求前请提交本地更改。";
   }
   if (!gitStatus.hasUpstream && !hasOriginRemote) {
-    return 'Add an "origin" remote before creating a PR.';
+    return '创建拉取请求前请先添加 "origin" 远程。';
   }
   if (!isAhead) {
-    return "No local commits to include in a PR.";
+    return "没有本地提交可包含在拉取请求中。";
   }
   if (isBehind) {
-    return "Branch is behind upstream. Pull/rebase before creating a PR.";
+    return "分支落后于上游。创建拉取请求前请先拉取/变基。";
   }
   return "Create PR is currently unavailable.";
 }
 
-const COMMIT_DIALOG_TITLE = "Commit changes";
-const COMMIT_DIALOG_DESCRIPTION =
-  "Review and confirm your commit. Leave the message blank to auto-generate one.";
+const COMMIT_DIALOG_TITLE = "提交更改";
+const COMMIT_DIALOG_DESCRIPTION = "请审阅并确认您的提交。留空以自动生成提交信息。";
 
 function GitActionItemIcon({ icon }: { icon: GitActionIconName }) {
   if (icon === "commit") return <GitCommitIcon />;
@@ -459,7 +458,7 @@ export default function GitActionsControl({
     if (!api) {
       toastManager.add({
         type: "error",
-        title: "Link opening is unavailable.",
+        title: "链接打开不可用。",
         data: threadToastData,
       });
       return;
@@ -468,7 +467,7 @@ export default function GitActionsControl({
     if (!prUrl) {
       toastManager.add({
         type: "error",
-        title: "No open PR found.",
+        title: "未找到打开的拉取请求。",
         data: threadToastData,
       });
       return;
@@ -477,8 +476,8 @@ export default function GitActionsControl({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Unable to open PR link",
-          description: err instanceof Error ? err.message : "An error occurred.",
+          title: "无法打开拉取请求链接",
+          description: err instanceof Error ? err.message : "发生错误。",
           ...(threadToastData !== undefined ? { data: threadToastData } : {}),
         }),
       );
@@ -705,8 +704,8 @@ export default function GitActionsControl({
           resolvedProgressToastId,
           stackedThreadToast({
             type: "error",
-            title: "Action failed",
-            description: err instanceof Error ? err.message : "An error occurred.",
+            title: "操作失败",
+            description: err instanceof Error ? err.message : "发生错误。",
             ...(scopedToastData !== undefined ? { data: scopedToastData } : {}),
           }),
         );
@@ -772,11 +771,11 @@ export default function GitActionsControl({
       >(promise, {
         loading: { title: "Pulling...", data: threadToastData },
         success: (result) => ({
-          title: result.status === "pulled" ? "Pulled" : "Already up to date",
+          title: result.status === "pulled" ? "已拉取" : "已是最新状态",
           description:
             result.status === "pulled"
-              ? `Updated ${result.branch} from ${result.upstreamBranch ?? "upstream"}`
-              : `${result.branch} is already synchronized.`,
+              ? `已从${result.upstreamBranch ?? "上游"}更新${result.branch}`
+              : `${result.branch}已是最新同步状态。`,
           data: threadToastData,
         }),
         error: (err) => ({
@@ -872,7 +871,7 @@ export default function GitActionsControl({
           disabled={initMutation.isPending}
           onClick={() => initMutation.mutate()}
         >
-          {initMutation.isPending ? "Initializing..." : "Initialize Git"}
+          {initMutation.isPending ? "正在初始化..." : "初始化 Git"}
         </Button>
       ) : (
         <Group aria-label="Git actions" className="shrink-0">
@@ -971,7 +970,7 @@ export default function GitActionsControl({
               })}
               {gitStatusForActions?.branch === null && (
                 <p className="px-2 py-1.5 text-xs text-warning">
-                  Detached HEAD: create and checkout a branch to enable push and PR actions.
+                  分离的HEAD：创建并检出分支以启用推送和拉取请求操作。
                 </p>
               )}
               {gitStatusForActions &&
@@ -979,9 +978,7 @@ export default function GitActionsControl({
                 !gitStatusForActions.hasWorkingTreeChanges &&
                 gitStatusForActions.behindCount > 0 &&
                 gitStatusForActions.aheadCount === 0 && (
-                  <p className="px-2 py-1.5 text-xs text-warning">
-                    Behind upstream. Pull/rebase first.
-                  </p>
+                  <p className="px-2 py-1.5 text-xs text-warning">落后于上游。请先拉取/变基。</p>
                 )}
               {gitStatusError && (
                 <p className="px-2 py-1.5 text-xs text-destructive">{gitStatusError.message}</p>
@@ -1013,10 +1010,10 @@ export default function GitActionsControl({
                 <span className="text-muted-foreground">Branch</span>
                 <span className="flex items-center justify-between gap-2">
                   <span className="font-medium">
-                    {gitStatusForActions?.branch ?? "(detached HEAD)"}
+                    {gitStatusForActions?.branch ?? "(分离的HEAD)"}
                   </span>
                   {isDefaultBranch && (
-                    <span className="text-right text-warning text-xs">Warning: default branch</span>
+                    <span className="text-right text-warning text-xs">警告：默认分支</span>
                   )}
                 </span>
               </div>
@@ -1052,7 +1049,7 @@ export default function GitActionsControl({
                   )}
                 </div>
                 {!gitStatusForActions || allFiles.length === 0 ? (
-                  <p className="font-medium">none</p>
+                  <p className="font-medium">无</p>
                 ) : (
                   <div className="space-y-2">
                     <ScrollArea className="h-44 rounded-md border border-input bg-background">
@@ -1092,7 +1089,7 @@ export default function GitActionsControl({
                                 </span>
                                 <span className="shrink-0">
                                   {isExcluded ? (
-                                    <span className="text-muted-foreground">Excluded</span>
+                                    <span className="text-muted-foreground">已排除</span>
                                   ) : (
                                     <>
                                       <span className="text-success">+{file.insertions}</span>
@@ -1141,7 +1138,7 @@ export default function GitActionsControl({
                 setIsEditingFiles(false);
               }}
             >
-              Cancel
+              取消
             </Button>
             <Button
               variant="outline"
@@ -1149,10 +1146,10 @@ export default function GitActionsControl({
               disabled={noneSelected}
               onClick={runDialogActionOnNewBranch}
             >
-              Commit on new branch
+              在新分支上提交
             </Button>
             <Button size="sm" disabled={noneSelected} onClick={runDialogAction}>
-              Commit
+              提交
             </Button>
           </DialogFooter>
         </DialogPopup>
@@ -1175,13 +1172,13 @@ export default function GitActionsControl({
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setPendingDefaultBranchAction(null)}>
-              Abort
+              终止
             </Button>
             <Button variant="outline" size="sm" onClick={continuePendingDefaultBranchAction}>
-              {pendingDefaultBranchActionCopy?.continueLabel ?? "Continue"}
+              {pendingDefaultBranchActionCopy?.continueLabel ?? "继续"}
             </Button>
             <Button size="sm" onClick={checkoutFeatureBranchAndContinuePendingAction}>
-              Checkout feature branch & continue
+              检出功能分支并继续
             </Button>
           </DialogFooter>
         </DialogPopup>

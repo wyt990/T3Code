@@ -4,7 +4,7 @@
   "tasks": {
     "start": {
       "dependsOn": ["build"],
-      "cache": false,
+      "cache": true,
       "persistent": true,
     },
   },

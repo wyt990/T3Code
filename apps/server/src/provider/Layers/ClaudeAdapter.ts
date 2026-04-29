@@ -537,21 +537,21 @@ function summarizeToolRequest(toolName: string, input: Record<string, unknown>):
 function titleForTool(itemType: CanonicalItemType): string {
   switch (itemType) {
     case "command_execution":
-      return "Command run";
+      return "执行命令";
     case "file_change":
-      return "File change";
+      return "文件修改";
     case "mcp_tool_call":
-      return "MCP tool call";
+      return "MCP 工具调用";
     case "collab_agent_tool_call":
-      return "Subagent task";
+      return "子代理任务";
     case "web_search":
-      return "Web search";
+      return "网络搜索";
     case "image_view":
-      return "Image view";
+      return "图片查看";
     case "dynamic_tool_call":
-      return "Tool call";
+      return "工具调用";
     default:
-      return "Item";
+      return "项目";
   }
 }
 

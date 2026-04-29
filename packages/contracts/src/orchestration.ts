@@ -1072,6 +1072,10 @@ export const OrchestrationThreadStreamItem = Schema.Union([
     kind: Schema.Literal("event"),
     event: OrchestrationEvent,
   }),
+  Schema.Struct({
+    kind: Schema.Literal("heartbeat"),
+    timestamp: Schema.String,
+  }),
 ]);
 export type OrchestrationThreadStreamItem = typeof OrchestrationThreadStreamItem.Type;
 

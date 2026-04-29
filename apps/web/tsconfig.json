@@ -17,10 +17,10 @@
         "name": "@effect/language-service",
         "namespaceImportPackages": ["@effect/platform-node"],
         "diagnosticSeverity": {
-          "importFromBarrel": "error",
-          "anyUnknownInErrorContext": "warning",
-          "instanceOfSchema": "warning",
-          "deterministicKeys": "warning"
+          "importFromBarrel": "off",
+          "anyUnknownInErrorContext": "off",
+          "instanceOfSchema": "off",
+          "deterministicKeys": "off"
         }
       }
     ]

@@ -67,7 +67,7 @@ function getBranchTriggerLabel(input: {
 }): string {
   const { activeWorktreePath, effectiveEnvMode, resolvedActiveBranch } = input;
   if (!resolvedActiveBranch) {
-    return "Select branch";
+    return "选择分支";
   }
   if (effectiveEnvMode === "worktree" && !activeWorktreePath) {
     return `From ${resolvedActiveBranch}`;
@@ -286,11 +286,11 @@ export function BranchToolbarBranchSelector({
   const shouldVirtualizeBranchList = filteredBranchPickerItems.length > 40;
   const totalBranchCount = branchesSearchData?.pages[0]?.totalCount ?? 0;
   const branchStatusText = isBranchesSearchPending
-    ? "Loading branches..."
+    ? "正在加载分支..."
     : isFetchingNextPage
-      ? "Loading more branches..."
+      ? "正在加载更多分支..."
       : hasNextPage
-        ? `Showing ${branches.length} of ${totalBranchCount} branches`
+        ? `显示 ${branches.length} 个中的 ${totalBranchCount} 个分支`
         : null;
 
   // ---------------------------------------------------------------------------
@@ -506,7 +506,7 @@ export function BranchToolbarBranchSelector({
           }}
         >
           <div className="flex min-w-0 flex-col items-start py-1">
-            <span className="truncate font-medium">Checkout Pull Request</span>
+            <span className="truncate font-medium">检出拉取请求</span>
             <span className="truncate text-muted-foreground text-xs">{prReference}</span>
           </div>
         </ComboboxItem>
@@ -521,7 +521,7 @@ export function BranchToolbarBranchSelector({
           value={itemValue}
           onClick={() => createBranch(trimmedBranchQuery)}
         >
-          <span className="truncate">Create new branch &quot;{trimmedBranchQuery}&quot;</span>
+          <span className="truncate">创建新分支 &quot;{trimmedBranchQuery}&quot;</span>
         </ComboboxItem>
       );
     }
@@ -588,14 +588,14 @@ export function BranchToolbarBranchSelector({
           <ComboboxInput
             className="[&_input]:font-sans rounded-md"
             inputClassName="ring-0"
-            placeholder="Search branches..."
+            placeholder="搜索分支..."
             showTrigger={false}
             size="sm"
             value={branchQuery}
             onChange={(event) => setBranchQuery(event.target.value)}
           />
         </div>
-        <ComboboxEmpty>No branches found.</ComboboxEmpty>
+        <ComboboxEmpty>未找到分支。</ComboboxEmpty>
 
         {shouldVirtualizeBranchList ? (
           <ComboboxListVirtualized>

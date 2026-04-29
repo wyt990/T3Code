@@ -111,12 +111,12 @@ const BROWSE_STALE_TIME_MS = 30_000;
 
 function getLocalFileManagerName(platform: string): string {
   if (isMacPlatform(platform)) {
-    return "Finder";
+    return "访达";
   }
   if (isWindowsPlatform(platform)) {
-    return "Explorer";
+    return "资源管理器";
   }
-  return "Files";
+  return "文件管理器";
 }
 
 function getEnvironmentBrowsePlatform(os: string | null | undefined): string {
@@ -574,7 +574,7 @@ function OpenCommandPaletteDialog() {
       value: `action:add-project:environment:${option.environmentId}`,
       searchTerms: [option.label, option.environmentId, option.isPrimary ? "this device" : ""],
       title: option.label,
-      description: option.isPrimary ? "This device" : option.environmentId,
+      description: option.isPrimary ? "本机" : option.environmentId,
       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
       keepOpen: true,
       run: async () => {
@@ -587,7 +587,7 @@ function OpenCommandPaletteDialog() {
     () => [
       {
         value: "environments",
-        label: "Environments",
+        label: "环境",
         items: addProjectEnvironmentItems,
       },
     ],
@@ -608,8 +608,8 @@ function OpenCommandPaletteDialog() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Unable to browse projects",
-          description: "No environment is available.",
+          title: "无法浏览项目",
+          description: "没有可用的环境。",
         }),
       );
       return;
@@ -645,7 +645,7 @@ function OpenCommandPaletteDialog() {
         searchTerms: ["new thread", "chat", "create", "draft"],
         title: (
           <>
-            New thread in <span className="font-semibold">{activeProjectTitle}</span>
+            在 <span className="font-semibold">{activeProjectTitle}</span> 中新建对话
           </>
         ),
         icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
@@ -666,10 +666,10 @@ function OpenCommandPaletteDialog() {
       kind: "submenu",
       value: "action:new-thread-in",
       searchTerms: ["new thread", "project", "pick", "choose", "select"],
-      title: "新项目 in...",
+      title: "在...中新建项目",
       icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
-      groups: [{ value: "projects", label: "Projects", items: projectThreadItems }],
+      groups: [{ value: "projects", label: "项目", items: projectThreadItems }],
     });
   }
 
@@ -678,7 +678,7 @@ function OpenCommandPaletteDialog() {
       kind: "submenu",
       value: "action:add-project",
       searchTerms: ["add project", "folder", "directory", "browse", "environment"],
-      title: "Add project",
+      title: "添加项目",
       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
       groups: addProjectEnvironmentGroups,
@@ -688,7 +688,7 @@ function OpenCommandPaletteDialog() {
       kind: "action",
       value: "action:add-project",
       searchTerms: ["add project", "folder", "directory", "browse"],
-      title: "Add project",
+      title: "添加项目",
       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
       keepOpen: true,
       run: async () => {
@@ -701,7 +701,7 @@ function OpenCommandPaletteDialog() {
     kind: "action",
     value: "action:settings",
     searchTerms: ["settings", "preferences", "configuration", "keybindings"],
-    title: "Open settings",
+    title: "打开设置",
     icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/settings" });
@@ -729,8 +729,8 @@ function OpenCommandPaletteDialog() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Failed to add project",
-            description: "Windows-style paths are only supported on Windows.",
+            title: "添加项目失败",
+            description: "Windows 风格路径仅在 Windows 系统上支持。",
           }),
         );
         return;
@@ -740,8 +740,8 @@ function OpenCommandPaletteDialog() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Failed to add project",
-            description: "Relative paths require an active project.",
+            title: "添加项目失败",
+            description: "相对路径需要当前有活动项目。",
           }),
         );
         return;
@@ -799,8 +799,8 @@ function OpenCommandPaletteDialog() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Failed to add project",
-            description: error instanceof Error ? error.message : "An error occurred.",
+            title: "添加项目失败",
+            description: error instanceof Error ? error.message : "发生错误。",
           }),
         );
       }
@@ -875,7 +875,7 @@ function OpenCommandPaletteDialog() {
     (hasTrailingPathSeparator(query) ? !browseResult : exactBrowseEntry === null);
   const useMetaForMod = isMacPlatform(navigator.platform);
   const submitModifierLabel = useMetaForMod ? "\u2318" : "Ctrl";
-  const submitActionLabel = willCreateProjectPath ? "Create & Add" : "Add";
+  const submitActionLabel = willCreateProjectPath ? "创建并添加" : "添加";
   const addShortcutLabel = hasHighlightedBrowseItem ? `${submitModifierLabel} Enter` : "Enter";
   const fileManagerName = getLocalFileManagerName(navigator.platform);
   const canOpenProjectFromFileManager =
@@ -945,8 +945,8 @@ function OpenCommandPaletteDialog() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Unable to run command",
-          description: error instanceof Error ? error.message : "An unexpected error occurred.",
+          title: "无法执行命令",
+          description: error instanceof Error ? error.message : "发生意外错误。",
         }),
       );
     });
@@ -1018,7 +1018,7 @@ function OpenCommandPaletteDialog() {
                     <button
                       type="button"
                       className="flex cursor-pointer items-center"
-                      aria-label="Back"
+                      aria-label="返回"
                       onClick={popView}
                     >
                       <ArrowLeftIcon />
@@ -1069,10 +1069,10 @@ function OpenCommandPaletteDialog() {
             keybindings={keybindings}
             onExecuteItem={executeItem}
             {...(relativePathNeedsActiveProject
-              ? { emptyStateMessage: "Relative paths require an active project." }
+              ? { emptyStateMessage: "相对路径需要当前有活动项目。" }
               : willCreateProjectPath
                 ? {
-                    emptyStateMessage: "Press Enter to create this folder and add it as a project.",
+                    emptyStateMessage: "按 Enter 创建此文件夹并添加为项目。",
                   }
                 : {})}
           />
@@ -1086,23 +1086,23 @@ function OpenCommandPaletteDialog() {
               <Kbd>
                 <ArrowDownIcon />
               </Kbd>
-              <span className={cn("text-muted-foreground/80")}>Navigate</span>
+              <span className={cn("text-muted-foreground/80")}>导航</span>
             </KbdGroup>
             {!canSubmitBrowsePath || hasHighlightedBrowseItem ? (
               <KbdGroup className="items-center gap-1.5">
                 <Kbd>Enter</Kbd>
-                <span className={cn("text-muted-foreground/80")}>Select</span>
+                <span className={cn("text-muted-foreground/80")}>选择</span>
               </KbdGroup>
             ) : null}
             {isSubmenu ? (
               <KbdGroup className="items-center gap-1.5">
                 <Kbd>Backspace</Kbd>
-                <span className={cn("text-muted-foreground/80")}>Back</span>
+                <span className={cn("text-muted-foreground/80")}>返回</span>
               </KbdGroup>
             ) : null}
             <KbdGroup className="items-center gap-1.5">
               <Kbd>Esc</Kbd>
-              <span className={cn("text-muted-foreground/80")}>Close</span>
+              <span className={cn("text-muted-foreground/80")}>关闭</span>
             </KbdGroup>
           </div>
           {canOpenProjectFromFileManager ? (
@@ -1115,7 +1115,7 @@ function OpenCommandPaletteDialog() {
                 void handleOpenProjectFromFileManager();
               }}
             >
-              {`Open in ${fileManagerName}`}
+              {`在${fileManagerName}中打开`}
             </Button>
           ) : null}
         </CommandFooter>

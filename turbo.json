@@ -31,17 +31,17 @@
     },
     "dev": {
       "dependsOn": ["@t3tools/contracts#build"],
-      "cache": false,
+      "cache": true,
       "persistent": true
     },
     "typecheck": {
-      "dependsOn": ["^typecheck"],
+      "dependsOn": ["^build"],
       "outputs": [],
-      "cache": false
+      "cache": true
     },
     "test": {
       "dependsOn": ["^build"],
-      "cache": false,
+      "cache": true,
       "outputs": []
     }
   }

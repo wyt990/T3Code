@@ -90,7 +90,7 @@ const PROJECT_LOGICAL_KEY = deriveLogicalProjectKeyFromSettings(
 const NOW_ISO = "2026-03-04T12:00:00.000Z";
 const BASE_TIME_MS = Date.parse(NOW_ISO);
 const ATTACHMENT_SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'></svg>";
-const ADD_PROJECT_SUBMENU_PLACEHOLDER = "Enter path (e.g. ~/projects/my-app)";
+const ADD_PROJECT_SUBMENU_PLACEHOLDER = "输入路径 (例如 ~/projects/my-app)";
 
 interface TestFixture {
   snapshot: OrchestrationReadModel;
@@ -150,7 +150,7 @@ function createBaseServerConfig(): ServerConfig {
   return {
     environment: {
       environmentId: EnvironmentId.make("environment-local"),
-      label: "Local environment",
+      label: "本地环境",
       platform: { os: "darwin" as const, arch: "arm64" as const },
       serverVersion: "0.0.0-test",
       capabilities: { repositoryIdentity: true },
@@ -376,7 +376,7 @@ function buildFixture(snapshot: OrchestrationReadModel): TestFixture {
     welcome: {
       environment: {
         environmentId: EnvironmentId.make("environment-local"),
-        label: "Local environment",
+        label: "  本地环境",
         platform: { os: "darwin" as const, arch: "arm64" as const },
         serverVersion: "0.0.0-test",
         capabilities: { repositoryIdentity: true },
@@ -2693,7 +2693,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await waitForURL(
         mounted.router,
         (path) => path === serverThreadPath(secondThreadId),
-        "Route should switch to the second empty server thread.",
+        "路由应切换到第二个空服务器线程。",
       );
 
       await vi.waitFor(
@@ -4751,10 +4751,10 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await browseInput.fill("~/Applications/access");
 
       const fileManagerLabel = isMacPlatform(navigator.platform)
-        ? "Open in Finder"
+        ? " 在Finder中打开"
         : navigator.platform.toLowerCase().startsWith("win")
-          ? "Open in Explorer"
-          : "Open in Files";
+          ? "在资源管理器打开"
+          : "在文件管理器打开";
       await palette.getByRole("button", { name: fileManagerLabel }).click();
 
       await vi.waitFor(

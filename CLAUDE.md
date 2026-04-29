@@ -159,6 +159,43 @@ Long term maintainability is a core priority. If you add new functionality:
 3. Don't be afraid to change existing code.
 4. Don't take shortcuts by just adding local logic to solve a problem.
 
+## Performance Optimization Guidelines
+
+### Type Checking Optimizations
+
+To improve `bun run typecheck` performance:
+
+1. **Enable Turbo Caching**
+   - Ensure `turbo.json` has `"cache": true` for the `typecheck` task
+   - This allows incremental checks of unchanged files
+
+2. **Parallelize Type Checking**
+   - Change `dependsOn: ["^typecheck"]` to `dependsOn: ["^build"]` in `turbo.json`
+   - This allows packages to typecheck in parallel instead of serially waiting for dependencies
+
+3. **Reduce Effect Language Service Overhead**
+   - In tsconfig.json files, set Effect diagnostics to "off" during development:
+
+   ```json
+   "diagnosticSeverity": {
+     "importFromBarrel": "off",
+     "anyUnknownInErrorContext": "off",
+     "instanceOfSchema": "off",
+     "deterministicKeys": "off"
+   }
+   ```
+
+   - These checks are valuable but expensive; disable them locally for faster feedback
+
+4. **Use Filtered Checks for Development**
+   - Use `bun run typecheck:changed` to only check changed files
+   - This script uses `--filter=...[HEAD^]` to target only modified packages
+
+5. **Production vs Development Tradeoffs**
+   - Keep strict settings in CI/production
+   - Optimize for speed in local development
+   - The goal is fast feedback loops without sacrificing correctness
+
 ## Technology Stack
 
 - **Runtime**: Bun (package manager and runtime)

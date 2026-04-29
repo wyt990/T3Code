@@ -663,7 +663,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     <TooltipTrigger
                       render={
                         <span
-                          aria-label={threadEnvironmentLabel ?? "Remote"}
+                          aria-label={threadEnvironmentLabel ?? "远程"}
                           className="inline-flex items-center justify-center"
                         />
                       }
@@ -3218,8 +3218,8 @@ export default function Sidebar() {
           if (result.completed) {
             toastManager.add({
               type: "success",
-              title: "Update downloaded",
-              description: "Restart the app from the update button to install it.",
+              title: "更新已下载",
+              description: "从更新按钮重启应用程序以安装。",
             });
           }
           if (!shouldToastDesktopUpdateActionResult(result)) return;
@@ -3228,7 +3228,7 @@ export default function Sidebar() {
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Could not download update",
+              title: "无法下载更新",
               description: actionError,
             }),
           );
@@ -3237,8 +3237,8 @@ export default function Sidebar() {
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Could not start update download",
-              description: error instanceof Error ? error.message : "An unexpected error occurred.",
+              title: "无法启动更新下载",
+              description: error instanceof Error ? error.message : "发生意外错误。",
             }),
           );
         });
@@ -3259,7 +3259,7 @@ export default function Sidebar() {
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Could not install update",
+              title: "无法安装更新",
               description: actionError,
             }),
           );
@@ -3268,7 +3268,7 @@ export default function Sidebar() {
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Could not install update",
+              title: "无法安装更新",
               description: error instanceof Error ? error.message : "An unexpected error occurred.",
             }),
           );

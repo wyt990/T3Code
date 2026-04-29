@@ -1,4 +1,15 @@
-import { Cause, Duration, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect";
+import {
+  Cause,
+  Duration,
+  Effect,
+  Layer,
+  Option,
+  Queue,
+  Ref,
+  Schema,
+  Schedule,
+  Stream,
+} from "effect";
 import {
   type AuthAccessStreamEvent,
   AuthSessionId,
@@ -902,6 +913,15 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 })),
               );
 
+              // Heartbeat stream - sends a heartbeat every 30 seconds to keep the connection alive
+              const heartbeatStream = Stream.repeat(
+                Stream.make({
+                  kind: "heartbeat" as const,
+                  timestamp: new Date().toISOString(),
+                }),
+                Schedule.spaced(Duration.seconds(30)),
+              );
+
               return Stream.concat(
                 Stream.make({
                   kind: "snapshot" as const,
@@ -910,7 +930,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                     thread: threadDetail.value,
                   },
                 }),
-                liveStream,
+                Stream.merge(liveStream, heartbeatStream),
               );
             }),
             { "rpc.aggregate": "orchestration" },
