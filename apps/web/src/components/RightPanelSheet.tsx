@@ -29,7 +29,7 @@ export function RightPanelSheet(props: {
         }
       }}
     >
-      <SheetPopup side="right" showCloseButton={false} keepMounted className={sheetClassName}>
+      <SheetPopup side="right" showCloseButton={false} className={sheetClassName}>
         {props.children}
       </SheetPopup>
     </Sheet>

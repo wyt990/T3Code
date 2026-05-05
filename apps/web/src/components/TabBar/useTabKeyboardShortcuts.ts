@@ -14,6 +14,7 @@ import { findMergedPair, type Tab, type UiTabsState } from "../../uiTabsState";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 
 import { pickAutoMergeCandidate } from "./TabBar.logic";
+import { closeTabsAndSyncRoute } from "./tabCloseBehavior";
 
 const TABS_TOGGLE_SPLIT_TOAST_TIMEOUT_MS = 5000;
 
@@ -181,10 +182,8 @@ export function useTabKeyboardShortcuts({ keybindings }: UseTabKeyboardShortcuts
     const tabs = useUiStateStore.getState().tabs;
     const activeTabId = tabs.group.activeTabId;
     if (!activeTabId) return;
-    useUiStateStore.getState().closeTab(activeTabId);
-    // After closing, the URL → tab sync in TabbedShell brings the URL onto the
-    // newly-active tab, so we don't navigate explicitly here.
-  }, []);
+    closeTabsAndSyncRoute({ tabIds: [activeTabId], navigate });
+  }, [navigate]);
 
   useEffect(() => {
     if (!keybindings) return;

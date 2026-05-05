@@ -2607,7 +2607,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
             项目
           </span>
-          <div className="flex items-center gap-1">
+          <div className="relative z-30 flex items-center gap-1">
             <ProjectSortMenu
               projectSortOrder={projectSortOrder}
               threadSortOrder={threadSortOrder}
@@ -2623,7 +2623,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                     type="button"
                     aria-label="添加项目"
                     data-testid="sidebar-add-project-trigger"
-                    className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                    className="relative z-30 inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
                     onClick={openAddProject}
                   />
                 }

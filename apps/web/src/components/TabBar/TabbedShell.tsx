@@ -31,10 +31,11 @@ import {
   decideTabActivation,
   nextTabId,
   pickAutoMergeCandidate,
-  pickNextActiveTabAfterClose,
   resolveTabTitle,
   tabTargetKey,
 } from "./TabBar.logic";
+import { closeTabsAndSyncRoute } from "./tabCloseBehavior";
+import { isClosedTabTargetSuppressed } from "./tabCloseSuppression";
 
 export interface TabbedShellProps {
   /**
@@ -101,12 +102,32 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
   const isMergedView = mergedPair !== null;
   const { containerRef: sidebarInsetRef, shouldUseSheet: containerPrefersSheet } =
     useShouldUseRightPanelSheet();
-  const shouldUseDiffSheet = containerPrefersSheet || isMergedView;
   // In merged view the focused side owns the diff state; otherwise it's just
   // the active tab's. Phase 2.4 wires the focused-side diff toggle back into
   // `setTabDiffOpen` for that side specifically.
   const diffSourceTab = pickDiffSourceTab(mergedPair, focusedSide, activeTab);
   const diffOpen = diffSourceTab?.diffOpen ?? false;
+  const [lockedDiffSheetMode, setLockedDiffSheetMode] = useState<boolean>(
+    containerPrefersSheet || isMergedView,
+  );
+  useEffect(() => {
+    // Merged mode always uses sheet and updates the lock immediately.
+    if (isMergedView) {
+      setLockedDiffSheetMode(true);
+      return;
+    }
+    // When diff is closed, track live container preference. When diff is open,
+    // keep the mode stable to avoid inline<->sheet oscillation caused by the
+    // panel itself changing available width.
+    if (!diffOpen) {
+      setLockedDiffSheetMode(containerPrefersSheet);
+    }
+  }, [containerPrefersSheet, diffOpen, isMergedView]);
+  const shouldUseDiffSheet = isMergedView
+    ? true
+    : diffOpen
+      ? lockedDiffSheetMode
+      : containerPrefersSheet;
   const { hasOpenedDiff, markDiffOpened } = useDiffMountState({
     activeTabId: diffSourceTab?.id ?? null,
     diffOpen,
@@ -125,26 +146,16 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
 
   const onCloseTab = useCallback(
     (tabId: string) => {
-      const closingTab = tabs.tabsById[tabId];
-      const closingActive = tabs.group.activeTabId === tabId;
-      const fallbackId = closingActive ? pickNextActiveTabAfterClose(tabs, tabId) : null;
-      const fallbackTarget =
-        fallbackId === null ? null : (tabs.tabsById[fallbackId]?.target ?? null);
-      useUiStateStore.getState().closeTab(tabId);
-      // Closing a draft tab discards the in-flight composer draft so reopening
-      // the [+] button doesn't resurrect a stale prompt the user thought they'd
-      // dismissed. Server-thread tabs persist independently of tab state.
-      if (closingTab?.target.kind === "draft") {
-        useComposerDraftStore.getState().clearDraftThread(closingTab.target.draftId);
-      }
-      if (!closingActive) return;
-      if (fallbackTarget) {
-        void navigateToTarget(navigate, fallbackTarget);
-        return;
-      }
-      void navigate({ to: "/", replace: true });
+      closeTabsAndSyncRoute({ tabIds: [tabId], navigate });
     },
-    [navigate, tabs],
+    [navigate],
+  );
+
+  const onCloseManyTabs = useCallback(
+    (tabIds: readonly string[]) => {
+      closeTabsAndSyncRoute({ tabIds, navigate });
+    },
+    [navigate],
   );
 
   const onRenameTab = useCallback((tabId: string, value: string) => {
@@ -269,6 +280,7 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
           titleByTabId={titleByTabId}
           onActivate={onActivateTab}
           onClose={onCloseTab}
+          onCloseMany={onCloseManyTabs}
           onNewTab={onNewTab}
           onRename={onRenameTab}
           onResetTitle={onResetTitle}
@@ -508,6 +520,9 @@ function useUrlTargetSync(urlTarget: TabTarget | null): void {
       return;
     }
     if (decision.action === "create") {
+      if (isClosedTabTargetSuppressed(urlTarget)) {
+        return;
+      }
       useUiStateStore.getState().createTab(urlTarget, { newTabId: nextTabId() });
       return;
     }

@@ -7,7 +7,8 @@ import { useComposerDraftStore, DraftId } from "../composerDraftStore";
 import { createThreadSelectorAcrossEnvironments } from "../storeSelectors";
 import { useStore } from "../store";
 import { buildThreadRouteParams } from "../threadRoutes";
-import type { TabTarget } from "../uiTabsState";
+import { pickFallbackTargetFromTabs, type TabTarget } from "../uiTabsState";
+import { useUiStateStore } from "../uiStateStore";
 
 function DraftChatThreadRouteView() {
   const navigate = useNavigate();
@@ -49,6 +50,23 @@ function DraftChatThreadRouteView() {
 
   useEffect(() => {
     if (draftSession || canonicalThreadRef) {
+      return;
+    }
+    const fallbackTarget = pickFallbackTargetFromTabs(useUiStateStore.getState().tabs);
+    if (fallbackTarget?.kind === "server") {
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(fallbackTarget.threadRef),
+        replace: true,
+      });
+      return;
+    }
+    if (fallbackTarget?.kind === "draft") {
+      void navigate({
+        to: "/draft/$draftId",
+        params: { draftId: fallbackTarget.draftId },
+        replace: true,
+      });
       return;
     }
     void navigate({ to: "/", replace: true });

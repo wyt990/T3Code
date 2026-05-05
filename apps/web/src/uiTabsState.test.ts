@@ -5,6 +5,7 @@ import { DraftId } from "./draftId";
 import {
   activateTab,
   closeTab,
+  closeTabs,
   closeTabsByThreadIds,
   createTab,
   DEFAULT_SPLIT_RATIO,
@@ -21,6 +22,7 @@ import {
   mergeTabs,
   persistTabsState,
   promoteDraftTab,
+  pickFallbackTargetFromTabs,
   reorderTabs,
   setCustomTitle,
   setFocusedTab,
@@ -164,6 +166,33 @@ describe("uiTabsState - closeTab", () => {
   it("is a no-op for unknown tabId", () => {
     const state = buildState([{ tabId: "tab-1", target: serverTarget("t-1") }]);
     expect(closeTab(state, "tab-missing")).toBe(state);
+  });
+});
+
+describe("uiTabsState - closeTabs", () => {
+  it("closes multiple tabs atomically and keeps the surviving active tab", () => {
+    const state = buildState([
+      { tabId: "tab-a", target: serverTarget("t-a") },
+      { tabId: "tab-b", target: serverTarget("t-b") },
+      { tabId: "tab-c", target: serverTarget("t-c") },
+    ]);
+    const activeA = activateTab(state, "tab-a");
+    const next = closeTabs(activeA, ["tab-b", "tab-c"]);
+    expect(next.group.tabIds).toEqual(["tab-a"]);
+    expect(next.group.activeTabId).toBe("tab-a");
+  });
+
+  it("when active is closed among many tabs, falls back from final state only once", () => {
+    const state = buildState([
+      { tabId: "tab-a", target: serverTarget("t-a") },
+      { tabId: "tab-b", target: serverTarget("t-b") },
+      { tabId: "tab-c", target: serverTarget("t-c") },
+    ]);
+    const activeC = activateTab(state, "tab-c");
+    const next = closeTabs(activeC, ["tab-c", "tab-b"]);
+    expect(next.group.tabIds).toEqual(["tab-a"]);
+    expect(next.group.activeTabId).toBe("tab-a");
+    expect(next.group.focusedTabId).toBe("tab-a");
   });
 });
 
@@ -471,6 +500,27 @@ describe("uiTabsState - lookups", () => {
     expect(tabByDraft?.id).toBe("tab-draft");
 
     expect(findTabByDraft(state, DraftId.make("d-missing"))).toBeUndefined();
+  });
+
+  it("pickFallbackTargetFromTabs prefers active tab target", () => {
+    const state = buildState([
+      { tabId: "tab-server", target: serverTarget("t-1") },
+      { tabId: "tab-draft", target: draftTarget("d-1") },
+    ]);
+    const activeDraft = activateTab(state, "tab-draft");
+    expect(pickFallbackTargetFromTabs(activeDraft)).toEqual(draftTarget("d-1"));
+  });
+
+  it("pickFallbackTargetFromTabs falls back to first valid tab when active is missing", () => {
+    const state = buildState([
+      { tabId: "tab-1", target: serverTarget("t-1") },
+      { tabId: "tab-2", target: serverTarget("t-2") },
+    ]);
+    const corrupted: UiTabsState = {
+      ...state,
+      group: { ...state.group, activeTabId: "ghost-tab" },
+    };
+    expect(pickFallbackTargetFromTabs(corrupted)).toEqual(serverTarget("t-1"));
   });
 });
 

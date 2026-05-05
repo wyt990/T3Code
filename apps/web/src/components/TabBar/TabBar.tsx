@@ -60,6 +60,8 @@ export interface TabBarProps {
   onActivate: (tabId: string) => void;
   /** Called when the user closes a tab (✕ button or middle-click). */
   onClose: (tabId: string) => void;
+  /** Called when the user closes multiple tabs via context-menu actions. */
+  onCloseMany: (tabIds: readonly string[]) => void;
   /** Called when the user clicks the trailing [+] button to open a new tab. */
   onNewTab: () => void;
   /** Called when the user commits a rename (Enter or blur). */
@@ -120,6 +122,7 @@ export function TabBar(props: Readonly<TabBarProps>) {
     titleByTabId,
     onActivate,
     onClose,
+    onCloseMany,
     onNewTab,
     onRename,
     onResetTitle,
@@ -257,12 +260,10 @@ export function TabBar(props: Readonly<TabBarProps>) {
   // existing prop callbacks here so children stay agnostic about merge math.
   const closeOtherTabsExcept = useCallback(
     (keepTabIds: ReadonlySet<string>) => {
-      for (const tabId of orderedTabIds) {
-        if (keepTabIds.has(tabId)) continue;
-        onClose(tabId);
-      }
+      const toClose = orderedTabIds.filter((tabId) => !keepTabIds.has(tabId));
+      onCloseMany(toClose);
     },
-    [onClose, orderedTabIds],
+    [onCloseMany, orderedTabIds],
   );
 
   const handleSingleMenuAction = useCallback(
@@ -283,8 +284,7 @@ export function TabBar(props: Readonly<TabBarProps>) {
         case "close-to-right": {
           const idx = orderedTabIds.indexOf(tab.id);
           if (idx < 0) return;
-          const toClose = orderedTabIds.slice(idx + 1);
-          for (const id of toClose) onClose(id);
+          onCloseMany(orderedTabIds.slice(idx + 1));
           return;
         }
         case "merge-with-right": {
@@ -310,6 +310,7 @@ export function TabBar(props: Readonly<TabBarProps>) {
       closeOtherTabsExcept,
       mergedPairs,
       onClose,
+      onCloseMany,
       onMergeTabsByDrag,
       onResetTitle,
       onSplitMergedPair,
@@ -343,15 +344,14 @@ export function TabBar(props: Readonly<TabBarProps>) {
           onClose(pair.rightTabId);
           return;
         case "close-pair":
-          onClose(pair.leftTabId);
-          onClose(pair.rightTabId);
+          onCloseMany([pair.leftTabId, pair.rightTabId]);
           return;
         case "close-others":
           closeOtherTabsExcept(new Set([pair.leftTabId, pair.rightTabId]));
           return;
       }
     },
-    [closeOtherTabsExcept, onClose, onResetTitle, onSplitMergedPair, startEditing],
+    [closeOtherTabsExcept, onClose, onCloseMany, onResetTitle, onSplitMergedPair, startEditing],
   );
 
   return (

@@ -121,6 +121,29 @@ export function findTabByDraft(state: UiTabsState, draftId: DraftId): Tab | unde
   return undefined;
 }
 
+/**
+ * Returns the best-effort tab target to navigate to when callers lose the
+ * current route context (for example, after closing an active draft route).
+ * Prefers the active tab target; if it's missing/corrupt, falls back to the
+ * first valid tab in visual order.
+ */
+export function pickFallbackTargetFromTabs(state: UiTabsState): TabTarget | null {
+  const activeTabId = state.group.activeTabId;
+  if (activeTabId) {
+    const activeTab = state.tabsById[activeTabId];
+    if (activeTab) {
+      return activeTab.target;
+    }
+  }
+  for (const tabId of state.group.tabIds) {
+    const tab = state.tabsById[tabId];
+    if (tab) {
+      return tab.target;
+    }
+  }
+  return null;
+}
+
 function pickFallbackTabId(
   remainingTabIds: readonly string[],
   removedIndex: number,
@@ -208,6 +231,28 @@ export function closeTab(state: UiTabsState, tabId: string): UiTabsState {
     tabsById: nextTabsById,
     group: nextGroup,
   };
+}
+
+/**
+ * Closes multiple tabs in one reducer pass. Unknown ids are ignored. The
+ * resulting active/focused selection follows the same fallback semantics as
+ * repeated `closeTab`, but callers can compute navigation once from the final
+ * state instead of per-tab side effects.
+ */
+export function closeTabs(state: UiTabsState, tabIds: readonly string[]): UiTabsState {
+  if (tabIds.length === 0) {
+    return state;
+  }
+  const requested = new Set(tabIds);
+  const closable = state.group.tabIds.filter((tabId) => requested.has(tabId));
+  if (closable.length === 0) {
+    return state;
+  }
+  let next = state;
+  for (const tabId of closable) {
+    next = closeTab(next, tabId);
+  }
+  return next;
 }
 
 export function activateTab(state: UiTabsState, tabId: string): UiTabsState {

@@ -106,6 +106,7 @@ import {
   pickAutoMergeCandidate,
   resolveTabTitle,
 } from "./TabBar/TabBar.logic";
+import { closeTabsAndSyncRoute } from "./TabBar/tabCloseBehavior";
 import { findMergedPair } from "../uiTabsState";
 import {
   Command,
@@ -1162,7 +1163,7 @@ interface TabPaletteDeps {
  * read the live tabs state at execution time so they always operate on what
  * the user sees in the bar at the moment they trigger the action.
  */
-function buildTabPaletteActionItems(_deps: TabPaletteDeps): CommandPaletteActionItem[] {
+function buildTabPaletteActionItems(deps: TabPaletteDeps): CommandPaletteActionItem[] {
   return [
     {
       kind: "action",
@@ -1175,7 +1176,7 @@ function buildTabPaletteActionItems(_deps: TabPaletteDeps): CommandPaletteAction
         const store = useUiStateStore.getState();
         const activeId = store.tabs.group.activeTabId;
         if (!activeId) return;
-        store.closeTab(activeId);
+        closeTabsAndSyncRoute({ tabIds: [activeId], navigate: deps.navigate });
       },
     },
     {

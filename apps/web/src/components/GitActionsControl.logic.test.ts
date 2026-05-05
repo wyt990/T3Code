@@ -46,7 +46,7 @@ describe("when: branch is clean and has an open PR", () => {
       }),
       false,
     );
-    assert.deepInclude(quick, { kind: "open_pr", label: "View PR", disabled: false });
+    assert.deepInclude(quick, { kind: "open_pr", label: "查看 PR", disabled: false });
   });
 
   it("buildMenuItems disables commit/push and enables open PR", () => {
@@ -66,7 +66,7 @@ describe("when: branch is clean and has an open PR", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -74,7 +74,7 @@ describe("when: branch is clean and has an open PR", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: true,
         icon: "push",
         kind: "open_dialog",
@@ -82,7 +82,7 @@ describe("when: branch is clean and has an open PR", () => {
       },
       {
         id: "pr",
-        label: "View PR",
+        label: "查看 PR",
         disabled: false,
         icon: "pr",
         kind: "open_pr",
@@ -96,9 +96,9 @@ describe("when: actions are busy", () => {
     const quick = resolveQuickAction(status(), true);
     assert.deepInclude(quick, {
       kind: "show_hint",
-      label: "Commit",
+      label: "提交",
       disabled: true,
-      hint: "Git action in progress.",
+      hint: "Git 操作正在进行中。",
     });
   });
 
@@ -107,7 +107,7 @@ describe("when: actions are busy", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -115,7 +115,7 @@ describe("when: actions are busy", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: true,
         icon: "push",
         kind: "open_dialog",
@@ -123,7 +123,7 @@ describe("when: actions are busy", () => {
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: true,
         icon: "pr",
         kind: "open_dialog",
@@ -138,9 +138,9 @@ describe("when: git status is unavailable", () => {
     const quick = resolveQuickAction(null, false);
     assert.deepInclude(quick, {
       kind: "show_hint",
-      label: "Commit",
+      label: "提交",
       disabled: true,
-      hint: "Git status is unavailable.",
+      hint: "Git 状态不可用。",
     });
   });
 
@@ -166,7 +166,7 @@ describe("when: branch is clean, ahead, and has an open PR", () => {
       }),
       false,
     );
-    assert.deepInclude(quick, { kind: "run_action", action: "push", label: "Push" });
+    assert.deepInclude(quick, { kind: "run_action", action: "push", label: "推送" });
   });
 
   it("buildMenuItems enables push and keeps open PR available", () => {
@@ -187,7 +187,7 @@ describe("when: branch is clean, ahead, and has an open PR", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -195,7 +195,7 @@ describe("when: branch is clean, ahead, and has an open PR", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: false,
         icon: "push",
         kind: "open_dialog",
@@ -203,7 +203,7 @@ describe("when: branch is clean, ahead, and has an open PR", () => {
       },
       {
         id: "pr",
-        label: "View PR",
+        label: "查看 PR",
         disabled: false,
         icon: "pr",
         kind: "open_pr",
@@ -218,7 +218,7 @@ describe("when: branch is clean, ahead, and has no open PR", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "create_pr",
-      label: "Push & create PR",
+      label: "推送并创建 PR",
     });
   });
 
@@ -227,7 +227,7 @@ describe("when: branch is clean, ahead, and has no open PR", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -235,7 +235,7 @@ describe("when: branch is clean, ahead, and has no open PR", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: false,
         icon: "push",
         kind: "open_dialog",
@@ -243,7 +243,7 @@ describe("when: branch is clean, ahead, and has no open PR", () => {
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: false,
         icon: "pr",
         kind: "open_dialog",
@@ -259,7 +259,7 @@ describe("when: branch is clean, up to date, and has no open PR", () => {
       status({ aheadCount: 0, behindCount: 0, hasWorkingTreeChanges: false, pr: null }),
       false,
     );
-    assert.deepInclude(quick, { kind: "show_hint", label: "Commit", disabled: true });
+    assert.deepInclude(quick, { kind: "show_hint", label: "提交", disabled: true });
   });
 
   it("buildMenuItems disables commit, push, and create PR", () => {
@@ -267,7 +267,7 @@ describe("when: branch is clean, up to date, and has no open PR", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -275,7 +275,7 @@ describe("when: branch is clean, up to date, and has no open PR", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: true,
         icon: "push",
         kind: "open_dialog",
@@ -283,7 +283,7 @@ describe("when: branch is clean, up to date, and has no open PR", () => {
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: true,
         icon: "pr",
         kind: "open_dialog",
@@ -296,7 +296,7 @@ describe("when: branch is clean, up to date, and has no open PR", () => {
 describe("when: branch is behind upstream", () => {
   it("resolveQuickAction returns pull", () => {
     const quick = resolveQuickAction(status({ behindCount: 2 }), false);
-    assert.deepInclude(quick, { kind: "run_pull", label: "Pull", disabled: false });
+    assert.deepInclude(quick, { kind: "run_pull", label: "拉取", disabled: false });
   });
 
   it("buildMenuItems disables push and create PR", () => {
@@ -304,7 +304,7 @@ describe("when: branch is behind upstream", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -312,7 +312,7 @@ describe("when: branch is behind upstream", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: true,
         icon: "push",
         kind: "open_dialog",
@@ -320,7 +320,7 @@ describe("when: branch is behind upstream", () => {
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: true,
         icon: "pr",
         kind: "open_dialog",
@@ -334,10 +334,10 @@ describe("when: branch has diverged from upstream", () => {
   it("resolveQuickAction returns a disabled sync hint", () => {
     const quick = resolveQuickAction(status({ aheadCount: 2, behindCount: 1 }), false);
     assert.deepEqual(quick, {
-      label: "Sync branch",
+      label: "同步分支",
       disabled: true,
       kind: "show_hint",
-      hint: "Branch has diverged from upstream. Rebase/merge first.",
+      hint: "分支已从上游分离。请先变基/合并。",
     });
   });
 });
@@ -348,7 +348,7 @@ describe("when: working tree has local changes", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push_pr",
-      label: "Commit, push & PR",
+      label: "提交、推送并创建 PR",
     });
   });
 
@@ -362,7 +362,7 @@ describe("when: working tree has local changes", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit",
-      label: "Commit",
+      label: "提交",
       disabled: false,
     });
   });
@@ -385,7 +385,7 @@ describe("when: working tree has local changes", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push",
-      label: "Commit & push",
+      label: "提交并推送",
     });
   });
 
@@ -394,7 +394,7 @@ describe("when: working tree has local changes", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: false,
         icon: "commit",
         kind: "open_dialog",
@@ -402,7 +402,7 @@ describe("when: working tree has local changes", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: true,
         icon: "push",
         kind: "open_dialog",
@@ -410,7 +410,7 @@ describe("when: working tree has local changes", () => {
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: true,
         icon: "pr",
         kind: "open_dialog",
@@ -430,7 +430,7 @@ describe("when: on default branch without open PR", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push",
-      label: "Commit & push",
+      label: "提交并推送",
       disabled: false,
     });
   });
@@ -444,7 +444,7 @@ describe("when: on default branch without open PR", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push",
-      label: "Push",
+      label: "推送",
       disabled: false,
     });
   });
@@ -459,7 +459,7 @@ describe("when: working tree has local changes and branch is behind upstream", (
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push_pr",
-      label: "Commit, push & PR",
+      label: "提交、推送并创建 PR",
     });
   });
 
@@ -468,7 +468,7 @@ describe("when: working tree has local changes and branch is behind upstream", (
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: false,
         icon: "commit",
         kind: "open_dialog",
@@ -476,7 +476,7 @@ describe("when: working tree has local changes and branch is behind upstream", (
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: true,
         icon: "push",
         kind: "open_dialog",
@@ -484,7 +484,7 @@ describe("when: working tree has local changes and branch is behind upstream", (
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: true,
         icon: "pr",
         kind: "open_dialog",
@@ -500,7 +500,7 @@ describe("when: HEAD is detached and there are no local changes", () => {
       status({ branch: null, hasWorkingTreeChanges: false, hasUpstream: false }),
       false,
     );
-    assert.deepInclude(quick, { kind: "show_hint", label: "Commit", disabled: true });
+    assert.deepInclude(quick, { kind: "show_hint", label: "提交", disabled: true });
   });
 
   it("buildMenuItems keeps commit, push, and PR disabled", () => {
@@ -508,7 +508,7 @@ describe("when: HEAD is detached and there are no local changes", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -516,7 +516,7 @@ describe("when: HEAD is detached and there are no local changes", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: true,
         icon: "push",
         kind: "open_dialog",
@@ -524,7 +524,7 @@ describe("when: HEAD is detached and there are no local changes", () => {
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: true,
         icon: "pr",
         kind: "open_dialog",
@@ -542,8 +542,8 @@ describe("when: branch has no upstream configured", () => {
     );
     assert.deepInclude(quick, {
       kind: "show_hint",
-      label: "Push",
-      hint: "No local commits to push.",
+      label: "推送",
+      hint: "没有本地提交可推送。",
       disabled: true,
     });
   });
@@ -566,7 +566,7 @@ describe("when: branch has no upstream configured", () => {
     );
     assert.deepInclude(quick, {
       kind: "open_pr",
-      label: "View PR",
+      label: "查看 PR",
       disabled: false,
     });
   });
@@ -590,7 +590,7 @@ describe("when: branch has no upstream configured", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "push",
-      label: "Push",
+      label: "推送",
       disabled: false,
     });
   });
@@ -600,7 +600,7 @@ describe("when: branch has no upstream configured", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -608,7 +608,7 @@ describe("when: branch has no upstream configured", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: true,
         icon: "push",
         kind: "open_dialog",
@@ -616,7 +616,7 @@ describe("when: branch has no upstream configured", () => {
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: true,
         icon: "pr",
         kind: "open_dialog",
@@ -637,7 +637,7 @@ describe("when: branch has no upstream configured", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "create_pr",
-      label: "Push & create PR",
+      label: "推送并创建 PR",
       disabled: false,
     });
   });
@@ -655,8 +655,8 @@ describe("when: branch has no upstream configured", () => {
     );
     assert.deepEqual(quick, {
       kind: "show_hint",
-      label: "Push",
-      hint: 'Add an "origin" remote before pushing or creating a PR.',
+      label: "推送",
+      hint: '推送或创建拉取请求前请先添加 "origin" 远程。',
       disabled: true,
     });
   });
@@ -666,7 +666,7 @@ describe("when: branch has no upstream configured", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -674,7 +674,7 @@ describe("when: branch has no upstream configured", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: false,
         icon: "push",
         kind: "open_dialog",
@@ -682,7 +682,7 @@ describe("when: branch has no upstream configured", () => {
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: false,
         icon: "pr",
         kind: "open_dialog",
@@ -700,7 +700,7 @@ describe("when: branch has no upstream configured", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -708,7 +708,7 @@ describe("when: branch has no upstream configured", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: true,
         icon: "push",
         kind: "open_dialog",
@@ -716,7 +716,7 @@ describe("when: branch has no upstream configured", () => {
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: true,
         icon: "pr",
         kind: "open_dialog",
@@ -738,8 +738,8 @@ describe("when: branch has no upstream configured", () => {
     );
     assert.deepInclude(quick, {
       kind: "show_hint",
-      label: "Push",
-      hint: "No local commits to push.",
+      label: "推送",
+      hint: "没有本地提交可推送。",
       disabled: true,
     });
   });
@@ -758,7 +758,7 @@ describe("when: branch has no upstream configured", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push",
-      label: "Push",
+      label: "推送",
       disabled: false,
     });
   });
@@ -776,7 +776,7 @@ describe("when: branch has no upstream configured", () => {
     assert.deepEqual(items, [
       {
         id: "commit",
-        label: "Commit",
+        label: "提交",
         disabled: true,
         icon: "commit",
         kind: "open_dialog",
@@ -784,7 +784,7 @@ describe("when: branch has no upstream configured", () => {
       },
       {
         id: "push",
-        label: "Push",
+        label: "推送",
         disabled: true,
         icon: "push",
         kind: "open_dialog",
@@ -792,7 +792,7 @@ describe("when: branch has no upstream configured", () => {
       },
       {
         id: "pr",
-        label: "Create PR",
+        label: "创建 PR",
         disabled: true,
         icon: "pr",
         kind: "open_dialog",
@@ -823,10 +823,10 @@ describe("resolveDefaultBranchActionDialogCopy", () => {
     });
 
     assert.deepEqual(copy, {
-      title: "Push to default branch?",
+      title: "推送到默认分支？",
       description:
-        'This action will push local commits on "main". You can continue on this branch or create a feature branch and run the same action there.',
-      continueLabel: "Push to main",
+        '此操作将推送本地提交到 "main"。您可以在当前分支继续操作，或创建一个功能分支后执行相同的操作。',
+      continueLabel: "推送到主分支",
     });
   });
 
@@ -838,10 +838,10 @@ describe("resolveDefaultBranchActionDialogCopy", () => {
     });
 
     assert.deepEqual(copy, {
-      title: "Push & create PR from default branch?",
+      title: "从默认分支推送并创建拉取请求？",
       description:
-        'This action will push local commits and create a PR on "main". You can continue on this branch or create a feature branch and run the same action there.',
-      continueLabel: "Push & create PR",
+        '此操作将推送本地提交并创建拉取请求到 "main"。您可以在当前分支继续操作，或创建一个功能分支后执行相同的操作。',
+      continueLabel: "推送并创建 PR",
     });
   });
 
@@ -853,10 +853,10 @@ describe("resolveDefaultBranchActionDialogCopy", () => {
     });
 
     assert.deepEqual(copy, {
-      title: "Commit, push & create PR from default branch?",
+      title: "从默认分支提交、推送并创建拉取请求？",
       description:
-        'This action will commit, push, and create a PR on "main". You can continue on this branch or create a feature branch and run the same action there.',
-      continueLabel: "Commit, push & create PR",
+        '此操作将提交、推送并创建拉取请求到 "main"。您可以在当前分支继续操作，或创建一个功能分支后执行相同的操作。',
+      continueLabel: "提交、推送并创建 PR",
     });
   });
 });
@@ -869,7 +869,7 @@ describe("buildGitActionProgressStages", () => {
       hasWorkingTreeChanges: false,
       pushTarget: "origin/feature/test",
     });
-    assert.deepEqual(stages, ["Pushing to origin/feature/test..."]);
+    assert.deepEqual(stages, ["正在推送到 origin/feature/test..."]);
   });
 
   it("shows push and PR progress for create-pr actions that still need a push", () => {
@@ -881,10 +881,10 @@ describe("buildGitActionProgressStages", () => {
       shouldPushBeforePr: true,
     });
     assert.deepEqual(stages, [
-      "Pushing to origin/feature/test...",
-      "Preparing PR...",
-      "Generating PR content...",
-      "Creating GitHub pull request...",
+      "正在推送到 origin/feature/test...",
+      "正在准备 PR...",
+      "正在生成 PR 内容...",
+      "正在创建 GitHub 拉取请求...",
     ]);
   });
 
@@ -896,9 +896,9 @@ describe("buildGitActionProgressStages", () => {
       shouldPushBeforePr: false,
     });
     assert.deepEqual(stages, [
-      "Preparing PR...",
-      "Generating PR content...",
-      "Creating GitHub pull request...",
+      "正在准备 PR...",
+      "正在生成 PR 内容...",
+      "正在创建 GitHub 拉取请求...",
     ]);
   });
 
@@ -910,9 +910,9 @@ describe("buildGitActionProgressStages", () => {
       pushTarget: "origin/feature/test",
     });
     assert.deepEqual(stages, [
-      "Generating commit message...",
-      "Committing...",
-      "Pushing to origin/feature/test...",
+      "正在生成提交信息...",
+      "正在提交...",
+      "正在推送到 origin/feature/test...",
     ]);
   });
 
@@ -924,11 +924,11 @@ describe("buildGitActionProgressStages", () => {
       pushTarget: "origin/feature/test",
     });
     assert.deepEqual(stages, [
-      "Committing...",
-      "Pushing to origin/feature/test...",
-      "Preparing PR...",
-      "Generating PR content...",
-      "Creating GitHub pull request...",
+      "正在提交...",
+      "正在推送到 origin/feature/test...",
+      "正在准备 PR...",
+      "正在生成 PR 内容...",
+      "正在创建 GitHub 拉取请求...",
     ]);
   });
 });

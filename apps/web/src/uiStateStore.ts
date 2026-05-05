@@ -6,6 +6,7 @@ import type { DraftId } from "./draftId";
 import {
   activateTab as activateTabReducer,
   closeTab as closeTabReducer,
+  closeTabs as closeTabsReducer,
   closeTabsByThreadIds as closeTabsByThreadIdsReducer,
   createTab as createTabReducer,
   hydrateTabsState,
@@ -646,6 +647,7 @@ interface UiStateStore extends UiState {
   ) => void;
   createTab: (target: TabTarget, options: CreateTabOptions) => void;
   closeTab: (tabId: string) => void;
+  closeTabs: (tabIds: readonly string[]) => void;
   activateTab: (tabId: string) => void;
   setFocusedTab: (tabId: string) => void;
   reorderTabs: (draggedTabId: string, targetTabId: string) => void;
@@ -685,6 +687,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   createTab: (target, options) =>
     set((state) => updateTabs(state, (tabs) => createTabReducer(tabs, target, options))),
   closeTab: (tabId) => set((state) => updateTabs(state, (tabs) => closeTabReducer(tabs, tabId))),
+  closeTabs: (tabIds) =>
+    set((state) => updateTabs(state, (tabs) => closeTabsReducer(tabs, tabIds))),
   activateTab: (tabId) =>
     set((state) => updateTabs(state, (tabs) => activateTabReducer(tabs, tabId))),
   setFocusedTab: (tabId) =>

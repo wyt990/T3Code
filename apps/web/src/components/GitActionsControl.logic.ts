@@ -46,13 +46,9 @@ export function buildGitActionProgressStages(input: {
   featureBranch?: boolean;
   shouldPushBeforePr?: boolean;
 }): string[] {
-  const branchStages = input.featureBranch ? ["Preparing feature branch..."] : [];
-  const pushStage = input.pushTarget ? `Pushing to ${input.pushTarget}...` : "Pushing...";
-  const prStages = [
-    "Preparing PR...",
-    "Generating PR content...",
-    "Creating GitHub pull request...",
-  ];
+  const branchStages = input.featureBranch ? ["正在准备功能分支..."] : [];
+  const pushStage = input.pushTarget ? `正在推送到 ${input.pushTarget}...` : "正在推送...";
+  const prStages = ["正在准备 PR...", "正在生成 PR 内容...", "正在创建 GitHub 拉取请求..."];
 
   if (input.action === "push") {
     return [pushStage];
@@ -65,8 +61,8 @@ export function buildGitActionProgressStages(input: {
   const commitStages = !shouldIncludeCommitStages
     ? []
     : input.hasCustomCommitMessage
-      ? ["Committing..."]
-      : ["Generating commit message...", "Committing..."];
+      ? ["正在提交..."]
+      : ["正在生成提交信息...", "正在提交..."];
   if (input.action === "commit") {
     return [...branchStages, ...commitStages];
   }
@@ -109,7 +105,7 @@ export function buildMenuItems(
   return [
     {
       id: "commit",
-      label: "Commit",
+      label: "提交",
       disabled: !canCommit,
       icon: "commit",
       kind: "open_dialog",
@@ -117,7 +113,7 @@ export function buildMenuItems(
     },
     {
       id: "push",
-      label: "Push",
+      label: "推送",
       disabled: !canPush,
       icon: "push",
       kind: "open_dialog",
@@ -126,14 +122,14 @@ export function buildMenuItems(
     hasOpenPr
       ? {
           id: "pr",
-          label: "View PR",
+          label: "查看 PR",
           disabled: !canOpenPr,
           icon: "pr",
           kind: "open_pr",
         }
       : {
           id: "pr",
-          label: "Create PR",
+          label: "创建 PR",
           disabled: !canCreatePr,
           icon: "pr",
           kind: "open_dialog",
@@ -154,7 +150,7 @@ export function resolveQuickAction(
 
   if (!gitStatus) {
     return {
-      label: "Commit",
+      label: "提交",
       disabled: true,
       kind: "show_hint",
       hint: "Git 状态不可用。",
@@ -170,7 +166,7 @@ export function resolveQuickAction(
 
   if (!hasBranch) {
     return {
-      label: "Commit",
+      label: "提交",
       disabled: true,
       kind: "show_hint",
       hint: "推送或打开拉取请求前请先创建并检出分支。",
@@ -179,13 +175,13 @@ export function resolveQuickAction(
 
   if (hasChanges) {
     if (!gitStatus.hasUpstream && !hasOriginRemote) {
-      return { label: "Commit", disabled: false, kind: "run_action", action: "commit" };
+      return { label: "提交", disabled: false, kind: "run_action", action: "commit" };
     }
     if (hasOpenPr || isDefaultBranch) {
-      return { label: "Commit & push", disabled: false, kind: "run_action", action: "commit_push" };
+      return { label: "提交并推送", disabled: false, kind: "run_action", action: "commit_push" };
     }
     return {
-      label: "Commit, push & PR",
+      label: "提交、推送并创建 PR",
       disabled: false,
       kind: "run_action",
       action: "commit_push_pr",
@@ -195,10 +191,10 @@ export function resolveQuickAction(
   if (!gitStatus.hasUpstream) {
     if (!hasOriginRemote) {
       if (hasOpenPr && !isAhead) {
-        return { label: "View PR", disabled: false, kind: "open_pr" };
+        return { label: "查看 PR", disabled: false, kind: "open_pr" };
       }
       return {
-        label: "Push",
+        label: "推送",
         disabled: true,
         kind: "show_hint",
         hint: '推送或创建拉取请求前请先添加 "origin" 远程。',
@@ -206,10 +202,10 @@ export function resolveQuickAction(
     }
     if (!isAhead) {
       if (hasOpenPr) {
-        return { label: "View PR", disabled: false, kind: "open_pr" };
+        return { label: "查看 PR", disabled: false, kind: "open_pr" };
       }
       return {
-        label: "Push",
+        label: "推送",
         disabled: true,
         kind: "show_hint",
         hint: "没有本地提交可推送。",
@@ -217,14 +213,14 @@ export function resolveQuickAction(
     }
     if (hasOpenPr || isDefaultBranch) {
       return {
-        label: "Push",
+        label: "推送",
         disabled: false,
         kind: "run_action",
         action: isDefaultBranch ? "commit_push" : "push",
       };
     }
     return {
-      label: "Push & create PR",
+      label: "推送并创建 PR",
       disabled: false,
       kind: "run_action",
       action: "create_pr",
@@ -233,7 +229,7 @@ export function resolveQuickAction(
 
   if (isDiverged) {
     return {
-      label: "Sync branch",
+      label: "同步分支",
       disabled: true,
       kind: "show_hint",
       hint: "分支已从上游分离。请先变基/合并。",
@@ -242,7 +238,7 @@ export function resolveQuickAction(
 
   if (isBehind) {
     return {
-      label: "Pull",
+      label: "拉取",
       disabled: false,
       kind: "run_pull",
     };
@@ -251,14 +247,14 @@ export function resolveQuickAction(
   if (isAhead) {
     if (hasOpenPr || isDefaultBranch) {
       return {
-        label: "Push",
+        label: "推送",
         disabled: false,
         kind: "run_action",
         action: isDefaultBranch ? "commit_push" : "push",
       };
     }
     return {
-      label: "Push & create PR",
+      label: "推送并创建 PR",
       disabled: false,
       kind: "run_action",
       action: "create_pr",
@@ -266,11 +262,11 @@ export function resolveQuickAction(
   }
 
   if (hasOpenPr && gitStatus.hasUpstream) {
-    return { label: "View PR", disabled: false, kind: "open_pr" };
+    return { label: "查看 PR", disabled: false, kind: "open_pr" };
   }
 
   return {
-    label: "Commit",
+    label: "提交",
     disabled: true,
     kind: "show_hint",
     hint: "分支已是最新状态。无需操作。",
@@ -296,20 +292,20 @@ export function resolveDefaultBranchActionDialogCopy(input: {
   includesCommit: boolean;
 }): DefaultBranchActionDialogCopy {
   const branchLabel = input.branchName;
-  const suffix = ` on "${branchLabel}". You can continue on this branch or create a feature branch and run the same action there.`;
+  const suffix = `到 "${branchLabel}"。您可以在当前分支继续操作，或创建一个功能分支后执行相同的操作。`;
 
   if (input.action === "push" || input.action === "commit_push") {
     if (input.includesCommit) {
       return {
         title: "提交并推送到默认分支？",
         description: `此操作将提交并推送更改${suffix}`,
-        continueLabel: `Commit & push to ${branchLabel}`,
+        continueLabel: "提交并推送",
       };
     }
     return {
       title: "推送到默认分支？",
       description: `此操作将推送本地提交${suffix}`,
-      continueLabel: `Push to ${branchLabel}`,
+      continueLabel: "推送到主分支",
     };
   }
 
@@ -317,13 +313,13 @@ export function resolveDefaultBranchActionDialogCopy(input: {
     return {
       title: "从默认分支提交、推送并创建拉取请求？",
       description: `此操作将提交、推送并创建拉取请求${suffix}`,
-      continueLabel: `Commit, push & create PR`,
+      continueLabel: "提交、推送并创建 PR",
     };
   }
   return {
     title: "从默认分支推送并创建拉取请求？",
     description: `此操作将推送本地提交并创建拉取请求${suffix}`,
-    continueLabel: "Push & create PR",
+    continueLabel: "推送并创建 PR",
   };
 }
 

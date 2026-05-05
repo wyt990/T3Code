@@ -281,15 +281,16 @@ function Sidebar({
               type="button"
               aria-label="展开侧边栏"
               title="展开侧边栏"
+              data-testid="sidebar-expand-button"
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 toggleSidebar();
               }}
               className={cn(
-                "fixed top-1/2 -translate-y-1/2 z-50 flex cursor-pointer",
+                "fixed top-1/2 -translate-y-1/2 z-[80] flex cursor-pointer pointer-events-auto",
                 "items-center justify-center rounded-md p-1",
-                "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent",
+                "bg-sidebar/95 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent",
                 "transition-all duration-200",
                 side === "left" ? "left-0 translate-x-1/2" : "right-0 -translate-x-1/2",
               )}
@@ -607,7 +608,7 @@ function SidebarRail({
   return (
     <div
       className={cn(
-        "group/rail pointer-events-auto -translate-x-1/2 absolute inset-y-0 z-20 hidden w-10 sm:block",
+        "group/rail pointer-events-auto -translate-x-1/2 absolute top-[52px] bottom-0 z-20 hidden w-4 sm:block",
         "group-data-[side=left]:-right-4 group-data-[side=right]:left-0",
         "group-data-[side=left]:group-data-[state=collapsed]:-right-2 group-data-[side=right]:group-data-[state=collapsed]:left-[-0.5rem]",
         "group-data-[collapsible=offcanvas]:translate-x-0",
