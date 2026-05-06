@@ -964,7 +964,7 @@ export default function ChatView(props: ChatViewProps) {
   const openOrReuseProjectDraftThread = useCallback(
     async (input: { branch: string; worktreePath: string | null; envMode: DraftThreadEnvMode }) => {
       if (!activeProject) {
-        throw new Error("No active project is available for this pull request.");
+        throw new Error("没有可用的项目来处理此拉取请求。");
       }
       const activeProjectRef = scopeProjectRef(activeProject.environmentId, activeProject.id);
       const logicalProjectKey = deriveLogicalProjectKeyFromSettings(
@@ -1437,7 +1437,7 @@ export default function ChatView(props: ChatViewProps) {
     if (!latestTurnHasToolActivity) return null;
 
     const elapsed = formatElapsed(activeLatestTurn.startedAt, activeLatestTurn.completedAt);
-    return elapsed ? `工作中 for ${elapsed}` : null;
+    return elapsed ? `工作中 ${elapsed}` : null;
   }, [
     activeLatestTurn?.completedAt,
     activeLatestTurn?.startedAt,
@@ -1734,7 +1734,7 @@ export default function ChatView(props: ChatViewProps) {
       } catch (error) {
         setThreadError(
           activeThreadId,
-          error instanceof Error ? error.message : `Failed to run script "${script.name}".`,
+          error instanceof Error ? error.message : `运行脚本"${script.name}"失败。`,
         );
       }
     },
@@ -1783,7 +1783,7 @@ export default function ChatView(props: ChatViewProps) {
       if (isElectron && keybindingRule) {
         const localApi = readLocalApi();
         if (!localApi) {
-          throw new Error("Local API unavailable.");
+          throw new Error("本地API不可用。");
         }
         await localApi.server.upsertKeybinding(keybindingRule);
       }
@@ -1829,7 +1829,7 @@ export default function ChatView(props: ChatViewProps) {
       if (!activeProject) return;
       const existingScript = activeProject.scripts.find((script) => script.id === scriptId);
       if (!existingScript) {
-        throw new Error("Script not found.");
+        throw new Error("脚本未找到。");
       }
 
       const updatedScript: ProjectScript = {
@@ -1876,14 +1876,14 @@ export default function ChatView(props: ChatViewProps) {
         });
         toastManager.add({
           type: "success",
-          title: `Deleted action "${deletedName ?? "Unknown"}"`,
+          title: `删除动作 "${deletedName ?? "未知"}"`,
         });
       } catch (error) {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Could not delete action",
-            description: error instanceof Error ? error.message : "An unexpected error occurred.",
+            title: "无法删除动作",
+            description: error instanceof Error ? error.message : "发生意外错误。",
           }),
         );
       }
@@ -2408,14 +2408,14 @@ export default function ChatView(props: ChatViewProps) {
       if (!api || !localApi || !activeThread || isRevertingCheckpoint) return;
 
       if (phase === "running" || isSendBusy || isConnecting) {
-        setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
+        setThreadError(activeThread.id, "中断当前回合后再恢复检查点。");
         return;
       }
       const confirmed = await localApi.dialogs.confirm(
         [
-          `Revert this thread to checkpoint ${turnCount}?`,
-          "This will discard newer messages and turn diffs in this thread.",
-          "This action cannot be undone.",
+          `恢复此线程到第 ${turnCount} 个检查点？`,
+          "这将丢弃此线程中的更新的消息和差异。",
+          "此操作无法撤销。",
         ].join("\n"),
       );
       if (!confirmed) {
@@ -2433,10 +2433,7 @@ export default function ChatView(props: ChatViewProps) {
           createdAt: new Date().toISOString(),
         });
       } catch (err) {
-        setThreadError(
-          activeThread.id,
-          err instanceof Error ? err.message : "Failed to revert thread state.",
-        );
+        setThreadError(activeThread.id, err instanceof Error ? err.message : "恢复线程状态失败。");
       }
       setIsRevertingCheckpoint(false);
     },
@@ -2535,7 +2532,7 @@ export default function ChatView(props: ChatViewProps) {
     const shouldCreateWorktree =
       isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath;
     if (shouldCreateWorktree && !activeThreadBranch) {
-      setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
+      setThreadError(threadIdForSend, "在新工作树模式下发送前请选择基础分支。");
       return;
     }
 
@@ -2624,7 +2621,7 @@ export default function ChatView(props: ChatViewProps) {
       let titleSeed = trimmed;
       if (!titleSeed) {
         if (firstComposerImageName) {
-          titleSeed = `Image: ${firstComposerImageName}`;
+          titleSeed = `图片: ${firstComposerImageName}`;
         } else if (composerTerminalContextsSnapshot.length > 0) {
           titleSeed = formatTerminalContextLabel(composerTerminalContextsSnapshot[0]!);
         } else {
@@ -2737,10 +2734,7 @@ export default function ChatView(props: ChatViewProps) {
           detectTrigger: true,
         });
       }
-      setThreadError(
-        threadIdForSend,
-        err instanceof Error ? err.message : "Failed to send message.",
-      );
+      setThreadError(threadIdForSend, err instanceof Error ? err.message : "发送消息失败。");
     });
     sendInFlightRef.current = false;
     if (!turnStartSucceeded) {
@@ -2777,10 +2771,7 @@ export default function ChatView(props: ChatViewProps) {
           createdAt: new Date().toISOString(),
         })
         .catch((err: unknown) => {
-          setThreadError(
-            activeThreadId,
-            err instanceof Error ? err.message : "Failed to submit approval decision.",
-          );
+          setThreadError(activeThreadId, err instanceof Error ? err.message : "提交审批决策失败。");
         });
       setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
     },
@@ -2805,10 +2796,7 @@ export default function ChatView(props: ChatViewProps) {
           createdAt: new Date().toISOString(),
         })
         .catch((err: unknown) => {
-          setThreadError(
-            activeThreadId,
-            err instanceof Error ? err.message : "Failed to submit user input.",
-          );
+          setThreadError(activeThreadId, err instanceof Error ? err.message : "提交用户输入失败。");
         });
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
     },
@@ -3042,10 +3030,7 @@ export default function ChatView(props: ChatViewProps) {
         setOptimisticUserMessages((existing) =>
           existing.filter((message) => message.id !== messageIdForSend),
         );
-        setThreadError(
-          threadIdForSend,
-          err instanceof Error ? err.message : "Failed to send plan follow-up.",
-        );
+        setThreadError(threadIdForSend, err instanceof Error ? err.message : "发送计划跟进失败。");
         sendInFlightRef.current = false;
         resetLocalDispatch();
       }
@@ -3379,7 +3364,7 @@ export default function ChatView(props: ChatViewProps) {
                   className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1 text-muted-foreground text-xs shadow-sm transition-colors hover:border-border hover:text-foreground hover:cursor-pointer"
                 >
                   <ChevronDownIcon className="size-3.5" />
-                  Scroll to bottom
+                  滚动到底部
                 </button>
               </div>
             )}

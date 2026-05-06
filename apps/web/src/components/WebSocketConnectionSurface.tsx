@@ -65,7 +65,7 @@ function describeRecoveredToast(
   const disconnectedAtLabel = formatConnectionMoment(previousDisconnectedAt);
 
   if (disconnectedAtLabel && reconnectedAtLabel) {
-    return `断开连接 at ${disconnectedAtLabel} and reconnected at ${reconnectedAtLabel}.`;
+    return `断开连接于 ${disconnectedAtLabel} 并重新连接于 ${reconnectedAtLabel}。`;
   }
 
   if (reconnectedAtLabel) {
@@ -181,7 +181,9 @@ export function WebSocketConnectionCoordinator() {
   });
   const triggerAutoReconnect = useEffectEvent((trigger: WsAutoReconnectTrigger) => {
     const currentStatus =
-      trigger === "online" ? setBrowserOnlineStatus(true) : getWsConnectionStatus();
+      trigger === "online"
+        ? setBrowserOnlineStatus(true)
+        : setBrowserOnlineStatus(navigator.onLine !== false);
 
     if (!shouldAutoReconnect(currentStatus, trigger)) {
       return;
@@ -197,6 +199,12 @@ export function WebSocketConnectionCoordinator() {
     const handleOnline = () => {
       triggerAutoReconnect("online");
     };
+    const handleVisible = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      triggerAutoReconnect("focus");
+    };
     const handleFocus = () => {
       triggerAutoReconnect("focus");
     };
@@ -205,10 +213,12 @@ export function WebSocketConnectionCoordinator() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", syncBrowserOnlineStatus);
     window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisible);
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", syncBrowserOnlineStatus);
       window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisible);
     };
   }, []);
 

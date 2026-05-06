@@ -1,6 +1,7 @@
 import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
 import { useCallback } from "react";
 
+import { cn } from "../../lib/utils";
 import ChatView from "../ChatView";
 import { useComposerDraftStore, type DraftId } from "../../composerDraftStore";
 import type { MergedTabPair, Tab } from "../../uiTabsState";
@@ -13,6 +14,12 @@ export interface TabContentAreaProps {
    * (or is `null` momentarily during URL → tab seeding).
    */
   activeTab: Tab | null;
+  /**
+   * Full tab strip order. Used in stand-alone (non-merged) mode to keep every
+   * open tab's `ChatView` mounted while hiding inactive ones, so optimistic UI
+   * and in-flight turn state survive tab switches.
+   */
+  orderedTabs: readonly Tab[];
   /**
    * When the active tab is part of a merged pair, this carries the pair plus
    * its sibling so the area can render a horizontal split. `null` for a
@@ -74,6 +81,7 @@ export interface MergedPairContext {
 export function TabContentArea(props: Readonly<TabContentAreaProps>) {
   const {
     activeTab,
+    orderedTabs,
     mergedPair,
     focusedSide,
     onActivateTab,
@@ -161,17 +169,29 @@ export function TabContentArea(props: Readonly<TabContentAreaProps>) {
   }
 
   return (
-    <TabPaneContent
-      tab={activeTab}
-      isFocused={true}
-      onDiffPanelOpen={onDiffPanelOpen}
-      reserveTitleBarControlInset={reserveTitleBarControlInset}
-      onToggleDiff={onToggleDiff}
-      onOpenTurnDiff={onOpenTurnDiff}
-      onRequestThreadNavigation={onRequestThreadNavigation}
-      onRequestDraftNavigation={onRequestDraftNavigation}
-      onRequestFocus={noopRequestFocus}
-    />
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {orderedTabs.map((tab) => (
+        <div
+          key={tab.id}
+          className={cn(
+            "flex min-h-0 min-w-0 flex-1 flex-col",
+            tab.id !== activeTab.id && "hidden",
+          )}
+        >
+          <TabPaneContent
+            tab={tab}
+            isFocused={tab.id === activeTab.id}
+            onDiffPanelOpen={onDiffPanelOpen}
+            reserveTitleBarControlInset={reserveTitleBarControlInset}
+            onToggleDiff={onToggleDiff}
+            onOpenTurnDiff={onOpenTurnDiff}
+            onRequestThreadNavigation={onRequestThreadNavigation}
+            onRequestDraftNavigation={onRequestDraftNavigation}
+            onRequestFocus={noopRequestFocus}
+          />
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -482,6 +482,25 @@ describe("uiTabsState - promoteDraftTab", () => {
     });
     expect(next).toBe(state);
   });
+
+  it("deduplicates when the promoted server tab already exists", () => {
+    const promotedTo = { environmentId: ENV, threadId: ThreadId.make("t-1") };
+    const state = activateTab(
+      buildState([
+        { tabId: "tab-server", target: serverTarget("t-1") },
+        { tabId: "tab-draft", target: draftTarget("d-1") },
+      ]),
+      "tab-draft",
+    );
+
+    const next = promoteDraftTab(state, DraftId.make("d-1"), promotedTo);
+
+    expect(next.group.tabIds).toEqual(["tab-server"]);
+    expect(next.group.activeTabId).toBe("tab-server");
+    expect(next.group.focusedTabId).toBe("tab-server");
+    expect(next.tabsById["tab-draft"]).toBeUndefined();
+    expect(next.tabsById["tab-server"]?.target).toEqual({ kind: "server", threadRef: promotedTo });
+  });
 });
 
 describe("uiTabsState - lookups", () => {

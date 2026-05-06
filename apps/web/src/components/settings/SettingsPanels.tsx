@@ -1331,6 +1331,8 @@ export function GeneralSettingsPanel() {
                         </span>
                         <ClaudeCodeInstallCard
                           installed={providerCard.liveProvider?.installed ?? false}
+                          providerSnapshot={providerCard.liveProvider}
+                          onRefreshProviders={refreshProviders}
                           onInstallComplete={() => {
                             void refreshProviders();
                           }}

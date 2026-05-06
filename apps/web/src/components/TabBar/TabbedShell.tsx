@@ -63,7 +63,7 @@ export interface TabbedShellProps {
  *
  * Phase 1 responsibilities:
  * - URL → tab sync (create-or-activate matching tab)
- * - Render the TabBar + active tab's ChatView
+ * - Render the TabBar + ChatViews for open tabs (inactive panes stay mounted, hidden)
  * - Per-tab diff state (replaces the legacy `?diff=1` URL flag)
  * - Tab interactions: click-to-activate, click-to-close, [+] for new draft
  *
@@ -295,6 +295,7 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
         />
         <TabContentArea
           activeTab={activeTab}
+          orderedTabs={orderedTabs}
           mergedPair={mergedPair}
           focusedSide={focusedSide}
           onActivateTab={onActivateTab}

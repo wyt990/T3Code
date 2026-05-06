@@ -475,7 +475,45 @@ export function promoteDraftTab(
   draftId: DraftId,
   threadRef: ScopedThreadRef,
 ): UiTabsState {
-  let changedTabId: string | null = null;
+  const draftTabIds = state.group.tabIds.filter((tabId) => {
+    const tab = state.tabsById[tabId];
+    return tab?.target.kind === "draft" && tab.target.draftId === draftId;
+  });
+  if (draftTabIds.length === 0) {
+    return state;
+  }
+
+  const draftTabIdSet = new Set(draftTabIds);
+  const existingServerTabId = state.group.tabIds.find((tabId) => {
+    if (draftTabIdSet.has(tabId)) {
+      return false;
+    }
+    const tab = state.tabsById[tabId];
+    return !!tab && targetMatchesThread(tab.target, threadRef);
+  });
+
+  // When URL sync already created the canonical server tab, avoid ending up
+  // with duplicated tabs that point at the same server thread.
+  if (existingServerTabId) {
+    let next = state;
+    for (const tabId of draftTabIds) {
+      next = closeTab(next, tabId);
+    }
+    const removedActive = draftTabIds.includes(state.group.activeTabId ?? "");
+    const removedFocused = draftTabIds.includes(state.group.focusedTabId ?? "");
+    if (!removedActive && !removedFocused) {
+      return next;
+    }
+    return {
+      ...next,
+      group: {
+        ...next.group,
+        activeTabId: removedActive ? existingServerTabId : next.group.activeTabId,
+        focusedTabId: removedFocused ? existingServerTabId : next.group.focusedTabId,
+      },
+    };
+  }
+
   const nextTabsById: Record<string, Tab> = {};
   for (const [tabId, tab] of Object.entries(state.tabsById)) {
     if (tab.target.kind === "draft" && tab.target.draftId === draftId) {
@@ -483,13 +521,9 @@ export function promoteDraftTab(
         ...tab,
         target: { kind: "server", threadRef },
       };
-      changedTabId = tabId;
-    } else {
-      nextTabsById[tabId] = tab;
+      continue;
     }
-  }
-  if (changedTabId === null) {
-    return state;
+    nextTabsById[tabId] = tab;
   }
   return { ...state, tabsById: nextTabsById };
 }
