@@ -46,7 +46,7 @@ function formatReconnectAttemptLabel(status: WsConnectionStatus): string {
     1,
     Math.min(status.reconnectAttemptCount, WS_RECONNECT_MAX_ATTEMPTS),
   );
-  return `Attempt ${reconnectAttempt}/${status.reconnectMaxAttempts}`;
+  return `尝试 ${reconnectAttempt}/${status.reconnectMaxAttempts}`;
 }
 
 function describeExhaustedToast(): string {
@@ -69,7 +69,7 @@ function describeRecoveredToast(
   }
 
   if (reconnectedAtLabel) {
-    return `连接恢复 at ${reconnectedAtLabel}.`;
+    return `连接恢复于 ${reconnectedAtLabel}。`;
   }
 
   return "连接恢复。";
@@ -79,10 +79,10 @@ function describeSlowRpcAckToast(requests: ReadonlyArray<SlowRpcAckRequest>): st
   const count = requests.length;
   const thresholdSeconds = Math.round((requests[0]?.thresholdMs ?? 0) / 1000);
 
-  return `${count} request${count === 1 ? "" : "s"} waiting longer than ${thresholdSeconds}s.`;
+  return `${count} 个请求等待超过 ${thresholdSeconds} 秒。`;
 }
 
-function SlowRpcAckRequestDetails({ requests }: { requests: ReadonlyArray<SlowRpcAckRequest> }) {
+function SlowRpcAckRequestDetails({ requests }: { readonly requests: ReadonlyArray<SlowRpcAckRequest> }) {
   return (
     <ul className="space-y-2.5 text-xs text-muted-foreground">
       {requests.map((req) => (
@@ -95,7 +95,7 @@ function SlowRpcAckRequestDetails({ requests }: { requests: ReadonlyArray<SlowRp
             {req.requestId}
           </div>
           <div className="mt-0.5 text-[10px] opacity-75">
-            Started {formatConnectionMoment(req.startedAt) ?? req.startedAt}
+            开始于 {formatConnectionMoment(req.startedAt) ?? req.startedAt}
           </div>
         </li>
       ))}
@@ -142,13 +142,13 @@ export function WebSocketConnectionCoordinator() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const lastForcedReconnectAtRef = useRef(0);
   const toastIdRef = useRef<ReturnType<typeof toastManager.add> | null>(null);
-  const toastResetTimerRef = useRef<number | null>(null);
+  const toastResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousUiStateRef = useRef<WsConnectionUiState>(getWsConnectionUiState(status));
   const previousDisconnectedAtRef = useRef<string | null>(status.disconnectedAt);
 
   const runReconnect = useEffectEvent((showFailureToast: boolean) => {
     if (toastResetTimerRef.current !== null) {
-      window.clearTimeout(toastResetTimerRef.current);
+      globalThis.clearTimeout(toastResetTimerRef.current);
       toastResetTimerRef.current = null;
     }
     lastForcedReconnectAtRef.current = Date.now();
@@ -162,9 +162,9 @@ export function WebSocketConnectionCoordinator() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Reconnect failed",
+            title: "重新连接失败",
             description:
-              error instanceof Error ? error.message : "Unable to restart the WebSocket.",
+              error instanceof Error ? error.message : "无法重启 WebSocket。",
             data: {
               dismissAfterVisibleMs: 8_000,
               hideCopyButton: true,
@@ -210,14 +210,14 @@ export function WebSocketConnectionCoordinator() {
     };
 
     syncBrowserOnlineStatus();
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", syncBrowserOnlineStatus);
-    window.addEventListener("focus", handleFocus);
+    globalThis.addEventListener("online", handleOnline);
+    globalThis.addEventListener("offline", syncBrowserOnlineStatus);
+    globalThis.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisible);
     return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", syncBrowserOnlineStatus);
-      window.removeEventListener("focus", handleFocus);
+      globalThis.removeEventListener("online", handleOnline);
+      globalThis.removeEventListener("offline", syncBrowserOnlineStatus);
+      globalThis.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisible);
     };
   }, []);
@@ -228,12 +228,12 @@ export function WebSocketConnectionCoordinator() {
     }
 
     setNowMs(Date.now());
-    const intervalId = window.setInterval(() => {
+    const intervalId = globalThis.setInterval(() => {
       setNowMs(Date.now());
     }, 1_000);
 
     return () => {
-      window.clearInterval(intervalId);
+      globalThis.clearInterval(intervalId);
     };
   }, [status.nextRetryAt, status.reconnectPhase]);
 
@@ -249,7 +249,7 @@ export function WebSocketConnectionCoordinator() {
 
     const nextRetryAt = status.nextRetryAt;
     const timeoutMs = Math.max(0, new Date(nextRetryAt).getTime() - Date.now()) + 1_500;
-    const timeoutId = window.setTimeout(() => {
+    const timeoutId = globalThis.setTimeout(() => {
       const currentStatus = getWsConnectionStatus();
       if (!shouldRestartStalledReconnect(currentStatus, nextRetryAt)) {
         return;
@@ -259,7 +259,7 @@ export function WebSocketConnectionCoordinator() {
     }, timeoutMs);
 
     return () => {
-      window.clearTimeout(timeoutId);
+      globalThis.clearTimeout(timeoutId);
     };
   }, [
     status.hasConnected,
@@ -270,68 +270,85 @@ export function WebSocketConnectionCoordinator() {
   ]);
 
   useEffect(() => {
-    const uiState = getWsConnectionUiState(status);
-    const previousUiState = previousUiStateRef.current;
-    const previousDisconnectedAt = previousDisconnectedAtRef.current;
-    const shouldShowReconnectToast = status.hasConnected && uiState === "reconnecting";
-    const shouldShowOfflineToast = uiState === "offline" && status.disconnectedAt !== null;
-    const shouldShowExhaustedToast = status.hasConnected && status.reconnectPhase === "exhausted";
-
-    if (
-      toastResetTimerRef.current !== null &&
-      (shouldShowReconnectToast || shouldShowOfflineToast || shouldShowExhaustedToast)
-    ) {
-      window.clearTimeout(toastResetTimerRef.current);
+    function clearToastTimer(): void {
+      if (toastResetTimerRef.current === null) return;
+      globalThis.clearTimeout(toastResetTimerRef.current);
       toastResetTimerRef.current = null;
     }
 
-    if (shouldShowReconnectToast || shouldShowOfflineToast || shouldShowExhaustedToast) {
-      const toastPayload = shouldShowOfflineToast
-        ? stackedThreadToast({
-            data: {
-              hideCopyButton: true,
-            },
-            description: describeOfflineToast(),
-            timeout: 0,
-            title: "离线",
-            type: "warning",
-          })
-        : shouldShowExhaustedToast
-          ? stackedThreadToast({
-              actionProps: {
-                children: "重试",
-                onClick: triggerManualReconnect,
-              },
-              data: {
-                hideCopyButton: true,
-              },
-              description: describeExhaustedToast(),
-              timeout: 0,
-              title: "与 T3 服务器断开连接",
-              type: "error",
-            })
-          : stackedThreadToast({
-              actionProps: {
-                children: "立即重试",
-                onClick: triggerManualReconnect,
-              },
-              data: {
-                hideCopyButton: true,
-              },
-              description:
-                status.nextRetryAt === null
-                  ? `重新连接... ${formatReconnectAttemptLabel(status)}`
-                  : `重新连接 in ${formatRetryCountdown(status.nextRetryAt, nowMs)}... ${formatReconnectAttemptLabel(status)}`,
-              timeout: 0,
-              title: buildReconnectTitle(status),
-              type: "loading",
-            });
-
+    function showOrUpdateToast(
+      toastPayload: ReturnType<typeof stackedThreadToast>,
+    ): void {
       if (toastIdRef.current) {
         toastManager.update(toastIdRef.current, toastPayload);
       } else {
         toastIdRef.current = toastManager.add(toastPayload);
       }
+    }
+
+    function buildOfflineToast() {
+      return stackedThreadToast({
+        data: { hideCopyButton: true },
+        description: describeOfflineToast(),
+        timeout: 0,
+        title: "离线",
+        type: "warning",
+      });
+    }
+
+    function buildExhaustedToast() {
+      return stackedThreadToast({
+        actionProps: {
+          children: "重试",
+          onClick: triggerManualReconnect,
+        },
+        data: { hideCopyButton: true },
+        description: describeExhaustedToast(),
+        timeout: 0,
+        title: "与 T3 服务器断开连接",
+        type: "error",
+      });
+    }
+
+    function buildReconnectingToast() {
+      return stackedThreadToast({
+        actionProps: {
+          children: "立即重试",
+          onClick: triggerManualReconnect,
+        },
+        data: { hideCopyButton: true },
+        description:
+          status.nextRetryAt === null
+            ? `重新连接... ${formatReconnectAttemptLabel(status)}`
+            : `重新连接于 ${formatRetryCountdown(status.nextRetryAt, nowMs)}... ${formatReconnectAttemptLabel(status)}`,
+        timeout: 0,
+        title: buildReconnectTitle(status),
+        type: "loading",
+      });
+    }
+
+    const uiState = getWsConnectionUiState(status);
+    const previousUiState = previousUiStateRef.current;
+    const previousDisconnectedAt = previousDisconnectedAtRef.current;
+
+    const shouldShowOfflineToast = uiState === "offline" && status.disconnectedAt !== null;
+    const shouldShowExhaustedToast = status.hasConnected && status.reconnectPhase === "exhausted";
+    const shouldShowReconnectToast = status.hasConnected && uiState === "reconnecting";
+    const hasConnectionToast = shouldShowOfflineToast || shouldShowExhaustedToast || shouldShowReconnectToast;
+
+    if (hasConnectionToast) {
+      clearToastTimer();
+
+      let toastPayload;
+      if (shouldShowOfflineToast) {
+        toastPayload = buildOfflineToast();
+      } else if (shouldShowExhaustedToast) {
+        toastPayload = buildExhaustedToast();
+      } else {
+        toastPayload = buildReconnectingToast();
+      }
+
+      showOrUpdateToast(toastPayload);
     } else if (toastIdRef.current) {
       toastManager.close(toastIdRef.current);
       toastIdRef.current = null;
@@ -353,13 +370,9 @@ export function WebSocketConnectionCoordinator() {
         },
       };
 
-      if (toastIdRef.current) {
-        toastManager.update(toastIdRef.current, successToast);
-      } else {
-        toastIdRef.current = toastManager.add(successToast);
-      }
+      showOrUpdateToast(successToast as ReturnType<typeof stackedThreadToast>);
 
-      toastResetTimerRef.current = window.setTimeout(() => {
+      toastResetTimerRef.current = globalThis.setTimeout(() => {
         toastIdRef.current = null;
         toastResetTimerRef.current = null;
       }, 8_250);
@@ -372,7 +385,7 @@ export function WebSocketConnectionCoordinator() {
   useEffect(() => {
     return () => {
       if (toastResetTimerRef.current !== null) {
-        window.clearTimeout(toastResetTimerRef.current);
+        globalThis.clearTimeout(toastResetTimerRef.current);
       }
     };
   }, []);

@@ -18,7 +18,7 @@ import {
   type ServerProviderModel,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
-import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+import { DEFAULT_PROXY_FALLBACK_URL, DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import { Equal } from "effect";
 import { APP_VERSION } from "../../branding";
@@ -1676,7 +1676,24 @@ export function GeneralSettingsPanel() {
                   id="proxy-enabled"
                   checked={settings.proxy.enabled}
                   onChange={(e) => {
-                    updateSettings({ proxy: { ...settings.proxy, enabled: e.target.checked } });
+                    const enabled = e.target.checked;
+                    if (!enabled) {
+                      updateSettings({ proxy: { ...settings.proxy, enabled: false } });
+                      return;
+                    }
+                    const httpTrim = settings.proxy.httpProxy.trim();
+                    const httpsTrim = settings.proxy.httpsProxy.trim();
+                    const httpProxy =
+                      httpTrim.length > 0 ? settings.proxy.httpProxy : DEFAULT_PROXY_FALLBACK_URL;
+                    const httpsProxy = httpsTrim.length > 0 ? settings.proxy.httpsProxy : httpProxy;
+                    updateSettings({
+                      proxy: {
+                        ...settings.proxy,
+                        enabled: true,
+                        httpProxy,
+                        httpsProxy,
+                      },
+                    });
                   }}
                   className="size-3.5"
                 />
@@ -1690,7 +1707,7 @@ export function GeneralSettingsPanel() {
                     <label className="w-12 text-xs text-muted-foreground">HTTP:</label>
                     <input
                       type="text"
-                      placeholder="http://10.100.0.109:8081"
+                      placeholder={DEFAULT_PROXY_FALLBACK_URL}
                       value={settings.proxy.httpProxy}
                       onChange={(e) => {
                         updateSettings({ proxy: { ...settings.proxy, httpProxy: e.target.value } });
@@ -1702,7 +1719,7 @@ export function GeneralSettingsPanel() {
                     <label className="w-12 text-xs text-muted-foreground">HTTPS:</label>
                     <input
                       type="text"
-                      placeholder="http://10.100.0.109:8081"
+                      placeholder={DEFAULT_PROXY_FALLBACK_URL}
                       value={settings.proxy.httpsProxy}
                       onChange={(e) => {
                         updateSettings({

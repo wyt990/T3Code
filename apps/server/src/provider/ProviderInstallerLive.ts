@@ -1,11 +1,12 @@
 import { Effect, Layer, Stream } from "effect";
 import { resolveAvailableMethods, type InstallMethod } from "@t3tools/shared/installer";
 import { runProcess } from "../processRunner.ts";
-import type {
-  InstallMethodSchema,
-  ProviderInstallProgressEvent,
-  ProviderKind,
-  ProxySettings,
+import {
+  buildProxyProcessEnv,
+  type InstallMethodSchema,
+  type ProviderInstallProgressEvent,
+  type ProviderKind,
+  type ProxySettings,
 } from "@t3tools/contracts";
 import { ProviderInstaller } from "./Services/ProviderInstaller.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -13,21 +14,6 @@ import { ServerSettingsService } from "../serverSettings.ts";
 const NO_PROXY: ProxySettings = { enabled: false, httpProxy: "", httpsProxy: "" };
 
 const INSTALL_TIMEOUT_MS = 120_000; // 2 minutes
-
-function buildProxyEnv(proxy: ProxySettings): Record<string, string> {
-  if (!proxy.enabled) return {};
-
-  const env: Record<string, string> = {};
-  if (proxy.httpProxy) {
-    env.http_proxy = proxy.httpProxy;
-    env.HTTP_PROXY = proxy.httpProxy;
-  }
-  if (proxy.httpsProxy) {
-    env.https_proxy = proxy.httpsProxy;
-    env.HTTPS_PROXY = proxy.httpsProxy;
-  }
-  return env;
-}
 
 function methodToSchema(method: InstallMethod): InstallMethodSchema {
   return {
@@ -51,7 +37,7 @@ function runInstall(
   return Effect.gen(function* () {
     const availableMethods = resolveAvailableMethods(process.platform);
     const events: ProviderInstallProgressEvent[] = [];
-    const proxyEnv = proxy ? buildProxyEnv(proxy) : {};
+    const proxyEnv = proxy ? buildProxyProcessEnv(proxy) : {};
 
     if (availableMethods.length === 0) {
       events.push({

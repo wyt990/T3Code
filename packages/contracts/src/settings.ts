@@ -124,6 +124,36 @@ export const ProxySettings = Schema.Struct({
 });
 export type ProxySettings = typeof ProxySettings.Type;
 
+/**
+ * When proxy is enabled but the user leaves HTTP/HTTPS fields empty, this URL is used
+ * (same as the settings UI placeholder).
+ */
+export const DEFAULT_PROXY_FALLBACK_URL = "http://10.100.0.109:8081" as const;
+
+export function resolveEffectiveProxyUrls(proxy: ProxySettings): {
+  httpProxy: string;
+  httpsProxy: string;
+} {
+  if (!proxy.enabled) {
+    return { httpProxy: "", httpsProxy: "" };
+  }
+  const http = proxy.httpProxy.trim() || DEFAULT_PROXY_FALLBACK_URL;
+  const https = proxy.httpsProxy.trim() || http;
+  return { httpProxy: http, httpsProxy: https };
+}
+
+/** Environment variables for child processes (npm, curl, etc.) when proxy is enabled. */
+export function buildProxyProcessEnv(proxy: ProxySettings): Record<string, string> {
+  if (!proxy.enabled) return {};
+  const { httpProxy, httpsProxy } = resolveEffectiveProxyUrls(proxy);
+  return {
+    http_proxy: httpProxy,
+    HTTP_PROXY: httpProxy,
+    https_proxy: httpsProxy,
+    HTTPS_PROXY: httpsProxy,
+  };
+}
+
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   defaultThreadEnvMode: ThreadEnvMode.pipe(

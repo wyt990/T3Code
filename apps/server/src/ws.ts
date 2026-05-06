@@ -35,6 +35,9 @@ import {
   WsRpcGroup,
   type ClaudeCodeInstallInput,
   type OpenCodeInstallInput,
+  buildProxyProcessEnv,
+  resolveEffectiveProxyUrls,
+  type ProxySettings,
 } from "@t3tools/contracts";
 import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRequest } from "effect/unstable/http";
@@ -98,37 +101,16 @@ const CLAUDE_CODE_INSTALL_COMMANDS = {
   },
 } as const;
 
-interface ProxyConfig {
-  enabled: boolean;
-  httpProxy: string;
-  httpsProxy: string;
-}
-
-function buildProxyEnv(proxy: ProxyConfig): Record<string, string> {
-  if (!proxy.enabled) return {};
-
-  const env: Record<string, string> = {};
-  if (proxy.httpProxy) {
-    env.http_proxy = proxy.httpProxy;
-    env.HTTP_PROXY = proxy.httpProxy;
-  }
-  if (proxy.httpsProxy) {
-    env.https_proxy = proxy.httpsProxy;
-    env.HTTPS_PROXY = proxy.httpsProxy;
-  }
-  return env;
-}
-
 function installClaudeCode(
   platform?: "linux" | "darwin" | "win32",
-  proxy?: ProxyConfig,
+  proxy?: ProxySettings,
 ): Effect.Effect<{ success: boolean; error?: string; stdout?: string; stderr?: string }, never> {
   return Effect.gen(function* () {
     // Auto-detect platform if not provided
     const detectedPlatform = platform ?? (process.platform as "linux" | "darwin" | "win32");
 
     // Build proxy environment variables for Linux/macOS
-    const proxyEnv = proxy ? buildProxyEnv(proxy) : {};
+    const proxyEnv = proxy ? buildProxyProcessEnv(proxy) : {};
 
     try {
       let result;
@@ -142,8 +124,10 @@ function installClaudeCode(
 
         // Build curl command with proxy to download script
         let curlCommand: string;
-        if (proxy?.enabled && proxy.httpsProxy) {
-          curlCommand = `curl.exe -x "${proxy.httpsProxy}" -fsSL "${scriptUrl}" -o "${scriptPath}"`;
+        const curlProxy =
+          proxy?.enabled === true ? resolveEffectiveProxyUrls(proxy).httpsProxy : "";
+        if (curlProxy.length > 0) {
+          curlCommand = `curl.exe -x "${curlProxy}" -fsSL "${scriptUrl}" -o "${scriptPath}"`;
         } else {
           curlCommand = `curl.exe -fsSL "${scriptUrl}" -o "${scriptPath}"`;
         }
@@ -175,15 +159,7 @@ function installClaudeCode(
         const psEnv: Record<string, string> = {
           // Ensure LOCALAPPDATA is set for PowerShell script
           ...(localAppData ? { LOCALAPPDATA: localAppData } : {}),
-          // Proxy settings
-          ...(proxy?.enabled
-            ? {
-                HTTP_PROXY: proxy.httpProxy || proxy.httpsProxy,
-                HTTPS_PROXY: proxy.httpsProxy || proxy.httpProxy,
-                http_proxy: proxy.httpProxy || proxy.httpsProxy,
-                https_proxy: proxy.httpsProxy || proxy.httpProxy,
-              }
-            : {}),
+          ...(proxy?.enabled === true ? buildProxyProcessEnv(proxy) : {}),
         };
 
         result = yield* Effect.promise(() =>

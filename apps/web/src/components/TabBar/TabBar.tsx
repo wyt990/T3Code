@@ -398,7 +398,7 @@ export function TabBar(props: Readonly<TabBarProps>) {
       >
         <SortableContext items={sortableItems} strategy={horizontalListSortingStrategy}>
           <div
-            className="flex min-w-0 items-stretch gap-1 overflow-x-auto"
+            className="tab-bar-tabs-scroll flex min-w-0 items-stretch gap-1 overflow-x-auto"
             data-tab-bar-drag-blocked={overFeedback.blocked ? "true" : undefined}
           >
             {groups.map((group) =>
