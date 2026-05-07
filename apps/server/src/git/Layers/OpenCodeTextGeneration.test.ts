@@ -1,12 +1,13 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import { Duration, Effect, Layer } from "effect";
+import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
+import { deepMerge } from "@t3tools/shared/Struct";
+import { Duration, Effect, FileSystem, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { NetService } from "@t3tools/shared/Net";
 import { beforeEach, expect } from "vitest";
 
 import { ServerConfig } from "../../config.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   OpenCodeRuntime,
   OpenCodeRuntimeError,
@@ -103,20 +104,33 @@ const DEFAULT_TEST_MODEL_SELECTION = {
 
 const OPENCODE_TEXT_GENERATION_IDLE_TTL_MS = 30_000;
 
+function openCodeTestEnvLayer(cwd: string, prefix: string, opencode: Record<string, string>) {
+  return Layer.effectDiscard(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const serverConfig = yield* ServerConfig;
+      const settings = deepMerge(DEFAULT_SERVER_SETTINGS, {
+        providers: { opencode },
+      });
+      yield* fs.writeFileString(
+        serverConfig.settingsPath,
+        `${JSON.stringify(settings, null, 2)}\n`,
+      );
+    }),
+  ).pipe(
+    Layer.provideMerge(
+      ServerConfig.layerTest(cwd, {
+        prefix,
+      }),
+    ),
+  );
+}
+
 const OpenCodeTextGenerationTestLayer = OpenCodeTextGenerationLive.pipe(
   Layer.provideMerge(Layer.succeed(OpenCodeRuntime, OpenCodeRuntimeTestDouble)),
   Layer.provideMerge(
-    ServerSettingsService.layerTest({
-      providers: {
-        opencode: {
-          binaryPath: "fake-opencode",
-        },
-      },
-    }),
-  ),
-  Layer.provideMerge(
-    ServerConfig.layerTest(process.cwd(), {
-      prefix: "t3code-opencode-text-generation-test-",
+    openCodeTestEnvLayer(process.cwd(), "t3code-opencode-text-generation-test-", {
+      binaryPath: "fake-opencode",
     }),
   ),
   Layer.provideMerge(NetService.layer),
@@ -126,19 +140,10 @@ const OpenCodeTextGenerationTestLayer = OpenCodeTextGenerationLive.pipe(
 const OpenCodeTextGenerationExistingServerTestLayer = OpenCodeTextGenerationLive.pipe(
   Layer.provideMerge(Layer.succeed(OpenCodeRuntime, OpenCodeRuntimeTestDouble)),
   Layer.provideMerge(
-    ServerSettingsService.layerTest({
-      providers: {
-        opencode: {
-          binaryPath: "fake-opencode",
-          serverUrl: "http://127.0.0.1:9999",
-          serverPassword: "secret-password",
-        },
-      },
-    }),
-  ),
-  Layer.provideMerge(
-    ServerConfig.layerTest(process.cwd(), {
-      prefix: "t3code-opencode-text-generation-existing-server-test-",
+    openCodeTestEnvLayer(process.cwd(), "t3code-opencode-text-generation-existing-server-test-", {
+      binaryPath: "fake-opencode",
+      serverUrl: "http://127.0.0.1:9999",
+      serverPassword: "secret-password",
     }),
   ),
   Layer.provideMerge(NetService.layer),

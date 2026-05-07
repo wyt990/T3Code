@@ -47,6 +47,9 @@ it.effect(
 
       const snapshot = yield* lifecycleEvents.snapshot;
       assert.equal(snapshot.sequence, 2);
-      assert.deepEqual(snapshot.events.map((event) => event.type).toSorted(), ["ready", "welcome"]);
+      assert.deepEqual(
+        snapshot.events.map((event) => event.type).toSorted((a, b) => a.localeCompare(b)),
+        ["ready", "welcome"],
+      );
     }).pipe(Effect.provide(ServerLifecycleEventsLive)),
 );

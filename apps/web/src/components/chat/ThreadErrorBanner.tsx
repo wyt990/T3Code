@@ -6,8 +6,8 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   error,
   onDismiss,
 }: {
-  error: string | null;
-  onDismiss?: () => void;
+  readonly error: string | null;
+  readonly onDismiss?: () => void;
 }) {
   if (!error) return null;
   return (

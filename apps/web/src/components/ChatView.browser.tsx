@@ -43,7 +43,7 @@ import {
   removeInlineTerminalContextPlaceholder,
   type TerminalContextDraft,
 } from "../lib/terminalContext";
-import { isMacPlatform } from "../lib/utils";
+import { getPlatformString, isMacPlatform } from "../lib/utils";
 import { __resetLocalApiForTests } from "../localApi";
 import { AppAtomRegistryProvider } from "../rpc/atomRegistry";
 import { getServerConfig } from "../rpc/serverState";
@@ -1149,7 +1149,7 @@ async function pressComposerKey(key: string): Promise<void> {
 
 async function pressComposerUndo(): Promise<void> {
   const composerEditor = await waitForComposerEditor();
-  const useMetaForMod = isMacPlatform(navigator.platform);
+  const useMetaForMod = isMacPlatform(getPlatformString());
   composerEditor.focus();
   composerEditor.dispatchEvent(
     new KeyboardEvent("keydown", {
@@ -1372,7 +1372,7 @@ async function waitForServerConfigToApply(): Promise<void> {
 }
 
 function dispatchChatNewShortcut(): void {
-  const useMetaForMod = isMacPlatform(navigator.platform);
+  const useMetaForMod = isMacPlatform(getPlatformString());
   window.dispatchEvent(
     new KeyboardEvent("keydown", {
       key: "o",
@@ -1388,7 +1388,7 @@ function dispatchChatNewShortcut(): void {
 function releaseModShortcut(key?: string): void {
   window.dispatchEvent(
     new KeyboardEvent("keyup", {
-      key: key ?? (isMacPlatform(navigator.platform) ? "Meta" : "Control"),
+      key: key ?? (isMacPlatform(getPlatformString()) ? "Meta" : "Control"),
       metaKey: false,
       ctrlKey: false,
       bubbles: true,
@@ -1429,7 +1429,7 @@ async function waitForNewThreadShortcutLabel(): Promise<void> {
   const newThreadButton = page.getByTestId("new-thread-button");
   await expect.element(newThreadButton).toBeInTheDocument();
   await newThreadButton.hover();
-  const shortcutLabel = isMacPlatform(navigator.platform)
+  const shortcutLabel = isMacPlatform(getPlatformString())
     ? "新项目 (⇧⌘O)"
     : "新项目 (Ctrl+Shift+O)";
   await expect.element(page.getByText(shortcutLabel)).toBeInTheDocument();
@@ -4750,9 +4750,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
       const browseInput = palette.getByPlaceholder(ADD_PROJECT_SUBMENU_PLACEHOLDER);
       await browseInput.fill("~/Applications/access");
 
-      const fileManagerLabel = isMacPlatform(navigator.platform)
+      const fileManagerLabel = isMacPlatform(getPlatformString())
         ? " 在Finder中打开"
-        : navigator.platform.toLowerCase().startsWith("win")
+        : getPlatformString().toLowerCase().startsWith("win")
           ? "在资源管理器打开"
           : "在文件管理器打开";
       await palette.getByRole("button", { name: fileManagerLabel }).click();
@@ -4871,7 +4871,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
 
       await dispatchInputKey(browseInput, { key: "ArrowDown" });
 
-      const addButtonLabel = isMacPlatform(navigator.platform)
+      const addButtonLabel = isMacPlatform(getPlatformString())
         ? "Add (\u2318 Enter)"
         : "Add (Ctrl Enter)";
       await vi.waitFor(
@@ -4887,8 +4887,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
 
       await dispatchInputKey(browseInput, {
         key: "Enter",
-        metaKey: isMacPlatform(navigator.platform),
-        ctrlKey: !isMacPlatform(navigator.platform),
+        metaKey: isMacPlatform(getPlatformString()),
+        ctrlKey: !isMacPlatform(getPlatformString()),
       });
 
       await vi.waitFor(
@@ -5705,7 +5705,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
         expect(document.querySelector(".model-picker-list")).not.toBeNull();
       });
 
-      const jumpLabel = isMacPlatform(navigator.platform) ? "⌃1" : "Ctrl+1";
+      const jumpLabel = isMacPlatform(getPlatformString()) ? "⌃1" : "Ctrl+1";
       await vi.waitFor(() => {
         expect(
           Array.from(

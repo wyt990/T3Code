@@ -26,7 +26,7 @@ import {
   primaryProjectScript,
 } from "~/projectScripts";
 import { shortcutLabelForCommand } from "~/keybindings";
-import { isMacPlatform } from "~/lib/utils";
+import { getPlatformString, isMacPlatform } from "~/lib/utils";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -131,7 +131,7 @@ function keybindingFromEvent(event: KeyboardEvent<HTMLInputElement>): string | n
   if (!keyToken) return null;
 
   const parts: string[] = [];
-  if (isMacPlatform(navigator.platform)) {
+  if (isMacPlatform(getPlatformString())) {
     if (event.metaKey) parts.push("mod");
     if (event.ctrlKey) parts.push("ctrl");
   } else {

@@ -157,6 +157,10 @@ const make = Effect.gen(function* () {
   const gitStatusBroadcaster = yield* GitStatusBroadcaster;
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
+
+  const readTextGenerationModelSelection = serverSettingsService.getSettings.pipe(
+    Effect.map((settings) => settings.textGenerationModelSelection),
+  );
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
     timeToLive: HANDLED_TURN_START_KEY_TTL,
@@ -471,8 +475,7 @@ const make = Effect.gen(function* () {
     const cwd = input.worktreePath;
     const attachments = input.attachments ?? [];
     yield* Effect.gen(function* () {
-      const { textGenerationModelSelection: modelSelection } =
-        yield* serverSettingsService.getSettings;
+      const modelSelection = yield* readTextGenerationModelSelection;
 
       const generated = yield* textGeneration.generateBranchName({
         cwd,
@@ -515,10 +518,8 @@ const make = Effect.gen(function* () {
       readonly titleSeed?: string;
     }) {
       const attachments = input.attachments ?? [];
+      const modelSelection = yield* readTextGenerationModelSelection;
       yield* Effect.gen(function* () {
-        const { textGenerationModelSelection: modelSelection } =
-          yield* serverSettingsService.getSettings;
-
         const generated = yield* textGeneration.generateThreadTitle({
           cwd: input.cwd,
           message: input.messageText,
@@ -529,9 +530,7 @@ const make = Effect.gen(function* () {
 
         const thread = yield* resolveThread(input.threadId);
         if (!thread) return;
-        if (!canReplaceThreadTitle(thread.title, input.titleSeed)) {
-          return;
-        }
+        if (!canReplaceThreadTitle(thread.title, input.titleSeed)) return;
 
         yield* orchestrationEngine.dispatch({
           type: "thread.meta.update",
@@ -540,13 +539,18 @@ const make = Effect.gen(function* () {
           title: generated.title,
         });
       }).pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning("provider command reactor failed to generate or rename thread title", {
-            threadId: input.threadId,
-            cwd: input.cwd,
-            cause: Cause.pretty(cause),
-          }),
-        ),
+        Effect.catchCause(() => {
+          const fallbackTitle =
+            (input.titleSeed ?? input.messageText).split(/\r?\n/)[0]?.trim() ?? "新项目";
+          return orchestrationEngine
+            .dispatch({
+              type: "thread.meta.update",
+              commandId: serverCommandId("thread-title-rename"),
+              threadId: input.threadId,
+              title: fallbackTitle.slice(0, 50),
+            })
+            .pipe(Effect.catchCause(() => Effect.void));
+        }),
       );
     },
   );
@@ -599,11 +603,12 @@ const make = Effect.gen(function* () {
       }).pipe(Effect.forkScoped);
 
       if (canReplaceThreadTitle(thread.title, event.payload.titleSeed)) {
+        // 同步生成标题（不 fork），确保在 AI 处理前完成标题生成
         yield* maybeGenerateThreadTitleForFirstTurn({
           threadId: event.payload.threadId,
           cwd: generationCwd,
           ...generationInput,
-        }).pipe(Effect.forkScoped);
+        });
       }
     }
 

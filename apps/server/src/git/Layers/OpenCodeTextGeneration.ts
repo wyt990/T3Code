@@ -1,4 +1,4 @@
-import { Effect, Exit, Fiber, Layer, Schema, Scope } from "effect";
+import { Effect, Exit, Fiber, FileSystem, Layer, Schema, Scope } from "effect";
 import * as Semaphore from "effect/Semaphore";
 
 import {
@@ -11,7 +11,7 @@ import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 
 import { ServerConfig } from "../../config.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
+import { readServerSettingsDiskSnapshot } from "../../serverSettings.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
@@ -95,7 +95,7 @@ interface SharedOpenCodeTextGenerationServerState {
 
 const makeOpenCodeTextGeneration = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig;
-  const serverSettingsService = yield* ServerSettingsService;
+  const fileSystem = yield* FileSystem.FileSystem;
   const openCodeRuntime = yield* OpenCodeRuntime;
   const idleFiberScope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
     Scope.close(scope, Exit.void),
@@ -278,7 +278,7 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
       });
     }
 
-    const settings = yield* serverSettingsService.getSettings.pipe(
+    const settings = yield* readServerSettingsDiskSnapshot.pipe(
       Effect.map(
         (value) =>
           value.providers?.opencode ?? {
@@ -289,13 +289,8 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
             customModels: [],
           },
       ),
-      Effect.orElseSucceed(() => ({
-        enabled: true,
-        binaryPath: "opencode",
-        serverUrl: "",
-        serverPassword: "",
-        customModels: [],
-      })),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(ServerConfig, serverConfig),
     );
 
     const fileParts = toOpenCodeFileParts({

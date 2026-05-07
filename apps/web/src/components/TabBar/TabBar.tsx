@@ -12,7 +12,7 @@ import {
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDownIcon, MergeIcon, PlusIcon, XIcon } from "lucide-react";
+import { Bug, ChevronDownIcon, MergeIcon, PlusIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -517,6 +517,24 @@ export function TabBar(props: Readonly<TabBarProps>) {
         >
           <PlusIcon className="size-4" aria-hidden />
         </button>
+        {typeof window.desktopBridge?.openDetachedDevTools === "function" && (
+          <button
+            type="button"
+            aria-label="在新窗口打开开发者工具"
+            title="在新窗口打开开发者工具（控制台 / Network，便于查看 [t3][ws-trace] 等日志）"
+            data-testid="tab-bar-devtools"
+            onClick={() => {
+              void window.desktopBridge?.openDetachedDevTools?.().catch(() => undefined);
+            }}
+            className={cn(
+              "flex items-center justify-center rounded-md px-2 text-muted-foreground",
+              "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2",
+              "focus-visible:ring-ring",
+            )}
+          >
+            <Bug className="size-4" aria-hidden />
+          </button>
+        )}
       </div>
       <div aria-hidden data-testid="tab-bar-trailing-spacer" className="drag-region flex-1" />
     </div>

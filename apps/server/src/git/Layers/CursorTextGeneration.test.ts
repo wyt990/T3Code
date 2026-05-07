@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, FileSystem, Layer, PlatformError } from "effect";
 import { createModelSelection } from "@t3tools/shared/model";
 import { expect } from "vitest";
 
@@ -58,40 +58,52 @@ function makeAcpAgentWrapper(dir: string, env: Record<string, string>): string {
 function withFakeAcpAgent<A, E, R>(
   env: Record<string, string>,
   effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | ServerSettingsError, R | ServerSettingsService> {
+): Effect.Effect<
+  A,
+  E | ServerSettingsError | PlatformError.PlatformError,
+  R | ServerSettingsService | FileSystem.FileSystem | ServerConfig
+> {
   return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const serverConfig = yield* ServerConfig;
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3code-cursor-text-acp-"));
     const agentPath = makeAcpAgentWrapper(tempDir, env);
     const serverSettings = yield* ServerSettingsService;
     const previousSettings = yield* serverSettings.getSettings;
 
-    yield* serverSettings.updateSettings({
+    const nextSettings = yield* serverSettings.updateSettings({
       providers: {
         cursor: {
           binaryPath: agentPath,
         },
       },
     });
+    yield* fs
+      .writeFileString(serverConfig.settingsPath, `${JSON.stringify(nextSettings, null, 2)}\n`)
+      .pipe(Effect.ignore);
 
     return yield* effect.pipe(
       Effect.ensuring(
-        serverSettings
-          .updateSettings({
-            providers: {
-              cursor: {
-                binaryPath: previousSettings.providers.cursor.binaryPath,
+        Effect.gen(function* () {
+          yield* fs
+            .writeFileString(
+              serverConfig.settingsPath,
+              `${JSON.stringify(previousSettings, null, 2)}\n`,
+            )
+            .pipe(Effect.ignore);
+          yield* serverSettings
+            .updateSettings({
+              providers: {
+                cursor: {
+                  binaryPath: previousSettings.providers.cursor.binaryPath,
+                },
               },
-            },
-          })
-          .pipe(
-            Effect.catch(() => Effect.void),
-            Effect.ensuring(
-              Effect.sync(() => {
-                rmSync(tempDir, { recursive: true, force: true });
-              }),
-            ),
-            Effect.asVoid,
-          ),
+            })
+            .pipe(Effect.catch(() => Effect.void));
+          yield* Effect.sync(() => {
+            rmSync(tempDir, { recursive: true, force: true });
+          });
+        }).pipe(Effect.asVoid),
       ),
     );
   });

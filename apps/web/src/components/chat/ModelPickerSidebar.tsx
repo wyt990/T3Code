@@ -38,9 +38,9 @@ const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_CLASS = "max-w-64 text-balance font-normal leading-snug";
 
 export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
-  selectedProvider: ProviderKind | "favorites";
-  onSelectProvider: (provider: ProviderKind | "favorites") => void;
-  providers?: ReadonlyArray<ServerProvider>;
+  readonly selectedProvider: ProviderKind | "favorites";
+  readonly onSelectProvider: (provider: ProviderKind | "favorites") => void;
+  readonly providers?: ReadonlyArray<ServerProvider>;
 }) {
   const visibleProviderOptions = AVAILABLE_PROVIDER_OPTIONS.filter((option) => {
     if (!props.providers || props.providers.length === 0) {

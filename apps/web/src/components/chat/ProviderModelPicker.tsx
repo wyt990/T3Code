@@ -20,21 +20,21 @@ import {
 import { setModelPickerOpen } from "../../modelPickerOpenState";
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
-  provider: ProviderKind;
-  model: string;
-  lockedProvider: ProviderKind | null;
-  providers?: ReadonlyArray<ServerProvider>;
-  keybindings?: ResolvedKeybindingsConfig;
-  modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<ModelEsque>>;
-  activeProviderIconClassName?: string;
-  compact?: boolean;
-  disabled?: boolean;
-  terminalOpen?: boolean;
-  open?: boolean;
-  triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
-  triggerClassName?: string;
-  onOpenChange?: (open: boolean) => void;
-  onProviderModelChange: (provider: ProviderKind, model: string) => void;
+  readonly provider: ProviderKind;
+  readonly model: string;
+  readonly lockedProvider: ProviderKind | null;
+  readonly providers?: ReadonlyArray<ServerProvider>;
+  readonly keybindings?: ResolvedKeybindingsConfig;
+  readonly modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<ModelEsque>>;
+  readonly activeProviderIconClassName?: string;
+  readonly compact?: boolean;
+  readonly disabled?: boolean;
+  readonly terminalOpen?: boolean;
+  readonly open?: boolean;
+  readonly triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
+  readonly triggerClassName?: string;
+  readonly onOpenChange?: (open: boolean) => void;
+  readonly onProviderModelChange: (provider: ProviderKind, model: string) => void;
 }) {
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const activeProvider = props.lockedProvider ?? props.provider;

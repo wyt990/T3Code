@@ -52,9 +52,9 @@ class CodeHighlightErrorBoundary extends React.Component<
 }
 
 interface ChatMarkdownProps {
-  text: string;
-  cwd: string | undefined;
-  isStreaming?: boolean;
+  readonly text: string;
+  readonly cwd: string | undefined;
+  readonly isStreaming?: boolean;
 }
 
 const CODE_FENCE_LANGUAGE_REGEX = /(?:^|\s)language-([^\s]+)/;
@@ -137,7 +137,13 @@ function getHighlighterPromise(language: string): Promise<DiffsHighlighter> {
   return promise;
 }
 
-function MarkdownCodeBlock({ code, children }: { code: string; children: ReactNode }) {
+function MarkdownCodeBlock({
+  code,
+  children,
+}: {
+  readonly code: string;
+  readonly children: ReactNode;
+}) {
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleCopy = useCallback(() => {
@@ -186,10 +192,10 @@ function MarkdownCodeBlock({ code, children }: { code: string; children: ReactNo
 }
 
 interface SuspenseShikiCodeBlockProps {
-  className: string | undefined;
-  code: string;
-  themeName: DiffThemeName;
-  isStreaming: boolean;
+  readonly className: string | undefined;
+  readonly code: string;
+  readonly themeName: DiffThemeName;
+  readonly isStreaming: boolean;
 }
 
 function SuspenseShikiCodeBlock({
@@ -242,13 +248,13 @@ function SuspenseShikiCodeBlock({
 }
 
 interface MarkdownFileLinkProps {
-  href: string;
-  targetPath: string;
-  displayPath: string;
-  filePath: string;
-  label: string;
-  theme: "light" | "dark" | "shuxiang";
-  className?: string | undefined;
+  readonly href: string;
+  readonly targetPath: string;
+  readonly displayPath: string;
+  readonly filePath: string;
+  readonly label: string;
+  readonly theme: "light" | "dark" | "shuxiang";
+  readonly className?: string | undefined;
 }
 
 const MARKDOWN_LINK_HREF_PATTERN = /\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;

@@ -281,7 +281,7 @@ type TimelineMessage = Extract<TimelineEntry, { kind: "message" }>["message"];
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
-function TimelineRowContent({ row }: { row: TimelineRow }) {
+function TimelineRowContent({ row }: { readonly row: TimelineRow }) {
   const ctx = use(TimelineRowCtx);
 
   return (
@@ -487,7 +487,7 @@ function TimelineRowContent({ row }: { row: TimelineRow }) {
 // ---------------------------------------------------------------------------
 
 /** Live "Working for Xs" label. */
-function WorkingTimer({ createdAt }: { createdAt: string }) {
+function WorkingTimer({ createdAt }: { readonly createdAt: string }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
@@ -502,9 +502,9 @@ function LiveMessageMeta({
   durationStart,
   timestampFormat,
 }: {
-  createdAt: string;
-  durationStart: string | null | undefined;
-  timestampFormat: TimestampFormat;
+  readonly createdAt: string;
+  readonly durationStart: string | null | undefined;
+  readonly timestampFormat: TimestampFormat;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -527,7 +527,7 @@ function LiveMessageMeta({
 const WorkGroupSection = memo(function WorkGroupSection({
   groupedEntries,
 }: {
-  groupedEntries: Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"];
+  readonly groupedEntries: Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"];
 }) {
   const { workspaceRoot } = use(TimelineRowCtx);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -580,10 +580,10 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
   resolvedTheme,
   onOpenTurnDiff,
 }: {
-  turnSummary: TurnDiffSummary | undefined;
-  routeThreadKey: string;
-  resolvedTheme: "light" | "dark" | "shuxiang";
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  readonly turnSummary: TurnDiffSummary | undefined;
+  readonly routeThreadKey: string;
+  readonly resolvedTheme: "light" | "dark" | "shuxiang";
+  readonly onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   if (!turnSummary) return null;
   const checkpointFiles = turnSummary.files;
@@ -609,11 +609,11 @@ function AssistantChangedFilesSectionInner({
   resolvedTheme,
   onOpenTurnDiff,
 }: {
-  turnSummary: TurnDiffSummary;
-  checkpointFiles: TurnDiffSummary["files"];
-  routeThreadKey: string;
-  resolvedTheme: "light" | "dark" | "shuxiang";
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  readonly turnSummary: TurnDiffSummary;
+  readonly checkpointFiles: TurnDiffSummary["files"];
+  readonly routeThreadKey: string;
+  readonly resolvedTheme: "light" | "dark" | "shuxiang";
+  readonly onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   const allDirectoriesExpanded = useUiStateStore(
     (store) => store.threadChangedFilesExpandedById[routeThreadKey]?.[turnSummary.turnId] ?? true,
@@ -671,7 +671,9 @@ function AssistantChangedFilesSectionInner({
 // ---------------------------------------------------------------------------
 
 const UserMessageTerminalContextInlineLabel = memo(
-  function UserMessageTerminalContextInlineLabel(props: { context: ParsedTerminalContextEntry }) {
+  function UserMessageTerminalContextInlineLabel(props: {
+    readonly context: ParsedTerminalContextEntry;
+  }) {
     const tooltipText =
       props.context.body.length > 0
         ? `${props.context.header}\n${props.context.body}`
@@ -682,8 +684,8 @@ const UserMessageTerminalContextInlineLabel = memo(
 );
 
 const UserMessageBody = memo(function UserMessageBody(props: {
-  text: string;
-  terminalContexts: ParsedTerminalContextEntry[];
+  readonly text: string;
+  readonly terminalContexts: ParsedTerminalContextEntry[];
 }) {
   if (props.terminalContexts.length > 0) {
     const hasEmbeddedInlineLabels = textContainsInlineTerminalContextLabels(
@@ -931,8 +933,8 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
 }
 
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
-  workEntry: TimelineWorkEntry;
-  workspaceRoot: string | undefined;
+  readonly workEntry: TimelineWorkEntry;
+  readonly workspaceRoot: string | undefined;
 }) {
   const { workEntry, workspaceRoot } = props;
   const iconConfig = workToneIcon(workEntry.tone);

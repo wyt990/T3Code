@@ -12,9 +12,16 @@ import type { TabTarget } from "../uiTabsState";
 
 function ChatThreadRouteView() {
   const navigate = useNavigate();
-  const threadRef = Route.useParams({
-    select: (params) => resolveThreadRouteRef(params),
-  });
+  const routeParams = Route.useParams();
+  // `scopeThreadRef` allocates a fresh object each call; using it inside
+  // `useParams({ select })` without structural memoization yields a new `threadRef`
+  // reference every render. That retriggers effects keyed on `threadRef` — notably
+  // the redirect effect below — and can hit React #185 (max update depth) via
+  // repeated `navigate` while the thread row is missing transiently.
+  const threadRef = useMemo(
+    () => resolveThreadRouteRef(routeParams),
+    [routeParams.environmentId, routeParams.threadId],
+  );
   const search = Route.useSearch();
   const bootstrapComplete = useStore(
     (store) => selectEnvironmentState(store, threadRef?.environmentId ?? null).bootstrapComplete,
@@ -62,7 +69,7 @@ function ChatThreadRouteView() {
     [threadRef],
   );
 
-  if (!threadRef || !bootstrapComplete || !routeThreadExists) {
+  if (!threadRef) {
     return null;
   }
 

@@ -4,6 +4,8 @@ import { RouterProvider } from "@tanstack/react-router";
 import { createHashHistory, createBrowserHistory } from "@tanstack/react-router";
 
 import "@xterm/xterm/css/xterm.css";
+import "@fontsource-variable/dm-sans";
+import "@fontsource-variable/dm-sans/wght-italic.css";
 import "./index.css";
 
 import { isElectron } from "./env";

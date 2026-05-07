@@ -82,7 +82,11 @@ function describeSlowRpcAckToast(requests: ReadonlyArray<SlowRpcAckRequest>): st
   return `${count} 个请求等待超过 ${thresholdSeconds} 秒。`;
 }
 
-function SlowRpcAckRequestDetails({ requests }: { readonly requests: ReadonlyArray<SlowRpcAckRequest> }) {
+function SlowRpcAckRequestDetails({
+  requests,
+}: {
+  readonly requests: ReadonlyArray<SlowRpcAckRequest>;
+}) {
   return (
     <ul className="space-y-2.5 text-xs text-muted-foreground">
       {requests.map((req) => (
@@ -152,6 +156,9 @@ export function WebSocketConnectionCoordinator() {
       toastResetTimerRef.current = null;
     }
     lastForcedReconnectAtRef.current = Date.now();
+    console.info("[t3][ws-trace] UI invoking primary EnvironmentConnection.reconnect", {
+      showFailureToast,
+    });
     void getPrimaryEnvironmentConnection()
       .reconnect()
       .catch((error) => {
@@ -163,8 +170,7 @@ export function WebSocketConnectionCoordinator() {
           stackedThreadToast({
             type: "error",
             title: "重新连接失败",
-            description:
-              error instanceof Error ? error.message : "无法重启 WebSocket。",
+            description: error instanceof Error ? error.message : "无法重启 WebSocket。",
             data: {
               dismissAfterVisibleMs: 8_000,
               hideCopyButton: true,
@@ -276,9 +282,7 @@ export function WebSocketConnectionCoordinator() {
       toastResetTimerRef.current = null;
     }
 
-    function showOrUpdateToast(
-      toastPayload: ReturnType<typeof stackedThreadToast>,
-    ): void {
+    function showOrUpdateToast(toastPayload: ReturnType<typeof stackedThreadToast>): void {
       if (toastIdRef.current) {
         toastManager.update(toastIdRef.current, toastPayload);
       } else {
@@ -334,7 +338,8 @@ export function WebSocketConnectionCoordinator() {
     const shouldShowOfflineToast = uiState === "offline" && status.disconnectedAt !== null;
     const shouldShowExhaustedToast = status.hasConnected && status.reconnectPhase === "exhausted";
     const shouldShowReconnectToast = status.hasConnected && uiState === "reconnecting";
-    const hasConnectionToast = shouldShowOfflineToast || shouldShowExhaustedToast || shouldShowReconnectToast;
+    const hasConnectionToast =
+      shouldShowOfflineToast || shouldShowExhaustedToast || shouldShowReconnectToast;
 
     if (hasConnectionToast) {
       clearToastTimer();

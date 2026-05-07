@@ -39,6 +39,11 @@ interface EnvironmentConnectionInput extends OrchestrationHandlers {
   readonly refreshMetadata?: () => Promise<void>;
   readonly onConfigSnapshot?: (config: ServerConfig) => void;
   readonly onWelcome?: (payload: ServerLifecycleWelcomePayload) => void;
+  /**
+   * Runs after the transport reconnects and a fresh orchestration shell snapshot
+   * has been received (bootstrap gate resolved).
+   */
+  readonly onAfterReconnect?: () => void;
 }
 
 function createBootstrapGate() {
@@ -83,6 +88,13 @@ export function createEnvironmentConnection(
 
   let disposed = false;
   const bootstrapGate = createBootstrapGate();
+  /**
+   * During `EnvironmentConnection.reconnect`, `subscribeShell`'s transport loop may call
+   * `onResubscribe` after `client.reconnect()` resolves but before `bootstrapGate.wait()` runs.
+   * An extra `reset()` there replaces `promise` while `wait()` still references the previous
+   * promise → deadlock: no shell RPC resubscribe on the new socket (server sees TCP up only).
+   */
+  let suppressShellSubscriptionBootstrapGateReset = false;
 
   const observeEnvironmentIdentity = (nextEnvironmentId: EnvironmentId, source: string) => {
     if (environmentId !== nextEnvironmentId) {
@@ -119,6 +131,11 @@ export function createEnvironmentConnection(
     (item: Parameters<Parameters<WsRpcClient["orchestration"]["subscribeShell"]>[0]>[0]) => {
       if (item.kind === "snapshot") {
         input.syncShellSnapshot(item.snapshot, environmentId);
+        console.info("[t3][ws-trace] bootstrapGate.resolve", {
+          environmentId,
+          reason: "subscribeShell.snapshot",
+          snapshotSequence: item.snapshot.snapshotSequence,
+        });
         bootstrapGate.resolve();
         return;
       }
@@ -129,6 +146,17 @@ export function createEnvironmentConnection(
         if (disposed) {
           return;
         }
+        if (suppressShellSubscriptionBootstrapGateReset) {
+          console.info("[t3][ws-trace] bootstrapGate.reset skipped", {
+            environmentId,
+            reason: "subscribeShell.onResubscribe during EnvironmentConnection.reconnect",
+          });
+          return;
+        }
+        console.info("[t3][ws-trace] bootstrapGate.reset", {
+          environmentId,
+          reason: "subscribeShell.onResubscribe",
+        });
         bootstrapGate.reset();
       },
     },
@@ -155,14 +183,31 @@ export function createEnvironmentConnection(
     client: input.client,
     ensureBootstrapped: () => bootstrapGate.wait(),
     reconnect: async () => {
+      console.log("【中断重连】EnvironmentConnection.reconnect 开始", { environmentId });
+      suppressShellSubscriptionBootstrapGateReset = true;
       bootstrapGate.reset();
+      console.log("【中断重连】bootstrapGate 已重置", {
+        environmentId,
+        reason: "EnvironmentConnection.reconnect",
+      });
       try {
         await input.client.reconnect();
+        console.log("【中断重连】传输层已升级", { environmentId });
         await input.refreshMetadata?.();
+        console.log("【中断重连】等待 bootstrapGate 解决...", { environmentId });
         await bootstrapGate.wait();
+        console.log("【中断重连】bootstrapGate.wait 已解决", { environmentId });
+        input.onAfterReconnect?.();
+        console.log("【中断重连】onAfterReconnect 执行完成", { environmentId });
       } catch (error) {
+        console.error("【中断重连】重连失败", {
+          environmentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
         bootstrapGate.reject(error);
         throw error;
+      } finally {
+        suppressShellSubscriptionBootstrapGateReset = false;
       }
     },
     dispose: async () => {

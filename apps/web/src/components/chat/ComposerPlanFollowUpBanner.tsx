@@ -3,7 +3,7 @@ import { memo } from "react";
 export const ComposerPlanFollowUpBanner = memo(function ComposerPlanFollowUpBanner({
   planTitle,
 }: {
-  planTitle: string | null;
+  readonly planTitle: string | null;
 }) {
   return (
     <div className="px-4 py-3.5 sm:px-5 sm:py-4">

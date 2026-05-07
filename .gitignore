@@ -29,3 +29,6 @@ dist/
 .github/
 .plans/
 .vscode/
+
+# Wolf / editor hook scratch — unstable paths break `git add` during checkpoints
+.wolf/

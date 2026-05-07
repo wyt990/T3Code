@@ -50,12 +50,12 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   onToggleOption,
   onAdvance,
 }: {
-  prompt: PendingUserInput;
-  isResponding: boolean;
-  answers: Record<string, PendingUserInputDraftAnswer>;
-  questionIndex: number;
-  onToggleOption: (questionId: string, optionLabel: string) => void;
-  onAdvance: () => void;
+  readonly prompt: PendingUserInput;
+  readonly isResponding: boolean;
+  readonly answers: Record<string, PendingUserInputDraftAnswer>;
+  readonly questionIndex: number;
+  readonly onToggleOption: (questionId: string, optionLabel: string) => void;
+  readonly onAdvance: () => void;
 }) {
   const progress = derivePendingUserInputProgress(prompt.questions, answers, questionIndex);
   const activeQuestion = progress.activeQuestion;

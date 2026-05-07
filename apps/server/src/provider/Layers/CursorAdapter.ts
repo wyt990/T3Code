@@ -285,7 +285,7 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
     const fileSystem = yield* FileSystem.FileSystem;
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const serverConfig = yield* Effect.service(ServerConfig);
-    const serverSettingsService = yield* ServerSettingsService;
+    const serverSettings = yield* ServerSettingsService;
     const nativeEventLogger =
       options?.nativeEventLogger ??
       (options?.nativeEventLogPath !== undefined
@@ -446,14 +446,14 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
             yield* stopSessionInternal(existing);
           }
 
-          const cursorSettings = yield* serverSettingsService.getSettings.pipe(
+          const cursorSettings = yield* serverSettings.getSettings.pipe(
             Effect.map((settings) => settings.providers.cursor),
             Effect.mapError(
               (error) =>
-                new ProviderAdapterProcessError({
+                new ProviderAdapterValidationError({
                   provider: PROVIDER,
-                  threadId: input.threadId,
-                  detail: error.message,
+                  operation: "startSession",
+                  issue: `Failed to load server settings: ${error.message}`,
                   cause: error,
                 }),
             ),

@@ -21,6 +21,20 @@ export function isLinuxPlatform(platform: string): boolean {
   return /linux/i.test(platform);
 }
 
+/**
+ * Get the platform string without using the deprecated `navigator.platform` API.
+ * Reads from `navigator.userAgent` and maps to a platform string compatible
+ * with `isMacPlatform` / `isWindowsPlatform` / `isLinuxPlatform`.
+ */
+export function getPlatformString(): string {
+  if (typeof navigator === "undefined") return "";
+  const ua = navigator.userAgent;
+  if (/mac|iphone|ipad|ipod/i.test(ua)) return "MacIntel";
+  if (/windows/i.test(ua)) return "Win32";
+  if (/linux/i.test(ua)) return "Linux";
+  return ua;
+}
+
 export function randomUUID(): string {
   if (typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();

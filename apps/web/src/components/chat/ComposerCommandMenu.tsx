@@ -59,7 +59,7 @@ type ComposerCommandGroup = {
   items: ComposerCommandItem[];
 };
 
-function SkillGlyph(props: { className?: string }) {
+function SkillGlyph(props: { readonly className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -104,15 +104,15 @@ function groupCommandItems(
 }
 
 export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
-  items: ComposerCommandItem[];
-  resolvedTheme: "light" | "dark" | "shuxiang";
-  isLoading: boolean;
-  triggerKind: ComposerTriggerKind | null;
-  groupSlashCommandSections?: boolean;
-  emptyStateText?: string;
-  activeItemId: string | null;
-  onHighlightedItemChange: (itemId: string | null) => void;
-  onSelect: (item: ComposerCommandItem) => void;
+  readonly items: ComposerCommandItem[];
+  readonly resolvedTheme: "light" | "dark" | "shuxiang";
+  readonly isLoading: boolean;
+  readonly triggerKind: ComposerTriggerKind | null;
+  readonly groupSlashCommandSections?: boolean;
+  readonly emptyStateText?: string;
+  readonly activeItemId: string | null;
+  readonly onHighlightedItemChange: (itemId: string | null) => void;
+  readonly onSelect: (item: ComposerCommandItem) => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(
@@ -199,11 +199,11 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
 });
 
 const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
-  item: ComposerCommandItem;
-  resolvedTheme: "light" | "dark" | "shuxiang";
-  isActive: boolean;
-  onHighlight: (itemId: string | null) => void;
-  onSelect: (item: ComposerCommandItem) => void;
+  readonly item: ComposerCommandItem;
+  readonly resolvedTheme: "light" | "dark" | "shuxiang";
+  readonly isActive: boolean;
+  readonly onHighlight: (itemId: string | null) => void;
+  readonly onSelect: (item: ComposerCommandItem) => void;
 }) {
   const skillSourceLabel =
     props.item.type === "skill" ? formatProviderSkillInstallSource(props.item.skill) : null;

@@ -10,11 +10,11 @@ import { VscodeEntryIcon } from "./VscodeEntryIcon";
 const EMPTY_DIRECTORY_OVERRIDES: Record<string, boolean> = {};
 
 export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
-  turnId: TurnId;
-  files: ReadonlyArray<TurnDiffFileChange>;
-  allDirectoriesExpanded: boolean;
-  resolvedTheme: "light" | "dark" | "shuxiang";
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  readonly turnId: TurnId;
+  readonly files: ReadonlyArray<TurnDiffFileChange>;
+  readonly allDirectoriesExpanded: boolean;
+  readonly resolvedTheme: "light" | "dark" | "shuxiang";
+  readonly onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
   const { files, allDirectoriesExpanded, onOpenTurnDiff, resolvedTheme, turnId } = props;
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);

@@ -48,6 +48,7 @@ import {
   getProviderOptionDescriptors,
   resolvePromptInjectedEffort,
 } from "@t3tools/shared/model";
+import { T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT } from "../T3AgentSidebarLocaleInstructions.ts";
 import {
   Cause,
   DateTime,
@@ -970,6 +971,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
   const serverConfig = yield* ServerConfig;
+  const serverSettings = yield* ServerSettingsService;
   const nativeEventLogger =
     options?.nativeEventLogger ??
     (options?.nativeEventLogPath !== undefined
@@ -991,7 +993,6 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
   const sessions = new Map<ThreadId, ClaudeSessionContext>();
   const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
-  const serverSettingsService = yield* ServerSettingsService;
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   const nextEventId = Effect.map(Random.nextUUIDv4, (id) => EventId.make(id));
@@ -2822,14 +2823,14 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const canUseTool: CanUseTool = (toolName, toolInput, callbackOptions) =>
         runPromise(canUseToolEffect(toolName, toolInput, callbackOptions));
 
-      const claudeSettings = yield* serverSettingsService.getSettings.pipe(
+      const claudeSettings = yield* serverSettings.getSettings.pipe(
         Effect.map((settings) => settings.providers.claudeAgent),
         Effect.mapError(
           (error) =>
-            new ProviderAdapterProcessError({
+            new ProviderAdapterValidationError({
               provider: PROVIDER,
-              threadId: input.threadId,
-              detail: error.message,
+              operation: "startSession",
+              issue: `Failed to load server settings: ${error.message}`,
               cause: error,
             }),
         ),
@@ -2866,11 +2867,13 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(fastMode ? { fastMode: true } : {}),
       };
 
-      const queryOptions: ClaudeQueryOptions = {
+      // Runtime supports `additionalInstructions` (see Claude Code docs); SDK `Options` types may lag.
+      const queryOptions = {
         ...(input.cwd ? { cwd: input.cwd } : {}),
         ...(apiModelId ? { model: apiModelId } : {}),
         pathToClaudeCodeExecutable: claudeBinaryPath,
         settingSources: [...CLAUDE_SETTING_SOURCES],
+        additionalInstructions: T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT,
         // The SDK type lags the CLI here: Opus 4.7 accepts `xhigh` even though
         // the published `Options["effort"]` union currently stops at `max`.
         ...(effectiveEffort
@@ -2904,7 +2907,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         })(),
         ...(input.cwd ? { additionalDirectories: [input.cwd] } : {}),
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
-      };
+      } as ClaudeQueryOptions;
 
       yield* Effect.annotateCurrentSpan({
         "provider.kind": PROVIDER,

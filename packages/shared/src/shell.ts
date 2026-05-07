@@ -393,8 +393,15 @@ export function isCommandAvailable(
 
   const pathValue = resolvePathEnvironmentVariable(env);
   if (pathValue.length === 0) return false;
+
+  // Detect if pathValue looks like a Windows path (contains ":\") even if platform is not win32
+  const looksLikeWindowsPath = /:[\\]/.test(pathValue);
+  const delimiter = looksLikeWindowsPath
+    ? WINDOWS_PATH_DELIMITER
+    : pathDelimiterForPlatform(platform);
+
   const pathEntries = pathValue
-    .split(pathDelimiterForPlatform(platform))
+    .split(delimiter)
     .map((entry) => stripWrappingQuotes(entry.trim()))
     .filter((entry) => entry.length > 0);
 

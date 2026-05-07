@@ -34,10 +34,10 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   cwd,
   workspaceRoot,
 }: {
-  planMarkdown: string;
-  environmentId: EnvironmentId;
-  cwd: string | undefined;
-  workspaceRoot: string | undefined;
+  readonly planMarkdown: string;
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string | undefined;
+  readonly workspaceRoot: string | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);

@@ -44,10 +44,10 @@ export const MessageCopyButton = memo(function MessageCopyButton({
   variant = "outline",
   className,
 }: {
-  text: string;
-  size?: "xs" | "icon-xs";
-  variant?: "outline" | "ghost";
-  className?: string;
+  readonly text: string;
+  readonly size?: "xs" | "icon-xs";
+  readonly variant?: "outline" | "ghost";
+  readonly className?: string;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   const { copyToClipboard, isCopied } = useCopyToClipboard<void>({

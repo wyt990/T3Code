@@ -4,10 +4,10 @@ import { FileIcon, FolderIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 
 export const VscodeEntryIcon = memo(function VscodeEntryIcon(props: {
-  pathValue: string;
-  kind: "file" | "directory";
-  theme: "light" | "dark";
-  className?: string;
+  readonly pathValue: string;
+  readonly kind: "file" | "directory";
+  readonly theme: "light" | "dark";
+  readonly className?: string;
 }) {
   const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
   const iconUrl = useMemo(

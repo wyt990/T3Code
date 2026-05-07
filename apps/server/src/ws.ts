@@ -112,6 +112,7 @@ function installClaudeCode(
     // Build proxy environment variables for Linux/macOS
     const proxyEnv = proxy ? buildProxyProcessEnv(proxy) : {};
 
+    // @effect-diagnostics-next-line tryCatchInEffectGen:off
     try {
       let result;
 
@@ -175,6 +176,7 @@ function installClaudeCode(
         );
 
         // Clean up temp script
+        // @effect-diagnostics-next-line tryCatchInEffectGen:off
         try {
           require("fs").unlinkSync(scriptPath);
         } catch {
@@ -284,7 +286,7 @@ function toAuthAccessStreamEvent(
   }
 }
 
-const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
+const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
@@ -796,19 +798,29 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             ),
             { "rpc.aggregate": "orchestration" },
           ),
-        [ORCHESTRATION_WS_METHODS.replayEvents]: (input) =>
-          observeRpcEffect(
+        [ORCHESTRATION_WS_METHODS.replayEvents]: (input) => {
+          const fromSequenceExclusive = clamp(input.fromSequenceExclusive, {
+            maximum: Number.MAX_SAFE_INTEGER,
+            minimum: 0,
+          });
+          return observeRpcEffect(
             ORCHESTRATION_WS_METHODS.replayEvents,
-            Stream.runCollect(
-              orchestrationEngine.readEvents(
-                clamp(input.fromSequenceExclusive, {
-                  maximum: Number.MAX_SAFE_INTEGER,
-                  minimum: 0,
-                }),
-              ),
-            ).pipe(
+            Stream.runCollect(orchestrationEngine.readEvents(fromSequenceExclusive)).pipe(
               Effect.map((events) => Array.from(events)),
               Effect.flatMap(enrichOrchestrationEvents),
+              Effect.tap((events) => {
+                const maxReturnedSequence =
+                  events.length === 0
+                    ? undefined
+                    : Math.max(...events.map((event) => event.sequence));
+                return Effect.logInfo(
+                  `【中断重连】编排事件重放：客户端请求 fromSequenceExclusive=${fromSequenceExclusive}（严格大于该序号的已提交事件将被返回），本响应事件数=${events.length}。若为 0，通常表示客户端投影序号已与服务器对齐或尚无更新。wsTraceId=${wsTraceId}${
+                    maxReturnedSequence !== undefined
+                      ? ` maxReturnedSequence=${maxReturnedSequence}`
+                      : ""
+                  }`,
+                );
+              }),
               Effect.mapError(
                 (cause) =>
                   new OrchestrationReplayEventsError({
@@ -818,7 +830,8 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               ),
             ),
             { "rpc.aggregate": "orchestration" },
-          ),
+          );
+        },
         [ORCHESTRATION_WS_METHODS.subscribeShell]: (_input) =>
           observeRpcStreamEffect(
             ORCHESTRATION_WS_METHODS.subscribeShell,
@@ -831,6 +844,10 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                       cause,
                     }),
                 ),
+              );
+
+              yield* Effect.logInfo(
+                `【中断重连】编排 Shell 流：即将下发初始快照；snapshotSequence=${snapshot.snapshotSequence}，线程数=${snapshot.threads.length}，项目数=${snapshot.projects.length}。wsTraceId=${wsTraceId}。断线重连后客户端应重新建立此流以校准侧边栏与线程列表。`,
               );
 
               const liveStream = orchestrationEngine.streamDomainEvents.pipe(
@@ -876,6 +893,11 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 });
               }
 
+              const thread = threadDetail.value;
+              yield* Effect.logInfo(
+                `【中断重连】编排线程流：即将下发初始快照；threadId=${input.threadId}，readModelSnapshotSequence=${snapshotSequence}，消息条数=${thread.messages.length}，latestTurn.state=${thread.latestTurn?.state ?? "null"}，session.status=${thread.session?.status ?? "null"}。wsTraceId=${wsTraceId}。断线重连后若未重新订阅此流，前端会一直停留在旧 UI（例如卡在「工作中」）。`,
+              );
+
               const liveStream = orchestrationEngine.streamDomainEvents.pipe(
                 Stream.filter(
                   (event) =>
@@ -903,7 +925,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                   kind: "snapshot" as const,
                   snapshot: {
                     snapshotSequence,
-                    thread: threadDetail.value,
+                    thread,
                   },
                 }),
                 Stream.merge(liveStream, heartbeatStream),
@@ -992,7 +1014,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                   events.push(event);
                 }),
               );
-              const lastEvent = events[events.length - 1];
+              const lastEvent = events.at(-1);
               if (lastEvent?.type === "success") {
                 return { success: true, stdout: lastEvent.stdout, stderr: lastEvent.stderr };
               }
@@ -1302,6 +1324,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
         const serverAuth = yield* ServerAuth;
         const sessions = yield* SessionCredentialService;
         const session = yield* serverAuth.authenticateWebSocketUpgrade(request);
+        const wsTraceId = crypto.randomUUID();
         const rpcWebSocketHttpEffect = yield* RpcServer.toHttpEffectWebsocket(WsRpcGroup, {
           spanPrefix: "ws.rpc",
           spanAttributes: {
@@ -1310,13 +1333,32 @@ export const websocketRpcRouteLayer = Layer.unwrap(
           },
         }).pipe(
           Effect.provide(
-            makeWsRpcLayer(session.sessionId).pipe(Layer.provideMerge(RpcSerialization.layerJson)),
+            makeWsRpcLayer(session.sessionId, wsTraceId).pipe(
+              Layer.provideMerge(RpcSerialization.layerJson),
+            ),
           ),
         );
         return yield* Effect.acquireUseRelease(
-          sessions.markConnected(session.sessionId),
+          sessions
+            .markConnected(session.sessionId)
+            .pipe(
+              Effect.tap(() =>
+                Effect.logInfo(
+                  `【中断重连】WebSocket 传输层已接通（含首次连接与断线后的重连）。sessionId=${String(session.sessionId)} wsTraceId=${wsTraceId}。后续客户端应发起 subscribeShell、subscribeThread 等订阅；若仅 TCP 恢复而未重建订阅，界面可能不会同步最新回合与消息。`,
+                ),
+              ),
+            ),
           () => rpcWebSocketHttpEffect,
-          () => sessions.markDisconnected(session.sessionId),
+          () =>
+            sessions
+              .markDisconnected(session.sessionId)
+              .pipe(
+                Effect.tap(() =>
+                  Effect.logInfo(
+                    `【中断重连】WebSocket 传输层已断开。sessionId=${String(session.sessionId)} wsTraceId=${wsTraceId}。服务端编排与线程数据仍保留；客户端重连后需重新订阅流或调用 replayEvents 补拉缺失事件，否则 UI 可能仍显示断线前的状态。`,
+                  ),
+                ),
+              ),
         );
       }).pipe(Effect.catchTag("AuthError", respondToAuthError)),
     ),

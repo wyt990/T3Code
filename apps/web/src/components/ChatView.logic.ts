@@ -1,14 +1,36 @@
 import {
   type EnvironmentId,
+  type MessageId,
   ProjectId,
   type ModelSelection,
   type ProviderKind,
   type ScopedThreadRef,
+  type ServerProvider,
   type ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
-import { type ChatMessage, type SessionPhase, type Thread, type ThreadSession } from "../types";
-import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
+import { applyClaudePromptEffortPrefix, resolvePromptInjectedEffort } from "@t3tools/shared/model";
+import {
+  deriveLogicalProjectKeyFromSettings,
+  type ProjectGroupingSettings,
+} from "../logicalProject";
+import { getProviderModelCapabilities } from "../providerModels";
+import type { TimelineEntry } from "../session-logic";
+import {
+  type ChatMessage,
+  type Project,
+  type SessionPhase,
+  type Thread,
+  type ThreadSession,
+  type TurnDiffSummary,
+} from "../types";
+import type { EnvironmentOption } from "./BranchToolbar.logic";
+import { resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
+import {
+  type ComposerImageAttachment,
+  type DraftThreadEnvMode,
+  type DraftThreadState,
+} from "../composerDraftStore";
 import { Schema } from "effect";
 import { selectThreadByRef, useStore } from "../store";
 import {
@@ -16,7 +38,6 @@ import {
   stripInlineTerminalContextPlaceholders,
   type TerminalContextDraft,
 } from "../lib/terminalContext";
-import type { DraftThreadEnvMode } from "../composerDraftStore";
 
 export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by-project";
 export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
@@ -128,7 +149,7 @@ export function collectUserMessageBlobPreviewUrls(message: ChatMessage): string[
   const previewUrls: string[] = [];
   for (const attachment of message.attachments) {
     if (attachment.type !== "image") continue;
-    if (!attachment.previewUrl || !attachment.previewUrl.startsWith("blob:")) continue;
+    if (!attachment.previewUrl?.startsWith("blob:")) continue;
     previewUrls.push(attachment.previewUrl);
   }
   return previewUrls;
@@ -356,4 +377,154 @@ export function hasServerAcknowledgedLocalDispatch(input: {
     input.localDispatch.sessionOrchestrationStatus !== (session?.orchestrationStatus ?? null) ||
     input.localDispatch.sessionUpdatedAt !== (session?.updatedAt ?? null)
   );
+}
+
+export const IMAGE_ONLY_BOOTSTRAP_PROMPT =
+  "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
+
+export function formatOutgoingPrompt(params: {
+  provider: ProviderKind;
+  model: string | null;
+  models: ReadonlyArray<ServerProvider["models"][number]>;
+  effort: string | null;
+  text: string;
+}): string {
+  const caps = getProviderModelCapabilities(params.models, params.model, params.provider);
+  const promptEffort = resolvePromptInjectedEffort(caps, params.effort);
+  return applyClaudePromptEffortPrefix(params.text, promptEffort);
+}
+
+export function mergeTimelineMessagesWithAttachmentHandoff(input: {
+  serverMessages: ChatMessage[] | undefined;
+  attachmentPreviewHandoffByMessageId: Record<string, string[]>;
+  optimisticUserMessages: ChatMessage[];
+}): ChatMessage[] {
+  const messages = input.serverMessages ?? [];
+  const { attachmentPreviewHandoffByMessageId, optimisticUserMessages } = input;
+  const serverMessagesWithPreviewHandoff =
+    Object.keys(attachmentPreviewHandoffByMessageId).length === 0
+      ? messages
+      : messages.map((message) => {
+          if (message.role !== "user" || !message.attachments || message.attachments.length === 0) {
+            return message;
+          }
+          const handoffPreviewUrls = attachmentPreviewHandoffByMessageId[message.id];
+          if (!handoffPreviewUrls || handoffPreviewUrls.length === 0) {
+            return message;
+          }
+
+          let changed = false;
+          let imageIndex = 0;
+          const attachments = message.attachments.map((attachment) => {
+            if (attachment.type !== "image") {
+              return attachment;
+            }
+            const handoffPreviewUrl = handoffPreviewUrls[imageIndex];
+            imageIndex += 1;
+            if (!handoffPreviewUrl || attachment.previewUrl === handoffPreviewUrl) {
+              return attachment;
+            }
+            changed = true;
+            return {
+              ...attachment,
+              previewUrl: handoffPreviewUrl,
+            };
+          });
+
+          return changed ? { ...message, attachments } : message;
+        });
+
+  if (optimisticUserMessages.length === 0) {
+    return serverMessagesWithPreviewHandoff;
+  }
+  const serverIds = new Set(serverMessagesWithPreviewHandoff.map((message) => message.id));
+  const pendingMessages = optimisticUserMessages.filter((message) => !serverIds.has(message.id));
+  if (pendingMessages.length === 0) {
+    return serverMessagesWithPreviewHandoff;
+  }
+  return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
+}
+
+export function buildRevertTurnCountByUserMessageIdFromTimeline(input: {
+  timelineEntries: TimelineEntry[];
+  turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
+  inferredCheckpointTurnCountByTurnId: Record<TurnId, number>;
+}): Map<MessageId, number> {
+  const byUserMessageId = new Map<MessageId, number>();
+  for (let index = 0; index < input.timelineEntries.length; index += 1) {
+    const entry = input.timelineEntries[index];
+    if (!entry || entry.kind !== "message" || entry.message.role !== "user") {
+      continue;
+    }
+
+    for (let nextIndex = index + 1; nextIndex < input.timelineEntries.length; nextIndex += 1) {
+      const nextEntry = input.timelineEntries[nextIndex];
+      if (!nextEntry || nextEntry.kind !== "message") {
+        continue;
+      }
+      if (nextEntry.message.role === "user") {
+        break;
+      }
+      const summary = input.turnDiffSummaryByAssistantMessageId.get(nextEntry.message.id);
+      if (!summary) {
+        continue;
+      }
+      const turnCount =
+        summary.checkpointTurnCount ?? input.inferredCheckpointTurnCountByTurnId[summary.turnId];
+      if (typeof turnCount !== "number") {
+        break;
+      }
+      byUserMessageId.set(entry.message.id, Math.max(0, turnCount - 1));
+      break;
+    }
+  }
+
+  return byUserMessageId;
+}
+
+export function buildLogicalProjectEnvironmentPickerOptions(input: {
+  activeProject: Project | null | undefined;
+  allProjects: readonly Project[];
+  projectGroupingSettings: ProjectGroupingSettings;
+  primaryEnvironmentId: EnvironmentId | null;
+  savedEnvironmentRegistry: Record<EnvironmentId, { label?: string | null } | null | undefined>;
+  savedEnvironmentRuntimeById: Record<
+    EnvironmentId,
+    { descriptor?: { label?: string | null } | null } | null | undefined
+  >;
+}): EnvironmentOption[] {
+  if (!input.activeProject) return [];
+  const logicalKey = deriveLogicalProjectKeyFromSettings(
+    input.activeProject,
+    input.projectGroupingSettings,
+  );
+  const memberProjects = input.allProjects.filter(
+    (p) => deriveLogicalProjectKeyFromSettings(p, input.projectGroupingSettings) === logicalKey,
+  );
+  const seen = new Set<string>();
+  const envs: EnvironmentOption[] = [];
+  for (const p of memberProjects) {
+    if (seen.has(p.environmentId)) continue;
+    seen.add(p.environmentId);
+    const isPrimary = p.environmentId === input.primaryEnvironmentId;
+    const savedRecord = input.savedEnvironmentRegistry[p.environmentId];
+    const runtimeState = input.savedEnvironmentRuntimeById[p.environmentId];
+    const label = resolveEnvironmentOptionLabel({
+      isPrimary,
+      environmentId: p.environmentId,
+      runtimeLabel: runtimeState?.descriptor?.label ?? null,
+      savedLabel: savedRecord?.label ?? null,
+    });
+    envs.push({
+      environmentId: p.environmentId,
+      projectId: p.id,
+      label,
+      isPrimary,
+    });
+  }
+  envs.sort((a, b) => {
+    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+    return a.label.localeCompare(b.label);
+  });
+  return envs;
 }

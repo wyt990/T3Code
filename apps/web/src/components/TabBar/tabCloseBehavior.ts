@@ -40,6 +40,17 @@ export function closeTabsAndSyncRoute(args: CloseTabsAndSyncRouteArgs): void {
   });
   suppressClosedTabTargets(closedTargets);
 
+  console.log(
+    "%c【关闭导航】准备关闭标签并导航",
+    "background:#ef4444;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+    {
+      关闭IDs: closableTabIds,
+      active将关闭: activeWillClose,
+      关闭草稿IDs: closingDraftIds,
+      调用栈: new Error().stack?.split("\n").slice(2, 6).join(" → "),
+    },
+  );
+
   store.closeTabs(closableTabIds);
 
   if (closingDraftIds.length > 0) {
@@ -50,10 +61,25 @@ export function closeTabsAndSyncRoute(args: CloseTabsAndSyncRouteArgs): void {
   }
 
   if (!activeWillClose) {
+    console.log(
+      "%c【关闭导航】active 未关闭，无需导航",
+      "background:#6b7280;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+    );
     return;
   }
 
   const fallbackTarget = pickFallbackTargetFromTabs(useUiStateStore.getState().tabs);
+  console.log(
+    "%c【关闭导航】导航到 fallback 目标",
+    "background:#f59e0b;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+    {
+      fallbackTarget: fallbackTarget
+        ? fallbackTarget.kind === "server"
+          ? `会话(${fallbackTarget.threadRef.environmentId}/${fallbackTarget.threadRef.threadId})`
+          : `草稿(${fallbackTarget.draftId})`
+        : "(无，导航到首页)",
+    },
+  );
   if (fallbackTarget?.kind === "server") {
     void navigate({
       to: "/$environmentId/$threadId",

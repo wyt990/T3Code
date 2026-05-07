@@ -1,4 +1,9 @@
-import { KeybindingCommand, KeybindingRule, KeybindingsConfig } from "@t3tools/contracts";
+import {
+  KeybindingCommand,
+  KeybindingRule,
+  KeybindingsConfig,
+  KeybindingsConfigError,
+} from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { assertFailure } from "@effect/vitest/utils";
@@ -14,7 +19,6 @@ import {
   compileResolvedKeybindingsConfig,
   parseKeybindingShortcut,
 } from "./keybindings.ts";
-import { KeybindingsConfigError } from "@t3tools/contracts";
 
 const KeybindingsConfigJson = Schema.fromJsonString(KeybindingsConfig);
 const makeKeybindingsLayer = () => {
@@ -505,7 +509,7 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
         yield* Effect.all(
           commands.map((command, index) =>
             keybindings.upsertKeybindingRule({
-              key: `mod+${String.fromCharCode(97 + index)}`,
+              key: `mod+${String.fromCodePoint(97 + index)}`,
               command,
             }),
           ),

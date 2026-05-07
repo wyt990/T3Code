@@ -225,29 +225,31 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(OrchestrationLayerLive),
 );
 
-const RuntimeDependenciesLive = ReactorLayerLive.pipe(
-  // Core Services
-  Layer.provideMerge(CheckpointingLayerLive),
-  Layer.provideMerge(GitLayerLive),
-  Layer.provideMerge(ProviderRuntimeLayerLive),
-  Layer.provideMerge(TerminalLayerLive),
-  Layer.provideMerge(PersistenceLayerLive),
-  Layer.provideMerge(KeybindingsLive),
-  Layer.provideMerge(ProviderRegistryLive),
-  Layer.provideMerge(ProviderInstallerLive),
-  Layer.provideMerge(ServerSettingsLive),
-  Layer.provideMerge(WorkspaceLayerLive),
-  Layer.provideMerge(ProjectFaviconResolverLive),
-  Layer.provideMerge(RepositoryIdentityResolverLive),
-  Layer.provideMerge(ServerEnvironmentLive),
-  Layer.provideMerge(AuthLayerLive),
+const RuntimeDependenciesLive = Layer.empty
+  .pipe(
+    Layer.provideMerge(ReactorLayerLive),
+    // Core Services
+    Layer.provideMerge(CheckpointingLayerLive),
+    Layer.provideMerge(GitLayerLive),
+    Layer.provideMerge(ProviderRuntimeLayerLive),
+    Layer.provideMerge(TerminalLayerLive),
+    Layer.provideMerge(PersistenceLayerLive),
+    Layer.provideMerge(KeybindingsLive),
+    Layer.provideMerge(ProviderRegistryLive),
+    Layer.provideMerge(ProviderInstallerLive),
+    Layer.provideMerge(WorkspaceLayerLive),
+    Layer.provideMerge(ProjectFaviconResolverLive),
+    Layer.provideMerge(RepositoryIdentityResolverLive),
+    Layer.provideMerge(ServerEnvironmentLive),
+    Layer.provideMerge(AuthLayerLive),
 
-  // Misc.
-  Layer.provideMerge(AnalyticsServiceLayerLive),
-  Layer.provideMerge(OpenLive),
-  Layer.provideMerge(ServerLifecycleEventsLive),
-  Layer.provide(NetService.layer),
-);
+    // Misc.
+    Layer.provideMerge(AnalyticsServiceLayerLive),
+    Layer.provideMerge(OpenLive),
+    Layer.provideMerge(ServerLifecycleEventsLive),
+    Layer.provide(NetService.layer),
+  )
+  .pipe(Layer.provideMerge(ServerSettingsLive));
 
 const RuntimeServicesLive = ServerRuntimeStartupLive.pipe(
   Layer.provideMerge(RuntimeDependenciesLive),
@@ -328,8 +330,9 @@ export const makeServerLayer = Layer.unwrap(
 );
 
 // Important: Only `ServerConfig` should be provided by the CLI layer!!! Don't let other requirements leak into the launch layer.
-export const runServer = Layer.launch(makeServerLayer) satisfies Effect.Effect<
+// `satisfies` does not narrow the inferred type for consumers; cast so CLI handlers do not inherit the full server layer context.
+export const runServer = Layer.launch(makeServerLayer) as Effect.Effect<
   never,
-  any,
+  unknown,
   ServerConfig
 >;

@@ -40,7 +40,7 @@ describe("waitForHttpReady", () => {
               },
               { once: true },
             );
-          }) as ReturnType<typeof fetch>,
+          }),
       )
       .mockResolvedValueOnce(new Response(null, { status: 200 }));
 
@@ -58,7 +58,7 @@ describe("waitForHttpReady", () => {
     const controller = new AbortController();
     const fetchImpl = vi.fn<typeof fetch>().mockImplementation(
       () =>
-        new Promise((_resolve, reject) => {
+        new Promise<Response>((_resolve, reject) => {
           controller.signal.addEventListener(
             "abort",
             () => {
@@ -66,7 +66,7 @@ describe("waitForHttpReady", () => {
             },
             { once: true },
           );
-        }) as ReturnType<typeof fetch>,
+        }),
     );
 
     const waitPromise = waitForHttpReady("http://127.0.0.1:3773", {

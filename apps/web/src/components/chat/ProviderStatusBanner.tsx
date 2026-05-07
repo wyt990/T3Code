@@ -7,7 +7,7 @@ import { formatProviderKindLabel } from "../../providerModels";
 export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   status,
 }: {
-  status: ServerProvider | null;
+  readonly status: ServerProvider | null;
 }) {
   if (!status || status.status === "ready" || status.status === "disabled") {
     return null;

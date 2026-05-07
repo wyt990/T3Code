@@ -84,6 +84,7 @@ const CONFIRM_CHANNEL = "desktop:confirm";
 const SET_THEME_CHANNEL = "desktop:set-theme";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
+const OPEN_DETACHED_DEVTOOLS_CHANNEL = "desktop:open-detached-devtools";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
@@ -603,6 +604,13 @@ initializePackagedLogging();
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("class", LINUX_WM_CLASS);
 }
+
+// Background tab/window throttling can delay timers and JS-driven WebSocket upkeep, which
+// shows up as idle disconnects after the window loses focus. These switches plus
+// `webPreferences.backgroundThrottling: false` keep the renderer closer to foreground
+// behavior (tradeoff: higher CPU/battery when minimized).
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+app.commandLine.appendSwitch("disable-background-timer-throttling");
 
 function getDestructiveMenuIcon(): Electron.NativeImage | undefined {
   if (process.platform !== "darwin") return undefined;
@@ -1791,6 +1799,15 @@ function registerIpcHandlers(): void {
     }
   });
 
+  ipcMain.removeHandler(OPEN_DETACHED_DEVTOOLS_CHANNEL);
+  ipcMain.handle(OPEN_DETACHED_DEVTOOLS_CHANNEL, async () => {
+    const window = BrowserWindow.getFocusedWindow() ?? mainWindow;
+    if (!window || window.webContents.isDestroyed()) {
+      return;
+    }
+    window.webContents.openDevTools({ mode: "detach" });
+  });
+
   ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
   ipcMain.handle(UPDATE_GET_STATE_CHANNEL, async () => updateState);
 
@@ -1942,6 +1959,7 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
 

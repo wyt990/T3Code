@@ -18,7 +18,7 @@ import {
   VSCodium,
   Zed,
 } from "../Icons";
-import { isMacPlatform, isWindowsPlatform } from "~/lib/utils";
+import { getPlatformString, isMacPlatform, isWindowsPlatform } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 
 const resolveOptions = (platform: string, availableEditors: ReadonlyArray<EditorId>) => {
@@ -86,13 +86,13 @@ export const OpenInPicker = memo(function OpenInPicker({
   availableEditors,
   openInCwd,
 }: {
-  keybindings: ResolvedKeybindingsConfig;
-  availableEditors: ReadonlyArray<EditorId>;
-  openInCwd: string | null;
+  readonly keybindings: ResolvedKeybindingsConfig;
+  readonly availableEditors: ReadonlyArray<EditorId>;
+  readonly openInCwd: string | null;
 }) {
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(availableEditors);
   const options = useMemo(
-    () => resolveOptions(navigator.platform, availableEditors),
+    () => resolveOptions(getPlatformString(), availableEditors),
     [availableEditors],
   );
   const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null;

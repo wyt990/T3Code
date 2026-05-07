@@ -291,7 +291,9 @@ export const makeOrchestrationIntegrationHarness = (
           Layer.provide(AnalyticsService.layerTest),
         );
 
-    const checkpointStoreLayer = CheckpointStoreLive.pipe(Layer.provide(GitCoreLive));
+    const checkpointStoreLayer = CheckpointStoreLive.pipe(
+      Layer.provide(GitCoreLive.pipe(Layer.provide(ServerSettingsService.layerTest()))),
+    );
     const projectionSnapshotQueryLayer = OrchestrationProjectionSnapshotQueryLive;
     const runtimeServicesLayer = Layer.mergeAll(
       projectionSnapshotQueryLayer,

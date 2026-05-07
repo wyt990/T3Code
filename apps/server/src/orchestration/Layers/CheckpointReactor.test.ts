@@ -21,6 +21,7 @@ import { CheckpointStoreLive } from "../../checkpointing/Layers/CheckpointStore.
 import { CheckpointStore } from "../../checkpointing/Services/CheckpointStore.ts";
 import { GitCoreLive } from "../../git/Layers/GitCore.ts";
 import { GitStatusBroadcaster } from "../../git/Services/GitStatusBroadcaster.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import { RepositoryIdentityResolverLive } from "../../project/Layers/RepositoryIdentityResolver.ts";
 import { CheckpointReactorLive } from "./CheckpointReactor.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
@@ -293,7 +294,7 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(CheckpointStoreLive),
       Layer.provideMerge(WorkspaceEntriesLive.pipe(Layer.provide(WorkspacePathsLive))),
       Layer.provideMerge(WorkspacePathsLive),
-      Layer.provideMerge(GitCoreLive),
+      Layer.provideMerge(GitCoreLive.pipe(Layer.provide(ServerSettingsService.layerTest()))),
       Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(NodeServices.layer),
     );

@@ -24,7 +24,7 @@ describe("expandHomePath", () => {
   });
 
   it("expands a Windows-style ~\\ prefix", () => {
-    expect(expandHomePath("~\\.codex")).toBe(join(homedir(), ".codex"));
+    expect(expandHomePath(String.raw`~\.codex`)).toBe(join(homedir(), ".codex"));
   });
 
   it("does not expand ~user paths", () => {

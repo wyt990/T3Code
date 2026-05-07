@@ -514,7 +514,17 @@ function useUrlTargetSync(urlTarget: TabTarget | null): void {
     if (!urlTarget) return;
     const tabs = useUiStateStore.getState().tabs;
     const decision = decideTabActivation(tabs, urlTarget);
+    const targetLabel =
+      urlTarget.kind === "server"
+        ? `会话(${urlTarget.threadRef.environmentId}/${urlTarget.threadRef.threadId})`
+        : `草稿(${urlTarget.draftId})`;
+
     if (decision.action === "activate-existing") {
+      console.log(
+        "%c【URL同步】已有标签，直接激活",
+        "background:#f59e0b;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+        { 目标: targetLabel, 标签ID: decision.tabId, 是否已激活: decision.alreadyActive },
+      );
       if (!decision.alreadyActive) {
         useUiStateStore.getState().activateTab(decision.tabId);
       }
@@ -522,14 +532,33 @@ function useUrlTargetSync(urlTarget: TabTarget | null): void {
     }
     if (decision.action === "create") {
       if (isClosedTabTargetSuppressed(urlTarget)) {
+        console.log(
+          "%c【URL同步】目标处于关闭抑制期，跳过创建",
+          "background:#f97316;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+          { 目标: targetLabel },
+        );
         return;
       }
+      console.log(
+        "%c【URL同步】新建标签",
+        "background:#22c55e;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+        { 目标: targetLabel, 当前标签数: tabs.group.tabIds.length },
+      );
       useUiStateStore.getState().createTab(urlTarget, { newTabId: nextTabId() });
       return;
     }
     // exceeds-limit: replace the current active tab so direct URL navigations
     // (back/forward, deep links) always work even at the cap. The richer
     // "replace LRU / replace current" UX lives in Sidebar.navigateToThread (1.3).
+    console.log(
+      "%c【URL同步】已达上限，替换当前激活标签",
+      "background:#ef4444;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      {
+        目标: targetLabel,
+        当前标签数: tabs.group.tabIds.length,
+        将被替换的标签ID: tabs.group.activeTabId,
+      },
+    );
     const existingActiveId = tabs.group.activeTabId;
     if (existingActiveId) {
       useUiStateStore.getState().closeTab(existingActiveId);

@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createEnvironmentConnection } from "./connection";
 import type { WsRpcClient } from "~/rpc/wsRpcClient";
 
-function createTestClient() {
+function createTestClient(options?: { readonly deferShellResubscribeToMicrotask?: boolean }) {
+  const deferShellResubscribeToMicrotask = options?.deferShellResubscribeToMicrotask ?? false;
   const lifecycleListeners = new Set<(event: any) => void>();
   const configListeners = new Set<(event: any) => void>();
   const terminalListeners = new Set<(event: any) => void>();
@@ -14,6 +15,13 @@ function createTestClient() {
   const client = {
     dispose: vi.fn(async () => undefined),
     reconnect: vi.fn(async () => {
+      if (deferShellResubscribeToMicrotask) {
+        await Promise.resolve();
+        queueMicrotask(() => {
+          shellResubscribe?.();
+        });
+        return;
+      }
       shellResubscribe?.();
     }),
     server: {
@@ -234,6 +242,49 @@ describe("createEnvironmentConnection", () => {
     await Promise.resolve();
     expect(syncShellSnapshot).toHaveBeenCalledTimes(1);
 
+    emitShellSnapshot(2);
+    await reconnectPromise;
+
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(syncShellSnapshot).toHaveBeenCalledTimes(2);
+    expect(syncShellSnapshot).toHaveBeenLastCalledWith(
+      expect.objectContaining({ snapshotSequence: 2 }),
+      environmentId,
+    );
+
+    await connection.dispose();
+  });
+
+  it("waits for shell snapshot when subscribeShell resubscribe hooks run after transport reconnect yields", async () => {
+    const environmentId = EnvironmentId.make("env-1");
+    const { client, emitShellSnapshot } = createTestClient({
+      deferShellResubscribeToMicrotask: true,
+    });
+    const syncShellSnapshot = vi.fn();
+
+    const connection = createEnvironmentConnection({
+      kind: "saved",
+      knownEnvironment: {
+        id: "env-1",
+        label: "Remote env",
+        source: "manual",
+        target: {
+          httpBaseUrl: "http://example.test",
+          wsBaseUrl: "ws://example.test",
+        },
+        environmentId,
+      },
+      client,
+      applyShellEvent: vi.fn(),
+      syncShellSnapshot,
+      applyTerminalEvent: vi.fn(),
+    });
+
+    await connection.ensureBootstrapped();
+
+    const reconnectPromise = connection.reconnect();
+    await Promise.resolve();
+    await Promise.resolve();
     emitShellSnapshot(2);
     await reconnectPromise;
 

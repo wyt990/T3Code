@@ -11,15 +11,16 @@ import { GitCore, type GitCoreShape } from "../Services/GitCore.ts";
 import { GitCommandError } from "@t3tools/contracts";
 import { type ProcessRunResult, runProcess } from "../../processRunner.ts";
 import { ServerConfig } from "../../config.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 
 // ── Helpers ──
 
 const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), { prefix: "t3-git-core-test-" });
-const GitCoreTestLayer = GitCoreLive.pipe(
+const TestLayer = GitCoreLive.pipe(
   Layer.provide(ServerConfigLayer),
-  Layer.provide(NodeServices.layer),
+  Layer.provideMerge(NodeServices.layer),
+  Layer.provide(ServerSettingsService.layerTest()),
 );
-const TestLayer = Layer.mergeAll(NodeServices.layer, GitCoreTestLayer);
 
 function makeTmpDir(
   prefix = "git-test-",
@@ -121,7 +122,13 @@ function runShellCommand(input: {
 
 const makeIsolatedGitCore = (executeOverride: GitCoreShape["execute"]) =>
   makeGitCore({ executeOverride }).pipe(
-    Effect.provide(Layer.provideMerge(ServerConfigLayer, NodeServices.layer)),
+    Effect.provide(
+      Layer.empty.pipe(
+        Layer.provideMerge(ServerConfigLayer),
+        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(ServerSettingsService.layerTest()),
+      ),
+    ),
   );
 
 /** Create a repo with an initial commit so branches work. */

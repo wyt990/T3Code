@@ -110,9 +110,9 @@ describe("buildThreadTitlePrompt", () => {
       message: "Investigate reconnect regressions after session restore",
     });
 
-    expect(result.prompt).toContain("User message:");
+    expect(result.prompt).toContain("用户消息：");
     expect(result.prompt).toContain("Investigate reconnect regressions after session restore");
-    expect(result.prompt).not.toContain("Attachment metadata:");
+    expect(result.prompt).not.toContain("附件信息：");
   });
 
   it("includes attachment metadata when attachments are provided", () => {
@@ -129,7 +129,7 @@ describe("buildThreadTitlePrompt", () => {
       ],
     });
 
-    expect(result.prompt).toContain("Attachment metadata:");
+    expect(result.prompt).toContain("附件信息：");
     expect(result.prompt).toContain("thread.png");
     expect(result.prompt).toContain("image/png");
     expect(result.prompt).toContain("67890 bytes");

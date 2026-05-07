@@ -5,9 +5,9 @@ export function hasNonZeroStat(stat: { additions: number; deletions: number }): 
 }
 
 export const DiffStatLabel = memo(function DiffStatLabel(props: {
-  additions: number;
-  deletions: number;
-  showParentheses?: boolean;
+  readonly additions: number;
+  readonly deletions: number;
+  readonly showParentheses?: boolean;
 }) {
   const { additions, deletions, showParentheses = false } = props;
   return (

@@ -19,6 +19,7 @@ import {
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { GitCommandError, type GitBranch } from "@t3tools/contracts";
+import { buildProxyProcessEnv } from "@t3tools/contracts/settings";
 import { dedupeRemoteBranchesWithLocalMatches } from "@t3tools/shared/git";
 import { compactTraceAttributes } from "../../observability/Attributes.ts";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../../observability/Metrics.ts";
@@ -37,6 +38,7 @@ import {
   parseRemoteRefWithRemoteNames,
 } from "../remoteRefs.ts";
 import { ServerConfig } from "../../config.ts";
+import { readServerSettingsDiskSnapshot } from "../../serverSettings.ts";
 import { decodeJsonResult } from "@t3tools/shared/schemaJson";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -658,7 +660,8 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
 }) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const { worktreesDir } = yield* ServerConfig;
+  const serverConfig = yield* ServerConfig;
+  const { worktreesDir } = serverConfig;
 
   let executeRaw: GitCoreShape["execute"];
 
@@ -676,6 +679,11 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       const truncateOutputAtMaxBytes = input.truncateOutputAtMaxBytes ?? false;
 
       const runGitCommand = Effect.fn("runGitCommand")(function* () {
+        const serverSettings = yield* readServerSettingsDiskSnapshot.pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(ServerConfig, serverConfig),
+        );
+        const proxyEnv = buildProxyProcessEnv(serverSettings.proxy);
         const trace2Monitor = yield* createTrace2Monitor(commandInput, input.progress).pipe(
           Effect.provideService(Path.Path, path),
           Effect.provideService(FileSystem.FileSystem, fileSystem),
@@ -687,6 +695,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
               cwd: commandInput.cwd,
               env: {
                 ...process.env,
+                ...proxyEnv,
                 ...input.env,
                 ...trace2Monitor.env,
               },

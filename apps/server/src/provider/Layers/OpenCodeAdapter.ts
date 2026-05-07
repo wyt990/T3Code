@@ -40,6 +40,7 @@ import {
   toOpenCodeQuestionAnswers,
   type OpenCodeServerConnection,
 } from "../opencodeRuntime.ts";
+import { T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT } from "../T3AgentSidebarLocaleInstructions.ts";
 
 const PROVIDER = "opencode" as const;
 
@@ -71,6 +72,8 @@ interface OpenCodeSessionContext {
   activeTurnId: TurnId | undefined;
   activeAgent: string | undefined;
   activeVariant: string | undefined;
+  /** First user prompt includes `T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT` once per session. */
+  sidebarLocaleHintSent: boolean;
   /**
    * One-shot guard flipped by `stopOpenCodeContext` / `emitUnexpectedExit`.
    * The session lifecycle is owned by `sessionScope`; this Ref exists only
@@ -995,12 +998,12 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
         function* (input) {
           const settings = yield* serverSettings.getSettings.pipe(
             Effect.mapError(
-              (cause) =>
-                new ProviderAdapterProcessError({
+              (error) =>
+                new ProviderAdapterValidationError({
                   provider: PROVIDER,
-                  threadId: input.threadId,
-                  detail: "Failed to read OpenCode settings.",
-                  cause,
+                  operation: "startSession",
+                  issue: `Failed to load server settings: ${error.message}`,
+                  cause: error,
                 }),
             ),
           );
@@ -1093,6 +1096,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
             activeTurnId: undefined,
             activeAgent: undefined,
             activeVariant: undefined,
+            sidebarLocaleHintSent: false,
             stopped: yield* Ref.make(false),
             sessionScope: started.sessionScope,
           };
@@ -1149,6 +1153,15 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
           });
         }
 
+        const promptParts: Array<{ type: "text"; text: string }> = [];
+        if (!context.sidebarLocaleHintSent) {
+          context.sidebarLocaleHintSent = true;
+          promptParts.push({ type: "text", text: T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT });
+        }
+        if (text && text.length > 0) {
+          promptParts.push({ type: "text", text });
+        }
+
         const agent =
           input.modelSelection?.provider === PROVIDER
             ? getModelSelectionStringOptionValue(input.modelSelection, "agent")
@@ -1186,7 +1199,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
             model: parsedModel,
             ...(context.activeAgent ? { agent: context.activeAgent } : {}),
             ...(context.activeVariant ? { variant: context.activeVariant } : {}),
-            parts: [...(text ? [{ type: "text" as const, text }] : []), ...fileParts],
+            parts: [...promptParts, ...fileParts],
           }),
         ).pipe(
           Effect.mapError(toRequestError),

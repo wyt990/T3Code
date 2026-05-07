@@ -159,15 +159,18 @@ export class WsTransport {
 
           const formattedError = formatErrorMessage(error);
           if (!isTransportConnectionErrorMessage(formattedError)) {
-            console.warn("WebSocket RPC subscription failed", {
+            console.warn("[t3][ws-trace] WebSocket RPC subscription ended (non-transport error)", {
               error: formattedError,
+              transportSessionId: this.activeSessionId,
+              hint: "Subscription loop exits permanently; orchestration streams may stall until EnvironmentConnection.reconnect runs.",
             });
             return;
           }
 
           if (!this.hasReportedTransportDisconnect) {
-            console.warn("WebSocket RPC subscription disconnected", {
+            console.warn("[t3][ws-trace] WebSocket RPC subscription disconnected (will retry)", {
               error: formattedError,
+              transportSessionId: this.activeSessionId,
             });
           }
           this.hasReportedTransportDisconnect = true;
@@ -192,9 +195,14 @@ export class WsTransport {
         throw new Error("Transport disposed");
       }
 
+      const previousTransportSessionId = this.activeSessionId;
       clearAllTrackedRpcRequests();
       const previousSession = this.session;
       this.session = this.createSession();
+      console.info("[t3][ws-trace] WsTransport.reconnect rolled transport session", {
+        previousTransportSessionId,
+        nextTransportSessionId: this.activeSessionId,
+      });
       await this.closeSession(previousSession);
     });
 

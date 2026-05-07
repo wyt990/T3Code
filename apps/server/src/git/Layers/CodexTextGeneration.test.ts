@@ -167,30 +167,33 @@ function withFakeCodexEnv<A, E, R>(
   return Effect.acquireUseRelease(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
+      const serverConfig = yield* ServerConfig;
       const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-codex-text-" });
       const codexPath = yield* makeFakeCodexBinary(tempDir, input);
       const serverSettings = yield* ServerSettingsService;
       const previousSettings = yield* serverSettings.getSettings;
-      yield* serverSettings.updateSettings({
+      const nextSettings = yield* serverSettings.updateSettings({
         providers: {
           codex: {
             binaryPath: codexPath,
           },
         },
       });
-      return { serverSettings, previousBinaryPath: previousSettings.providers.codex.binaryPath };
+      yield* fs.writeFileString(
+        serverConfig.settingsPath,
+        `${JSON.stringify(nextSettings, null, 2)}\n`,
+      );
+      return { previousSettings, serverConfig };
     }),
     () => effect,
-    ({ serverSettings, previousBinaryPath }) =>
-      serverSettings
-        .updateSettings({
-          providers: {
-            codex: {
-              binaryPath: previousBinaryPath,
-            },
-          },
-        })
-        .pipe(Effect.asVoid),
+    ({ previousSettings, serverConfig }) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        yield* fs.writeFileString(
+          serverConfig.settingsPath,
+          `${JSON.stringify(previousSettings, null, 2)}\n`,
+        );
+      }).pipe(Effect.asVoid),
   );
 }
 

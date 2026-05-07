@@ -164,15 +164,15 @@ const terminalContextIdListsEqual = (
   contexts.length === ids.length && contexts.every((context, index) => context.id === ids[index]);
 
 const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
-  showInteractionModeToggle: boolean;
-  interactionMode: ProviderInteractionMode;
-  runtimeMode: RuntimeMode;
-  showPlanToggle: boolean;
-  planSidebarLabel: string;
-  planSidebarOpen: boolean;
-  onToggleInteractionMode: () => void;
-  onRuntimeModeChange: (mode: RuntimeMode) => void;
-  onTogglePlanSidebar: () => void;
+  readonly showInteractionModeToggle: boolean;
+  readonly interactionMode: ProviderInteractionMode;
+  readonly runtimeMode: RuntimeMode;
+  readonly showPlanToggle: boolean;
+  readonly planSidebarLabel: string;
+  readonly planSidebarOpen: boolean;
+  readonly onToggleInteractionMode: () => void;
+  readonly onRuntimeModeChange: (mode: RuntimeMode) => void;
+  readonly onTogglePlanSidebar: () => void;
 }) {
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
@@ -270,25 +270,25 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 });
 
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
-  compact: boolean;
-  activeContextWindow: ReturnType<typeof deriveLatestContextWindowSnapshot>;
-  isPreparingWorktree: boolean;
-  pendingAction: {
-    questionIndex: number;
-    isLastQuestion: boolean;
-    canAdvance: boolean;
-    isResponding: boolean;
-    isComplete: boolean;
+  readonly compact: boolean;
+  readonly activeContextWindow: ReturnType<typeof deriveLatestContextWindowSnapshot>;
+  readonly isPreparingWorktree: boolean;
+  readonly pendingAction: {
+    readonly questionIndex: number;
+    readonly isLastQuestion: boolean;
+    readonly canAdvance: boolean;
+    readonly isResponding: boolean;
+    readonly isComplete: boolean;
   } | null;
-  isRunning: boolean;
-  showPlanFollowUpPrompt: boolean;
-  promptHasText: boolean;
-  isSendBusy: boolean;
-  isConnecting: boolean;
-  hasSendableContent: boolean;
-  onPreviousPendingQuestion: () => void;
-  onInterrupt: () => void;
-  onImplementPlanInNewThread: () => void;
+  readonly isRunning: boolean;
+  readonly showPlanFollowUpPrompt: boolean;
+  readonly promptHasText: boolean;
+  readonly isSendBusy: boolean;
+  readonly isConnecting: boolean;
+  readonly hasSendableContent: boolean;
+  readonly onPreviousPendingQuestion: () => void;
+  readonly onInterrupt: () => void;
+  readonly onImplementPlanInNewThread: () => void;
 }) {
   return (
     <>

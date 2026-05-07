@@ -66,7 +66,14 @@ import {
 } from "../lib/projectPaths";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { getLatestThreadForProject } from "../lib/threadSort";
-import { cn, isMacPlatform, isWindowsPlatform, newCommandId, newProjectId } from "../lib/utils";
+import {
+  cn,
+  getPlatformString,
+  isMacPlatform,
+  isWindowsPlatform,
+  newCommandId,
+  newProjectId,
+} from "../lib/utils";
 import {
   selectProjectsAcrossEnvironments,
   selectSidebarThreadsAcrossEnvironments,
@@ -145,7 +152,7 @@ function getEnvironmentBrowsePlatform(os: string | null | undefined): string {
   if (os === "linux") {
     return "Linux";
   }
-  return typeof navigator === "undefined" ? "" : navigator.platform;
+  return getPlatformString();
 }
 
 interface AddProjectEnvironmentOption {
@@ -154,7 +161,7 @@ interface AddProjectEnvironmentOption {
   readonly isPrimary: boolean;
 }
 
-export function CommandPalette({ children }: { children: ReactNode }) {
+export function CommandPalette({ children }: { readonly children: ReactNode }) {
   const open = useCommandPaletteStore((store) => store.open);
   const setOpen = useCommandPaletteStore((store) => store.setOpen);
   const toggleOpen = useCommandPaletteStore((store) => store.toggleOpen);
@@ -898,11 +905,11 @@ function OpenCommandPaletteDialog() {
     query.trim().length > 0 &&
     !hasHighlightedBrowseItem &&
     (hasTrailingPathSeparator(query) ? !browseResult : exactBrowseEntry === null);
-  const useMetaForMod = isMacPlatform(navigator.platform);
+  const useMetaForMod = isMacPlatform(getPlatformString());
   const submitModifierLabel = useMetaForMod ? "\u2318" : "Ctrl";
   const submitActionLabel = willCreateProjectPath ? "创建并添加" : "添加";
   const addShortcutLabel = hasHighlightedBrowseItem ? `${submitModifierLabel} Enter` : "Enter";
-  const fileManagerName = getLocalFileManagerName(navigator.platform);
+  const fileManagerName = getLocalFileManagerName(getPlatformString());
   const canOpenProjectFromFileManager =
     isBrowsing &&
     browseEnvironmentId !== null &&
@@ -1154,7 +1161,7 @@ function OpenCommandPaletteDialog() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 interface TabPaletteDeps {
-  navigate: ReturnType<typeof useNavigate>;
+  readonly navigate: ReturnType<typeof useNavigate>;
 }
 
 /**

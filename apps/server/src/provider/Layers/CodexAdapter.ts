@@ -1324,6 +1324,7 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const serverConfig = yield* Effect.service(ServerConfig);
+  const serverSettings = yield* ServerSettingsService;
   const nativeEventLogger =
     options?.nativeEventLogger ??
     (options?.nativeEventLogPath !== undefined
@@ -1333,7 +1334,6 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       : undefined);
   const managedNativeEventLogger =
     options?.nativeEventLogger === undefined ? nativeEventLogger : undefined;
-  const serverSettingsService = yield* ServerSettingsService;
   const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
   const sessions = new Map<ThreadId, CodexAdapterSessionContext>();
 
@@ -1353,14 +1353,14 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           yield* Effect.suspend(() => stopSessionInternal(existing));
         }
 
-        const codexSettings = yield* serverSettingsService.getSettings.pipe(
+        const codexSettings = yield* serverSettings.getSettings.pipe(
           Effect.map((settings) => settings.providers.codex),
           Effect.mapError(
             (error) =>
-              new ProviderAdapterProcessError({
+              new ProviderAdapterValidationError({
                 provider: PROVIDER,
-                threadId: input.threadId,
-                detail: error.message,
+                operation: "startSession",
+                issue: `Failed to load server settings: ${error.message}`,
                 cause: error,
               }),
           ),

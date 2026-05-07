@@ -42,6 +42,7 @@ import {
 } from "../rpc/serverState";
 import { useStore } from "../store";
 import { useUiStateStore } from "../uiStateStore";
+import { buildDraftThreadRouteParams, buildThreadRouteParams } from "../threadRoutes";
 import { syncBrowserChromeTheme } from "../hooks/useTheme";
 import {
   ensureEnvironmentConnectionBootstrapped,
@@ -101,6 +102,7 @@ function RootRouteView() {
         <ServerStateBootstrap />
         <EnvironmentConnectionManagerBootstrap />
         <EventRouter />
+        <StartupTabNavigation />
         <WebSocketConnectionCoordinator />
         <SlowRpcAckToastCoordinator />
         <WebSocketConnectionSurface>
@@ -206,6 +208,51 @@ function EnvironmentConnectionManagerBootstrap() {
   useEffect(() => {
     return startEnvironmentConnectionService(queryClient);
   }, [queryClient]);
+
+  return null;
+}
+
+function StartupTabNavigation() {
+  const navigate = useNavigate();
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    const state = useUiStateStore.getState();
+    const activeTabId = state.tabs.group.activeTabId;
+    if (!activeTabId) return;
+
+    const activeTab = state.tabs.tabsById[activeTabId];
+    if (!activeTab) return;
+
+    const target = activeTab.target;
+    console.log(
+      "%c【启动导航】从持久化标签恢复导航",
+      "background:#6366f1;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      {
+        目标: target.kind === "server"
+          ? `会话(${target.threadRef.environmentId}/${target.threadRef.threadId})`
+          : `草稿(${target.draftId})`,
+        标签ID: activeTabId,
+      },
+    );
+
+    if (target.kind === "server") {
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(target.threadRef),
+        replace: true,
+      });
+    } else {
+      void navigate({
+        to: "/draft/$draftId",
+        params: { draftId: target.draftId },
+        replace: true,
+      });
+    }
+  }, [navigate]);
 
   return null;
 }

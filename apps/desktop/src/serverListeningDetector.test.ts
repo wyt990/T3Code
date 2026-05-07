@@ -14,8 +14,10 @@ describe("ServerListeningDetector", () => {
   it("resolves when the listening line arrives across multiple chunks", async () => {
     const detector = new ServerListeningDetector();
 
+    // oxlint-disable unicorn/no-array-push-push — intentional: test across chunks
     detector.push("[01:23:30.571] INFO (#148): Listen");
     detector.push("ing on http://0.0.0.0:7011\n");
+    // oxlint-enable unicorn/no-array-push-push
 
     await expect(detector.promise).resolves.toBeUndefined();
   });

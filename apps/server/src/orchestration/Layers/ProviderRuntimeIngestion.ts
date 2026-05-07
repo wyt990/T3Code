@@ -526,6 +526,12 @@ const make = Effect.gen(function* () {
   const projectionTurnRepository = yield* ProjectionTurnRepository;
   const serverSettingsService = yield* ServerSettingsService;
 
+  const readAssistantDeliveryMode = serverSettingsService.getSettings.pipe(
+    Effect.map((settings) =>
+      settings.enableAssistantStreaming ? ("streaming" as const) : ("buffered" as const),
+    ),
+  );
+
   const turnMessageIdsByTurnKey = yield* Cache.make<string, Set<MessageId>>({
     capacity: TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY,
     timeToLive: TURN_MESSAGE_IDS_BY_TURN_TTL,
@@ -1239,10 +1245,7 @@ const make = Effect.gen(function* () {
           yield* rememberAssistantMessageId(thread.id, turnId, assistantMessageId);
         }
 
-        const assistantDeliveryMode: AssistantDeliveryMode = yield* Effect.map(
-          serverSettingsService.getSettings,
-          (settings) => (settings.enableAssistantStreaming ? "streaming" : "buffered"),
-        );
+        const assistantDeliveryMode: AssistantDeliveryMode = yield* readAssistantDeliveryMode;
         if (assistantDeliveryMode === "buffered") {
           const spillChunk = yield* appendBufferedAssistantText(assistantMessageId, assistantDelta);
           if (spillChunk.length > 0) {
@@ -1274,10 +1277,7 @@ const make = Effect.gen(function* () {
           ? toTurnId(event.turnId)
           : undefined;
       if (pauseForUserTurnId) {
-        const assistantDeliveryMode: AssistantDeliveryMode = yield* Effect.map(
-          serverSettingsService.getSettings,
-          (settings) => (settings.enableAssistantStreaming ? "streaming" : "buffered"),
-        );
+        const assistantDeliveryMode: AssistantDeliveryMode = yield* readAssistantDeliveryMode;
         const flushedMessageIds =
           assistantDeliveryMode === "buffered"
             ? yield* flushBufferedAssistantMessagesForTurn({

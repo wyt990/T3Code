@@ -61,7 +61,7 @@ import { usePrimaryEnvironmentId } from "../environments/primary";
 import { isElectron } from "../env";
 import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { isTerminalFocused } from "../lib/terminalFocus";
-import { isMacPlatform, newCommandId } from "../lib/utils";
+import { getPlatformString, isMacPlatform, newCommandId } from "../lib/utils";
 import {
   selectProjectByRef,
   selectProjectsAcrossEnvironments,
@@ -1277,7 +1277,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         isContextMenuPointerDown({
           button: event.button,
           ctrlKey: event.ctrlKey,
-          isMac: isMacPlatform(navigator.platform),
+          isMac: isMacPlatform(getPlatformString()),
         })
       ) {
         event.stopPropagation();
@@ -1622,7 +1622,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       threadRef: ScopedThreadRef,
       orderedProjectThreadKeys: readonly string[],
     ) => {
-      const isMac = isMacPlatform(navigator.platform);
+      const isMac = isMacPlatform(getPlatformString());
       const isModClick = isMac ? event.metaKey : event.ctrlKey;
       const isShiftClick = event.shiftKey;
       const threadKey = scopedThreadKey(threadRef);
@@ -2753,7 +2753,7 @@ export default function Sidebar() {
   const selectedThreadCount = useThreadSelectionStore((s) => s.selectedThreadKeys.size);
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
-  const platform = navigator.platform;
+  const platform = getPlatformString();
   const shortcutModifiers = useShortcutModifierState();
   const modelPickerOpen = useModelPickerOpen();
   const primaryEnvironmentId = usePrimaryEnvironmentId();

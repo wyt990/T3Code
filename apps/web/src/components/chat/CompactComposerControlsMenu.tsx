@@ -13,16 +13,16 @@ import {
 } from "../ui/menu";
 
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
-  activePlan: boolean;
-  interactionMode: ProviderInteractionMode;
-  planSidebarLabel: string;
-  planSidebarOpen: boolean;
-  runtimeMode: RuntimeMode;
-  showInteractionModeToggle: boolean;
-  traitsMenuContent?: ReactNode;
-  onToggleInteractionMode: () => void;
-  onTogglePlanSidebar: () => void;
-  onRuntimeModeChange: (mode: RuntimeMode) => void;
+  readonly activePlan: boolean;
+  readonly interactionMode: ProviderInteractionMode;
+  readonly planSidebarLabel: string;
+  readonly planSidebarOpen: boolean;
+  readonly runtimeMode: RuntimeMode;
+  readonly showInteractionModeToggle: boolean;
+  readonly traitsMenuContent?: ReactNode;
+  readonly onToggleInteractionMode: () => void;
+  readonly onTogglePlanSidebar: () => void;
+  readonly onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   return (
     <Menu>

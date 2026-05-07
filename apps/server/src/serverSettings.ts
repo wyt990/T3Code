@@ -135,6 +135,28 @@ function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings
   };
 }
 
+/**
+ * Read `settings.json` from disk for subprocess env (e.g. git HTTP proxy).
+ * Does not use {@link ServerSettingsService}, so Git spawn is not sensitive to Effect Layer merge order
+ * (desktop asar vs dev).
+ */
+export const readServerSettingsDiskSnapshot = Effect.gen(function* () {
+  const { settingsPath } = yield* ServerConfig;
+  const fs = yield* FileSystem.FileSystem;
+  const exists = yield* fs.exists(settingsPath).pipe(Effect.orElseSucceed(() => false));
+  if (!exists) {
+    return DEFAULT_SERVER_SETTINGS;
+  }
+
+  const raw = yield* fs.readFileString(settingsPath).pipe(Effect.orElseSucceed(() => ""));
+  const decoded = Schema.decodeUnknownExit(ServerSettingsJson)(raw);
+  if (decoded._tag === "Failure") {
+    return DEFAULT_SERVER_SETTINGS;
+  }
+
+  return resolveTextGenerationProvider(decoded.value);
+});
+
 // Values under these keys are compared as a whole — never stripped field-by-field.
 const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set(["textGenerationModelSelection"]);
 

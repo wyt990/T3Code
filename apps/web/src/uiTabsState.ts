@@ -528,6 +528,33 @@ export function promoteDraftTab(
   return { ...state, tabsById: nextTabsById };
 }
 
+/**
+ * 格式化标签状态快照，用于日志输出。
+ * 提供标签总数、每个标签的 ID 和目标类型、激活状态等关键信息。
+ */
+export function formatTabsSnapshot(state: UiTabsState): Record<string, unknown> {
+  return {
+    标签总数: state.group.tabIds.length,
+    标签列表: state.group.tabIds.map((id) => {
+      const tab = state.tabsById[id];
+      if (!tab) return { id, 状态: "数据异常(不存在)" };
+      const targetDesc =
+        tab.target.kind === "server"
+          ? `会话(${tab.target.threadRef.environmentId}/${tab.target.threadRef.threadId})`
+          : `草稿(${tab.target.draftId})`;
+      return {
+        id,
+        目标: targetDesc,
+        自定义标题: tab.customTitle ?? "(自动)",
+        标题锁定: tab.titleLocked,
+      };
+    }),
+    激活标签ID: state.group.activeTabId ?? "(无)",
+    聚焦标签ID: state.group.focusedTabId ?? "(无)",
+    分屏对数: state.group.mergedPairs.length,
+  };
+}
+
 function isValidTabTarget(target: unknown): target is TabTarget {
   if (target === null || typeof target !== "object") {
     return false;
@@ -659,23 +686,42 @@ function isValidActiveOrFocusedTabId(candidate: unknown, tabIdSet: ReadonlySet<s
  */
 export function hydrateTabsState(persisted: unknown): UiTabsState | null {
   if (persisted === null || typeof persisted !== "object") {
+    console.log("【标签加载】hydrateTabsState: 持久化数据为 null 或非对象类型，校验失败");
     return null;
   }
   const candidate = persisted as PersistedTabsState;
   if (candidate.version !== TABS_PERSISTED_VERSION) {
+    console.log("【标签加载】hydrateTabsState: 版本不匹配，校验失败", {
+      当前版本: TABS_PERSISTED_VERSION,
+      持久化版本: candidate.version,
+    });
     return null;
   }
   if (!candidate.group || typeof candidate.group !== "object") {
+    console.log("【标签加载】hydrateTabsState: group 字段无效，校验失败");
     return null;
   }
 
   const validTabsById = hydrateTabsByIdMap(candidate.tabsById);
   if (!validTabsById) {
+    console.log("【标签加载】hydrateTabsState: tabsById 水合失败，校验失败", {
+      "tabsById 类型": typeof candidate.tabsById,
+      "tabsById 内容示例": candidate.tabsById
+        ? Object.keys(candidate.tabsById).slice(0, 3)
+        : undefined,
+    });
     return null;
   }
 
   const orderedTabIds = hydrateOrderedTabIds(candidate.group.tabIds, validTabsById);
   if (!orderedTabIds) {
+    console.log("【标签加载】hydrateTabsState: tabIds 有序列表水合失败，校验失败", {
+      "tabIds 类型": typeof candidate.group.tabIds,
+      是否为数组: Array.isArray(candidate.group.tabIds),
+      "tabIds 长度": Array.isArray(candidate.group.tabIds)
+        ? candidate.group.tabIds.length
+        : undefined,
+    });
     return null;
   }
   const { tabIds, tabIdSet } = orderedTabIds;
@@ -684,11 +730,22 @@ export function hydrateTabsState(persisted: unknown): UiTabsState | null {
     !isValidActiveOrFocusedTabId(candidate.group.activeTabId, tabIdSet) ||
     !isValidActiveOrFocusedTabId(candidate.group.focusedTabId, tabIdSet)
   ) {
+    console.log("【标签加载】hydrateTabsState: activeTabId 或 focusedTabId 无效，校验失败", {
+      activeTabId: candidate.group.activeTabId,
+      focusedTabId: candidate.group.focusedTabId,
+      "有效标签 ID 集合": Array.from(tabIdSet),
+    });
     return null;
   }
 
   const sanitizedPairs = hydrateMergedPairs(candidate.group.mergedPairs, tabIdSet);
   if (!sanitizedPairs) {
+    console.log("【标签加载】hydrateTabsState: mergedPairs 水合失败，校验失败", {
+      "mergedPairs 类型": typeof candidate.group.mergedPairs,
+      "mergedPairs 长度": Array.isArray(candidate.group.mergedPairs)
+        ? candidate.group.mergedPairs.length
+        : undefined,
+    });
     return null;
   }
 
@@ -696,6 +753,13 @@ export function hydrateTabsState(persisted: unknown): UiTabsState | null {
   for (const tabId of tabIds) {
     finalTabsById[tabId] = validTabsById[tabId]!;
   }
+
+  console.log("【标签加载】hydrateTabsState: 水合成功", {
+    最终标签数量: tabIds.length,
+    "标签 ID 列表": tabIds,
+    "激活标签 ID": candidate.group.activeTabId ?? null,
+    聚合对数量: sanitizedPairs.length,
+  });
 
   return {
     tabsById: finalTabsById,

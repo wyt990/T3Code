@@ -29,7 +29,7 @@ import {
   sanitizeThreadTitle,
   toJsonSchemaObject,
 } from "../Utils.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
+import { readServerSettingsDiskSnapshot } from "../../serverSettings.ts";
 import {
   getModelSelectionBooleanOptionValue,
   getModelSelectionStringOptionValue,
@@ -42,7 +42,6 @@ const makeCodexTextGeneration = Effect.gen(function* () {
   const path = yield* Path.Path;
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const serverConfig = yield* Effect.service(ServerConfig);
-  const serverSettingsService = yield* Effect.service(ServerSettingsService);
 
   type MaterializedImageAttachments = {
     readonly imagePaths: ReadonlyArray<string>;
@@ -152,10 +151,12 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     );
     const outputPath = yield* writeTempFile(operation, "codex-output", "");
 
-    const codexSettings = yield* Effect.map(
-      serverSettingsService.getSettings,
-      (settings) => settings.providers.codex,
-    ).pipe(Effect.catch(() => Effect.undefined));
+    const codexSettings = yield* readServerSettingsDiskSnapshot.pipe(
+      Effect.map((settings) => settings.providers.codex),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(ServerConfig, serverConfig),
+      Effect.catch(() => Effect.succeed(undefined)),
+    );
 
     const runCodexCommand = Effect.fn("runCodexJson.runCodexCommand")(function* () {
       const reasoningEffort =
@@ -255,7 +256,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
         ),
       );
 
-      return yield* fileSystem.readFileString(outputPath).pipe(
+      const rawOutput = yield* fileSystem.readFileString(outputPath).pipe(
         Effect.mapError(
           (cause) =>
             new TextGenerationError({
@@ -264,7 +265,9 @@ const makeCodexTextGeneration = Effect.gen(function* () {
               cause,
             }),
         ),
-        Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson))),
+      );
+
+      return yield* Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson))(rawOutput).pipe(
         Effect.catchTag("SchemaError", (cause) =>
           Effect.fail(
             new TextGenerationError({

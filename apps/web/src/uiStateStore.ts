@@ -9,6 +9,7 @@ import {
   closeTabs as closeTabsReducer,
   closeTabsByThreadIds as closeTabsByThreadIdsReducer,
   createTab as createTabReducer,
+  formatTabsSnapshot,
   hydrateTabsState,
   initialTabsState,
   mergeTabs as mergeTabsReducer,
@@ -103,28 +104,55 @@ function readPersistedState(): UiState {
     return initialState;
   }
   try {
-    const raw = window.localStorage.getItem(PERSISTED_STATE_KEY);
+    const raw = globalThis.localStorage.getItem(PERSISTED_STATE_KEY);
     if (!raw) {
+      console.log("【标签加载】localStorage 中未找到持久化数据");
       for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
-        const legacyRaw = window.localStorage.getItem(legacyKey);
+        const legacyRaw = globalThis.localStorage.getItem(legacyKey);
         if (!legacyRaw) {
           continue;
         }
+        console.log("【标签加载】从旧版键名加载数据:", legacyKey);
         hydratePersistedProjectState(JSON.parse(legacyRaw) as PersistedUiState);
         return initialState;
       }
+      console.log("【标签加载】未找到任何持久化数据，使用初始空状态");
+      console.log(
+        "%c【标签启动】无持久化数据，初始为空",
+        "background:#6366f1;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+        formatTabsSnapshot(initialTabsState),
+      );
       return initialState;
     }
     const parsed = JSON.parse(raw) as PersistedUiState;
+    const hydratedTabs = hydrateTabsState(parsed.tabs);
+    console.log("【标签加载】从 localStorage 读取持久化数据:", {
+      原始标签数据存在: !!parsed.tabs,
+      标签版本: parsed.tabs?.version,
+      标签数量: parsed.tabs?.group?.tabIds?.length ?? 0,
+      标签ID列表: parsed.tabs?.group?.tabIds,
+      激活的标签ID: parsed.tabs?.group?.activeTabId,
+      水合成功: !!hydratedTabs,
+      水合后标签数量: hydratedTabs?.group?.tabIds?.length ?? 0,
+    });
     hydratePersistedProjectState(parsed);
+
+    const finalTabs = hydratedTabs ?? initialTabsState;
+    console.log(
+      "%c【标签启动】标签状态初始化完成",
+      "background:#6366f1;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      formatTabsSnapshot(finalTabs),
+    );
+
     return {
       ...initialState,
       threadChangedFilesExpandedById: sanitizePersistedThreadChangedFilesExpanded(
         parsed.threadChangedFilesExpandedById,
       ),
-      tabs: hydrateTabsState(parsed.tabs) ?? initialTabsState,
+      tabs: finalTabs,
     };
-  } catch {
+  } catch (error) {
+    console.error("【标签加载】读取持久化数据时发生错误:", error);
     return initialState;
   }
 }
@@ -205,23 +233,42 @@ export function persistState(state: UiState): void {
         return Object.keys(nextTurns).length > 0 ? [[threadId, nextTurns]] : [];
       }),
     );
-    window.localStorage.setItem(
+    const tabsToPersist = persistTabsState(state.tabs);
+    console.log("【标签加载】正在持久化标签状态:", {
+      标签版本: tabsToPersist.version,
+      标签数量: tabsToPersist.group.tabIds.length,
+      标签ID列表: tabsToPersist.group.tabIds,
+      激活的标签ID: tabsToPersist.group.activeTabId,
+      所有标签详情: tabsToPersist.group.tabIds.map((id) => ({
+        id,
+        目标类型: tabsToPersist.tabsById[id]?.target?.kind,
+        线程ID:
+          tabsToPersist.tabsById[id]?.target?.kind === "server"
+            ? tabsToPersist.tabsById[id]?.target?.threadRef?.threadId
+            : tabsToPersist.tabsById[id]?.target?.kind === "draft"
+              ? tabsToPersist.tabsById[id]?.target?.draftId
+              : undefined,
+      })),
+    });
+    globalThis.localStorage.setItem(
       PERSISTED_STATE_KEY,
       JSON.stringify({
         collapsedProjectCwds,
         expandedProjectCwds,
         projectOrderCwds,
         threadChangedFilesExpandedById,
-        tabs: persistTabsState(state.tabs),
+        tabs: tabsToPersist,
       } satisfies PersistedUiState),
     );
+    // console.log("【标签加载】持久化成功，数据已写入 localStorage");
     if (!legacyKeysCleanedUp) {
       legacyKeysCleanedUp = true;
       for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
-        window.localStorage.removeItem(legacyKey);
+        globalThis.localStorage.removeItem(legacyKey);
       }
     }
-  } catch {
+  } catch (error) {
+    console.error("【标签加载】持久化标签状态时发生错误:", error);
     // Ignore quota/storage errors to avoid breaking chat UX.
   }
 }
@@ -684,13 +731,57 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setProjectExpanded(state, projectId, expanded)),
   reorderProjects: (draggedProjectIds, targetProjectIds) =>
     set((state) => reorderProjects(state, draggedProjectIds, targetProjectIds)),
-  createTab: (target, options) =>
-    set((state) => updateTabs(state, (tabs) => createTabReducer(tabs, target, options))),
-  closeTab: (tabId) => set((state) => updateTabs(state, (tabs) => closeTabReducer(tabs, tabId))),
-  closeTabs: (tabIds) =>
-    set((state) => updateTabs(state, (tabs) => closeTabsReducer(tabs, tabIds))),
-  activateTab: (tabId) =>
-    set((state) => updateTabs(state, (tabs) => activateTabReducer(tabs, tabId))),
+
+  // ── 标签操作（含状态日志） ──────────────────────────────────────────────
+
+  createTab: (target, options) => {
+    const beforeCount = useUiStateStore.getState().tabs.group.tabIds.length;
+    set((state) => updateTabs(state, (tabs) => createTabReducer(tabs, target, options)));
+    const tabs = useUiStateStore.getState().tabs;
+    const created = beforeCount < tabs.group.tabIds.length;
+    console.log(
+      `%c【标签操作】${created ? "创建标签" : "标签已存在(跳过)"}`,
+      "background:#22c55e;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      formatTabsSnapshot(tabs),
+    );
+  },
+  closeTab: (tabId) => {
+    console.log(
+      "%c【标签操作】closeTab 被调用",
+      "background:#ef4444;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      { 关闭ID: tabId, 调用栈: new Error().stack?.split("\n").slice(2, 8).join(" → ") },
+    );
+    set((state) => updateTabs(state, (tabs) => closeTabReducer(tabs, tabId)));
+    const tabs = useUiStateStore.getState().tabs;
+    console.log(
+      "%c【标签操作】关闭标签后状态",
+      "background:#ef4444;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      { 关闭ID: tabId, ...formatTabsSnapshot(tabs) },
+    );
+  },
+  closeTabs: (tabIds) => {
+    console.log(
+      "%c【标签操作】closeTabs 被调用",
+      "background:#ef4444;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      { 关闭IDs: tabIds, 调用栈: new Error().stack?.split("\n").slice(2, 8).join(" → ") },
+    );
+    set((state) => updateTabs(state, (tabs) => closeTabsReducer(tabs, tabIds)));
+    const tabs = useUiStateStore.getState().tabs;
+    console.log(
+      "%c【标签操作】批量关闭后状态",
+      "background:#ef4444;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      { 关闭的标签IDs: tabIds, ...formatTabsSnapshot(tabs) },
+    );
+  },
+  activateTab: (tabId) => {
+    set((state) => updateTabs(state, (tabs) => activateTabReducer(tabs, tabId)));
+    const tabs = useUiStateStore.getState().tabs;
+    console.log(
+      "%c【标签操作】切换激活标签",
+      "background:#f59e0b;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      { 切换至标签ID: tabId, ...formatTabsSnapshot(tabs) },
+    );
+  },
   setFocusedTab: (tabId) =>
     set((state) => updateTabs(state, (tabs) => setFocusedTabReducer(tabs, tabId))),
   reorderTabs: (draggedTabId, targetTabId) =>
@@ -708,28 +799,77 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
         return result.state;
       }),
     );
+    if (merged) {
+      const tabs = useUiStateStore.getState().tabs;
+      console.log(
+        "%c【标签操作】合并分屏",
+        "background:#8b5cf6;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+        { 左侧标签: leftTabId, 右侧标签: rightTabId, ...formatTabsSnapshot(tabs) },
+      );
+    }
     return merged;
   },
-  splitMergedTabs: (tabId) =>
-    set((state) => updateTabs(state, (tabs) => splitMergedTabsReducer(tabs, tabId))),
+  splitMergedTabs: (tabId) => {
+    set((state) => updateTabs(state, (tabs) => splitMergedTabsReducer(tabs, tabId)));
+    const tabs = useUiStateStore.getState().tabs;
+    console.log(
+      "%c【标签操作】拆分分屏",
+      "background:#8b5cf6;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      { 拆分标签ID: tabId, ...formatTabsSnapshot(tabs) },
+    );
+  },
   setTabSplitRatio: (leftTabId, rightTabId, ratio) =>
     set((state) =>
       updateTabs(state, (tabs) => setSplitRatioReducer(tabs, leftTabId, rightTabId, ratio)),
     ),
   setTabDiffOpen: (tabId, open) =>
     set((state) => updateTabs(state, (tabs) => setTabDiffOpenReducer(tabs, tabId, open))),
-  closeTabsByThreadIds: (environmentId, threadIds) =>
+  closeTabsByThreadIds: (environmentId, threadIds) => {
+    console.log(
+      "%c【标签操作】closeTabsByThreadIds 被调用",
+      "background:#ef4444;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      {
+        环境ID: environmentId,
+        会话IDs: threadIds,
+        调用栈: new Error().stack?.split("\n").slice(2, 8).join(" → "),
+      },
+    );
     set((state) =>
       updateTabs(state, (tabs) => closeTabsByThreadIdsReducer(tabs, environmentId, threadIds)),
-    ),
-  promoteDraftTab: (draftId, threadRef) =>
-    set((state) => updateTabs(state, (tabs) => promoteDraftTabReducer(tabs, draftId, threadRef))),
+    );
+    const tabs = useUiStateStore.getState().tabs;
+    console.log(
+      "%c【标签操作】closeTabsByThreadIds 后状态",
+      "background:#ef4444;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      { 环境ID: environmentId, 会话IDs: threadIds, ...formatTabsSnapshot(tabs) },
+    );
+  },
+  promoteDraftTab: (draftId, threadRef) => {
+    set((state) => updateTabs(state, (tabs) => promoteDraftTabReducer(tabs, draftId, threadRef)));
+    const tabs = useUiStateStore.getState().tabs;
+    console.log(
+      "%c【标签操作】草稿标签升级为会话标签",
+      "background:#6366f1;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
+      {
+        草稿ID: draftId,
+        新会话: `${threadRef.environmentId}/${threadRef.threadId}`,
+        ...formatTabsSnapshot(tabs),
+      },
+    );
+  },
 }));
 
 useUiStateStore.subscribe((state) => debouncedPersistState.maybeExecute(state));
 
-if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-  window.addEventListener("beforeunload", () => {
+if (typeof window !== "undefined" && typeof globalThis.addEventListener === "function") {
+  globalThis.addEventListener("beforeunload", () => {
+    const currentState = useUiStateStore.getState();
+    console.log("【标签加载】beforeunload 触发，正在强制刷新持久化", {
+      当前标签数量: currentState.tabs.group.tabIds.length,
+      "当前标签 ID 列表": currentState.tabs.group.tabIds,
+      "当前激活的标签 ID": currentState.tabs.group.activeTabId,
+    });
     debouncedPersistState.flush();
+    console.log("【标签加载】beforeunload 持久化刷新完成");
   });
 }

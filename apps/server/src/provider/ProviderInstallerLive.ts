@@ -78,18 +78,6 @@ function runInstall(
           allowNonZeroExit: true,
           env: proxyEnv,
         }),
-      ).pipe(
-        Effect.catch(() =>
-          Effect.succeed({
-            stdout: "",
-            stderr: "Failed to spawn process",
-            code: 1 as number | null,
-            signal: null as NodeJS.Signals | null,
-            timedOut: false,
-            stdoutTruncated: false,
-            stderrTruncated: false,
-          }),
-        ),
       );
 
       if (result.code === 0) {

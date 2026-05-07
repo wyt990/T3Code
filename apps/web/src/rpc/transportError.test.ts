@@ -9,6 +9,9 @@ describe("transportError", () => {
       true,
     );
     expect(isTransportConnectionErrorMessage("SocketOpenError: Timeout")).toBe(true);
+    expect(isTransportConnectionErrorMessage("read ECONNRESET")).toBe(true);
+    expect(isTransportConnectionErrorMessage("abnormal closure")).toBe(true);
+    expect(isTransportConnectionErrorMessage("FiberInterrupted")).toBe(true);
   });
 
   it("preserves non-transport thread errors", () => {

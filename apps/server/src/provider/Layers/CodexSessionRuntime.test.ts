@@ -10,6 +10,7 @@ import {
   CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
 } from "../CodexDeveloperInstructions.ts";
+import { T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT } from "../T3AgentSidebarLocaleInstructions.ts";
 import {
   buildTurnStartParams,
   isRecoverableThreadResumeError,
@@ -71,7 +72,10 @@ describe("buildTurnStartParams", () => {
         settings: {
           model: "gpt-5.3-codex",
           reasoning_effort: "medium",
-          developer_instructions: CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
+          developer_instructions:
+            CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS +
+            "\n\n" +
+            T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT,
         },
       },
     });
@@ -116,7 +120,10 @@ describe("buildTurnStartParams", () => {
         settings: {
           model: "gpt-5.3-codex",
           reasoning_effort: "medium",
-          developer_instructions: CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
+          developer_instructions:
+            CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS +
+            "\n\n" +
+            T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT,
         },
       },
     });

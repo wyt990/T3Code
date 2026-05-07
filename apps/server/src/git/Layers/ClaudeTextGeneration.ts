@@ -7,7 +7,7 @@
  *
  * @module ClaudeTextGeneration
  */
-import { Effect, Layer, Option, Schema, Stream } from "effect";
+import { Effect, FileSystem, Layer, Option, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { ClaudeModelSelection } from "@t3tools/contracts";
@@ -22,11 +22,11 @@ import {
   buildThreadTitlePrompt,
 } from "../Prompts.ts";
 import {
+  extractJsonObject,
   normalizeCliError,
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
-  toJsonSchemaObject,
 } from "../Utils.ts";
 import {
   getModelSelectionStringOptionValue,
@@ -38,21 +38,23 @@ import {
   resolveClaudeApiModelId,
   resolveClaudeEffort,
 } from "../../provider/Layers/ClaudeProvider.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
+import { ServerConfig } from "../../config.ts";
+import { readServerSettingsDiskSnapshot } from "../../serverSettings.ts";
 
-const CLAUDE_TIMEOUT_MS = 180_000;
+const CLAUDE_TIMEOUT_MS = 180_000; // 3 分钟
 
 /**
  * Schema for the wrapper JSON returned by `claude -p --output-format json`.
- * We only care about `structured_output`.
+ * When not using --json-schema, the model response is in the `result` field as a string.
  */
 const ClaudeOutputEnvelope = Schema.Struct({
-  structured_output: Schema.Unknown,
+  result: Schema.String,
 });
 
 const makeClaudeTextGeneration = Effect.gen(function* () {
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const serverSettingsService = yield* Effect.service(ServerSettingsService);
+  const fileSystem = yield* FileSystem.FileSystem;
+  const serverConfig = yield* ServerConfig;
 
   const readStreamAsString = <E>(
     operation: string,
@@ -90,7 +92,6 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
     outputSchemaJson: S;
     modelSelection: ClaudeModelSelection;
   }): Effect.fn.Return<S["Type"], TextGenerationError, S["DecodingServices"]> {
-    const jsonSchemaStr = JSON.stringify(toJsonSchemaObject(outputSchemaJson));
     const caps = getClaudeModelCapabilities(modelSelection.model);
     const descriptors = getProviderOptionDescriptors({
       caps,
@@ -111,10 +112,12 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
       ...(fastMode ? { fastMode: true } : {}),
     };
 
-    const claudeSettings = yield* Effect.map(
-      serverSettingsService.getSettings,
-      (settings) => settings.providers.claudeAgent,
-    ).pipe(Effect.catch(() => Effect.undefined));
+    const claudeSettings = yield* readServerSettingsDiskSnapshot.pipe(
+      Effect.map((settings) => settings.providers.claudeAgent),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(ServerConfig, serverConfig),
+      Effect.catch(() => Effect.succeed(undefined)),
+    );
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
       const command = ChildProcess.make(
@@ -123,8 +126,6 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
           "-p",
           "--output-format",
           "json",
-          "--json-schema",
-          jsonSchemaStr,
           "--model",
           resolveClaudeApiModelId(modelSelection),
           ...(cliEffort ? ["--effort", cliEffort] : []),
@@ -191,6 +192,7 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
       ),
     );
 
+    // Parse the CLI envelope to get the result string
     const envelope = yield* Schema.decodeEffect(Schema.fromJsonString(ClaudeOutputEnvelope))(
       rawStdout,
     ).pipe(
@@ -198,19 +200,28 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
         Effect.fail(
           new TextGenerationError({
             operation,
-            detail: "Claude CLI returned unexpected output format.",
+            detail: "Claude CLI returned unexpected envelope format.",
             cause,
           }),
         ),
       ),
     );
 
-    return yield* Schema.decodeEffect(outputSchemaJson)(envelope.structured_output).pipe(
+    // Extract JSON object from the result string and decode against the output schema
+    const jsonStr = extractJsonObject(envelope.result);
+    if (!jsonStr.startsWith("{")) {
+      return yield* new TextGenerationError({
+        operation,
+        detail: `Model returned non-JSON output: ${envelope.result.slice(0, 200)}`,
+      });
+    }
+
+    return yield* Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson))(jsonStr).pipe(
       Effect.catchTag("SchemaError", (cause) =>
         Effect.fail(
           new TextGenerationError({
             operation,
-            detail: "Claude returned invalid structured output.",
+            detail: "Claude returned invalid JSON output.",
             cause,
           }),
         ),

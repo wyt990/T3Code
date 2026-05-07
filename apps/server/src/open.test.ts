@@ -216,7 +216,7 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
       const path = yield* Path.Path;
       const dir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-open-test-" });
       yield* fs.writeFileString(path.join(dir, "zeditor"), "#!/bin/sh\nexit 0\n");
-      yield* fs.chmod(path.join(dir, "zeditor"), 0o755);
+      yield* fs.chmod(path.join(dir, "zeditor"), 0o700);
 
       const result = yield* resolveEditorLaunch({ cwd: "/tmp/workspace", editor: "zed" }, "linux", {
         PATH: dir,
@@ -394,8 +394,8 @@ it.layer(NodeServices.layer)("resolveAvailableEditors", (it) => {
 
       yield* fs.writeFileString(path.join(dir, "zeditor"), "#!/bin/sh\nexit 0\n");
       yield* fs.writeFileString(path.join(dir, "xdg-open"), "#!/bin/sh\nexit 0\n");
-      yield* fs.chmod(path.join(dir, "zeditor"), 0o755);
-      yield* fs.chmod(path.join(dir, "xdg-open"), 0o755);
+      yield* fs.chmod(path.join(dir, "zeditor"), 0o700);
+      yield* fs.chmod(path.join(dir, "xdg-open"), 0o700);
 
       const editors = resolveAvailableEditors("linux", {
         PATH: dir,

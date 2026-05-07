@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Ref, Schema } from "effect";
+import { Effect, FileSystem, Layer, Option, Ref, Schema } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import { CursorModelSelection } from "@t3tools/contracts";
@@ -26,7 +26,8 @@ import {
   applyCursorAcpModelSelection,
   makeCursorAcpRuntime,
 } from "../../provider/acp/CursorAcpSupport.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
+import { ServerConfig } from "../../config.ts";
+import { readServerSettingsDiskSnapshot } from "../../serverSettings.ts";
 
 const CURSOR_TIMEOUT_MS = 180_000;
 
@@ -57,7 +58,8 @@ function isTextGenerationError(error: unknown): error is TextGenerationError {
 
 const makeCursorTextGeneration = Effect.gen(function* () {
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const serverSettingsService = yield* Effect.service(ServerSettingsService);
+  const fileSystem = yield* FileSystem.FileSystem;
+  const serverConfig = yield* ServerConfig;
 
   const runCursorJson = <S extends Schema.Top>({
     operation,
@@ -77,10 +79,12 @@ const makeCursorTextGeneration = Effect.gen(function* () {
     modelSelection: CursorModelSelection;
   }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
     Effect.gen(function* () {
-      const cursorSettings = yield* Effect.map(
-        serverSettingsService.getSettings,
-        (settings) => settings.providers.cursor,
-      ).pipe(Effect.catch(() => Effect.undefined));
+      const cursorSettings = yield* readServerSettingsDiskSnapshot.pipe(
+        Effect.map((settings) => settings.providers.cursor),
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(ServerConfig, serverConfig),
+        Effect.catch(() => Effect.succeed(undefined)),
+      );
 
       const outputRef = yield* Ref.make("");
       const runtime = yield* makeCursorAcpRuntime({

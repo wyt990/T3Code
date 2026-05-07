@@ -20,7 +20,7 @@ import {
   shortcutLabelForCommand,
 } from "../../keybindings";
 import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
-import { cn } from "~/lib/utils";
+import { cn, getPlatformString } from "~/lib/utils";
 import { TooltipProvider } from "../ui/tooltip";
 
 type ModelPickerItem = {
@@ -34,15 +34,15 @@ type ModelPickerItem = {
 const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
 
 export const ModelPickerContent = memo(function ModelPickerContent(props: {
-  provider: ProviderKind;
-  model: string;
-  lockedProvider: ProviderKind | null;
-  providers?: ReadonlyArray<ServerProvider>;
-  keybindings?: ResolvedKeybindingsConfig;
-  modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<ModelEsque>>;
-  terminalOpen: boolean;
-  onRequestClose?: () => void;
-  onProviderModelChange: (provider: ProviderKind, model: string) => void;
+  readonly provider: ProviderKind;
+  readonly model: string;
+  readonly lockedProvider: ProviderKind | null;
+  readonly providers?: ReadonlyArray<ServerProvider>;
+  readonly keybindings?: ResolvedKeybindingsConfig;
+  readonly modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<ModelEsque>>;
+  readonly terminalOpen: boolean;
+  readonly onRequestClose?: () => void;
+  readonly onProviderModelChange: (provider: ProviderKind, model: string) => void;
 }) {
   const { keybindings: providedKeybindings, modelOptionsByProvider, onProviderModelChange } = props;
   const [searchQuery, setSearchQuery] = useState("");
@@ -297,7 +297,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       return EMPTY_MODEL_JUMP_LABELS;
     }
     const shortcutLabelOptions = {
-      platform: navigator.platform,
+      platform: getPlatformString(),
       context: modelJumpShortcutContext,
     };
     const mapping = new Map<string, string>();
@@ -317,7 +317,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       }
 
       const command = resolveShortcutCommand(event, keybindings, {
-        platform: navigator.platform,
+        platform: getPlatformString(),
         context: modelJumpShortcutContext,
       });
       const jumpIndex = modelPickerJumpIndexFromCommand(command ?? "");

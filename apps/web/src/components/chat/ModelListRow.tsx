@@ -14,16 +14,16 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 
 export const ModelListRow = memo(function ModelListRow(props: {
-  index: number;
-  model: ModelEsque;
-  provider: ProviderKind;
-  isFavorite: boolean;
-  showProvider: boolean;
-  preferShortName?: boolean;
-  useTriggerLabel?: boolean;
-  showNewBadge?: boolean;
-  jumpLabel?: string | null;
-  onToggleFavorite: () => void;
+  readonly index: number;
+  readonly model: ModelEsque;
+  readonly provider: ProviderKind;
+  readonly isFavorite: boolean;
+  readonly showProvider: boolean;
+  readonly preferShortName?: boolean;
+  readonly useTriggerLabel?: boolean;
+  readonly showNewBadge?: boolean;
+  readonly jumpLabel?: string | null;
+  readonly onToggleFavorite: () => void;
 }) {
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[props.provider];
 

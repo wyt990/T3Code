@@ -30,6 +30,7 @@ import {
   CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
 } from "../CodexDeveloperInstructions.ts";
+import { T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT } from "../T3AgentSidebarLocaleInstructions.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 
 const PROVIDER = "codex" as const;
@@ -310,9 +311,11 @@ function buildCodexCollaborationMode(input: {
       model,
       reasoning_effort: input.effort ?? "medium",
       developer_instructions:
-        input.interactionMode === "plan"
+        (input.interactionMode === "plan"
           ? CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS
-          : CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
+          : CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS) +
+        "\n\n" +
+        T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT,
     },
   };
 }

@@ -110,7 +110,10 @@ export const renderTerminalQrCode = (value: string, margin = 2): string => {
       const topDark = isDark(x, y);
       const bottomDark = isDark(x, y + 1);
 
-      row += topDark ? (bottomDark ? "█" : "▀") : bottomDark ? "▄" : " ";
+      if (topDark && bottomDark) row += "█";
+      else if (topDark) row += "▀";
+      else if (bottomDark) row += "▄";
+      else row += " ";
     }
 
     rows.push(row);
