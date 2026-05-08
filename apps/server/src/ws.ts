@@ -2,6 +2,7 @@ import {
   Cause,
   Duration,
   Effect,
+  Exit,
   Layer,
   Option,
   Queue,
@@ -58,6 +59,10 @@ import {
   observeRpcStream,
   observeRpcStreamEffect,
 } from "./observability/RpcInstrumentation.ts";
+import {
+  fetchClaudeModelsListStrict,
+  mergeClaudeAgentSnapshotModels,
+} from "./provider/Layers/ClaudeProvider.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 import { ProviderInstaller } from "./provider/Services/ProviderInstaller.ts";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
@@ -941,6 +946,52 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
           observeRpcEffect(
             WS_METHODS.serverRefreshProviders,
             providerRegistry.refresh().pipe(Effect.map((providers) => ({ providers }))),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverRefreshClaudeAgentModels]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverRefreshClaudeAgentModels,
+            Effect.gen(function* () {
+              const registry = yield* ProviderRegistry;
+              const serverSettingsSvc = yield* ServerSettingsService;
+              const settings = yield* serverSettingsSvc.getSettings;
+              const providers = yield* registry.getProviders;
+              const existing = providers.find((candidate) => candidate.provider === "claudeAgent");
+              if (!existing) {
+                return {
+                  ok: false as const,
+                  error: "当前没有 Claude 提供商快照，请稍后重试。",
+                };
+              }
+              const binaryPath = settings.providers.claudeAgent.binaryPath.trim();
+              if (!binaryPath) {
+                return { ok: false as const, error: "未配置 Claude 二进制路径。" };
+              }
+              const cliModelsExit = yield* fetchClaudeModelsListStrict(binaryPath).pipe(
+                Effect.exit,
+              );
+              if (Exit.isFailure(cliModelsExit)) {
+                const err = Cause.squash(cliModelsExit.cause);
+                return {
+                  ok: false as const,
+                  error: err instanceof Error ? err.message : String(err),
+                };
+              }
+              const merged = mergeClaudeAgentSnapshotModels({
+                existing,
+                cliModels: cliModelsExit.value,
+                customModels: settings.providers.claudeAgent.customModels,
+              });
+              const nextProviders = yield* registry.upsertProvider(merged);
+              return { ok: true as const, providers: nextProviders };
+            }).pipe(
+              Effect.catch((error: unknown) =>
+                Effect.succeed({
+                  ok: false as const,
+                  error: error instanceof Error ? error.message : String(error),
+                }),
+              ),
+            ),
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverUpsertKeybinding]: (rule) =>

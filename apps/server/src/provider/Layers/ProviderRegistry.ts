@@ -245,6 +245,7 @@ const ProviderRegistryLiveBase = Layer.effect(
           Effect.tapError(Effect.logError),
           Effect.orElseSucceed(() => [] as ReadonlyArray<ServerProvider>),
         ),
+      upsertProvider: (provider: ServerProvider) => syncProvider(provider),
       get streamChanges() {
         return Stream.fromPubSub(changesPubSub);
       },

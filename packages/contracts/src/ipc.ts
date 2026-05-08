@@ -28,6 +28,7 @@ import type {
 import type {
   ServerConfig,
   ServerProviderUpdatedPayload,
+  ServerRefreshClaudeAgentModelsResult,
   ServerUpsertKeybindingResult,
 } from "./server.ts";
 import type {
@@ -226,6 +227,7 @@ export interface LocalApi {
   server: {
     getConfig: () => Promise<ServerConfig>;
     refreshProviders: () => Promise<ServerProviderUpdatedPayload>;
+    refreshClaudeAgentModels: () => Promise<ServerRefreshClaudeAgentModelsResult>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;
     updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;

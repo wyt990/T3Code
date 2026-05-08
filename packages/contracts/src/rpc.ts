@@ -72,6 +72,7 @@ import {
   ServerConfig,
   ServerLifecycleStreamEvent,
   ServerProviderUpdatedPayload,
+  ServerRefreshClaudeAgentModelsResult,
   ServerUpsertKeybindingInput,
   ServerUpsertKeybindingResult,
 } from "./server.ts";
@@ -167,6 +168,7 @@ export const WS_METHODS = {
   // Server meta
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
+  serverRefreshClaudeAgentModels: "server.refreshClaudeAgentModels",
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
@@ -232,6 +234,14 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
   payload: Schema.Struct({}),
   success: ServerProviderUpdatedPayload,
 });
+
+export const WsServerRefreshClaudeAgentModelsRpc = Rpc.make(
+  WS_METHODS.serverRefreshClaudeAgentModels,
+  {
+    payload: Schema.Struct({}),
+    success: ServerRefreshClaudeAgentModelsResult,
+  },
+);
 
 export const WsServerGetSettingsRpc = Rpc.make(WS_METHODS.serverGetSettings, {
   payload: Schema.Struct({}),
@@ -468,6 +478,7 @@ export const WsOpenCodeInstallRpc = Rpc.make(WS_METHODS.openCodeInstall, {
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
+  WsServerRefreshClaudeAgentModelsRpc,
   WsServerUpsertKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,

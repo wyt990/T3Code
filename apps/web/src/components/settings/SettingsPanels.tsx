@@ -80,6 +80,8 @@ import {
 import { formatProviderKindLabel } from "../../providerModels";
 import { ProviderInstallCard } from "./ProviderInstallCard";
 import { ClaudeCodeInstallCard } from "./ClaudeCodeInstallCard";
+import { ClaudeAgentModelListRefreshErrorDialog } from "../chat/ClaudeAgentModelListRefreshErrorDialog";
+import { runClaudeAgentModelListRefresh } from "~/lib/claudeAgentModelListRefresh";
 
 const THEME_OPTIONS = [
   {
@@ -574,6 +576,10 @@ export function GeneralSettingsPanel() {
   >({});
   const [isRefreshingProviders, setIsRefreshingProviders] = useState(false);
   const refreshingRef = useRef(false);
+  const [claudeAgentModelsRefreshBusy, setClaudeAgentModelsRefreshBusy] = useState(false);
+  const [claudeAgentModelsRefreshErrorOpen, setClaudeAgentModelsRefreshErrorOpen] = useState(false);
+  const [claudeAgentModelsRefreshErrorText, setClaudeAgentModelsRefreshErrorText] = useState("");
+  const claudeAgentModelsRefreshBusyRef = useRef(false);
   const modelListRefs = useRef<Partial<Record<ProviderKind, HTMLDivElement | null>>>({});
   const refreshProviders = useCallback(() => {
     if (refreshingRef.current) return;
@@ -588,6 +594,24 @@ export function GeneralSettingsPanel() {
         refreshingRef.current = false;
         setIsRefreshingProviders(false);
       });
+  }, []);
+
+  const handleRefreshClaudeAgentModels = useCallback(async () => {
+    if (claudeAgentModelsRefreshBusyRef.current) {
+      return;
+    }
+    claudeAgentModelsRefreshBusyRef.current = true;
+    setClaudeAgentModelsRefreshBusy(true);
+    try {
+      const result = await runClaudeAgentModelListRefresh();
+      if (!result.ok) {
+        setClaudeAgentModelsRefreshErrorText(result.error);
+        setClaudeAgentModelsRefreshErrorOpen(true);
+      }
+    } finally {
+      claudeAgentModelsRefreshBusyRef.current = false;
+      setClaudeAgentModelsRefreshBusy(false);
+    }
   }, []);
 
   const keybindingsConfigPath = useServerKeybindingsConfigPath();
@@ -1515,7 +1539,33 @@ export function GeneralSettingsPanel() {
                     ) : null}
 
                     <div className="border-t border-border/60 px-4 py-3 sm:px-5">
-                      <div className="text-xs font-medium text-foreground">模型</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs font-medium text-foreground">模型</div>
+                        {providerCard.provider === "claudeAgent" ? (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="shrink-0"
+                                  disabled={claudeAgentModelsRefreshBusy}
+                                  aria-label="重新获取 Claude 模型列表"
+                                  onClick={() => void handleRefreshClaudeAgentModels()}
+                                >
+                                  {claudeAgentModelsRefreshBusy ? (
+                                    <LoaderIcon className="size-4 animate-spin" />
+                                  ) : (
+                                    <RefreshCwIcon className="size-4" />
+                                  )}
+                                </Button>
+                              }
+                            />
+                            <TooltipPopup side="left">重新获取 Claude 模型列表</TooltipPopup>
+                          </Tooltip>
+                        ) : null}
+                      </div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         {providerCard.models.length} 个可用模型
                       </div>
@@ -1793,6 +1843,11 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+      <ClaudeAgentModelListRefreshErrorDialog
+        open={claudeAgentModelsRefreshErrorOpen}
+        onOpenChange={setClaudeAgentModelsRefreshErrorOpen}
+        message={claudeAgentModelsRefreshErrorText}
+      />
     </SettingsPageContainer>
   );
 }

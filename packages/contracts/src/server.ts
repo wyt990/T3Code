@@ -242,3 +242,15 @@ export const ServerProviderUpdatedPayload = Schema.Struct({
   providers: ServerProviders,
 });
 export type ServerProviderUpdatedPayload = typeof ServerProviderUpdatedPayload.Type;
+
+export const ServerRefreshClaudeAgentModelsResult = Schema.Union([
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    providers: ServerProviders,
+  }),
+  Schema.Struct({
+    ok: Schema.Literal(false),
+    error: Schema.String,
+  }),
+]);
+export type ServerRefreshClaudeAgentModelsResult = typeof ServerRefreshClaudeAgentModelsResult.Type;

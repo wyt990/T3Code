@@ -115,6 +115,7 @@ function createRegisteredGitStatusClient(environmentId: EnvironmentId) {
         },
       })),
       refreshProviders: vi.fn(async () => undefined),
+      refreshClaudeAgentModels: vi.fn(async () => ({ ok: true as const, providers: [] })),
       upsertKeybinding: vi.fn(async () => undefined),
       getSettings: vi.fn(async () => undefined),
       updateSettings: vi.fn(async () => undefined),

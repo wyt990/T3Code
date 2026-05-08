@@ -10,7 +10,7 @@ import type {
 } from "@t3tools/contracts";
 import { Cache, Duration, Effect, Equal, Layer, Option, Result, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { decodeJsonResult } from "@t3tools/shared/schemaJson";
+import { decodeJsonResult, formatSchemaError } from "@t3tools/shared/schemaJson";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -51,7 +51,8 @@ const ClaudeBuiltinModel = Schema.Struct({
   id: Schema.String,
 });
 
-const ClaudeModelListJson = Schema.Struct({
+/** Exported for tests; matches `claudecode --list-models --json` shape. */
+export const ClaudeCliModelListJsonSchema = Schema.Struct({
   provider: Schema.String,
   currentModel: Schema.String,
   defaultModel: Schema.String,
@@ -61,11 +62,12 @@ const ClaudeModelListJson = Schema.Struct({
   zenFreeModels: Schema.optional(ClaudeZenFreeModels),
   settings: Schema.optional(
     Schema.Struct({
-      model: Schema.String,
+      // CLI may omit this when `settings` is present but empty/partial (schema drift).
+      model: Schema.optional(Schema.String),
     }),
   ),
 });
-type ClaudeModelListJson = typeof ClaudeModelListJson.Type;
+type ClaudeModelListJson = typeof ClaudeCliModelListJsonSchema.Type;
 
 import {
   createModelCapabilities,
@@ -496,13 +498,94 @@ const fetchClaudeModelsList = Effect.fn("fetchClaudeModelsList")(function* (bina
   }
 
   // Try to parse JSON output
-  const parsed = decodeJsonResult(ClaudeModelListJson)(stdout.trim());
+  const parsed = decodeJsonResult(ClaudeCliModelListJsonSchema)(stdout.trim());
   if (Result.isFailure(parsed)) {
     return [] as ReadonlyArray<ServerProviderModel>;
   }
 
   return parseClaudeModelList(parsed.success);
 });
+
+/**
+ * Same as running `claudecode --list-models --json`, but surfaces stderr,
+ * exit codes, timeouts, and JSON parse failures for explicit refresh UX.
+ */
+export const fetchClaudeModelsListStrict = Effect.fn("fetchClaudeModelsListStrict")(function* (
+  binaryPath: string,
+) {
+  const command = ChildProcess.make(binaryPath, ["--list-models", "--json"], {
+    shell: process.platform === "win32",
+  });
+
+  const collected = yield* spawnAndCollect(binaryPath, command).pipe(
+    Effect.mapError(
+      (error) =>
+        new Error(`无法运行 Claude CLI：${error instanceof Error ? error.message : String(error)}`),
+    ),
+    Effect.timeoutOption(MODEL_LIST_TIMEOUT_MS),
+    Effect.flatMap((option) =>
+      Option.match(option, {
+        onNone: () =>
+          Effect.fail(
+            new Error(
+              `运行「${binaryPath} --list-models --json」超时（${MODEL_LIST_TIMEOUT_MS}ms）。`,
+            ),
+          ),
+        onSome: Effect.succeed,
+      }),
+    ),
+  );
+
+  if (collected.code !== 0) {
+    const detail = detailFromResult(collected);
+    return yield* Effect.fail(
+      new Error(
+        detail
+          ? `Claude CLI 退出码 ${collected.code}：${detail}`
+          : `Claude CLI 退出码 ${collected.code}。`,
+      ),
+    );
+  }
+
+  const stdout = collected.stdout.trim();
+  if (!stdout) {
+    const detail = detailFromResult(collected);
+    return yield* Effect.fail(
+      new Error(detail ? `未收到模型列表 JSON：${detail}` : "未收到模型列表 JSON。"),
+    );
+  }
+
+  const parsed = decodeJsonResult(ClaudeCliModelListJsonSchema)(stdout);
+  if (Result.isFailure(parsed)) {
+    return yield* Effect.fail(
+      new Error(`解析模型列表 JSON 失败：${formatSchemaError(parsed.failure)}`),
+    );
+  }
+
+  return parseClaudeModelList(parsed.success);
+});
+
+export function mergeClaudeAgentSnapshotModels(input: {
+  readonly existing: ServerProvider;
+  readonly cliModels: ReadonlyArray<ServerProviderModel>;
+  readonly customModels: ReadonlyArray<string>;
+}): ServerProvider {
+  const discoveredModels =
+    input.cliModels.length > 0
+      ? input.cliModels
+      : getBuiltInClaudeModelsForVersion(input.existing.version);
+  const models = providerModelsFromSettings(
+    discoveredModels,
+    PROVIDER,
+    input.customModels,
+    DEFAULT_CLAUDE_MODEL_CAPABILITIES,
+  );
+  return {
+    ...input.existing,
+    models,
+    checkedAt: new Date().toISOString(),
+  };
+}
 
 export function getClaudeModelCapabilities(model: string | null | undefined): ModelCapabilities {
   const slug = model?.trim();

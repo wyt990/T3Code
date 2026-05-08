@@ -76,6 +76,7 @@ const rpcClientMock = {
   server: {
     getConfig: vi.fn(),
     refreshProviders: vi.fn(),
+    refreshClaudeAgentModels: vi.fn(),
     upsertKeybinding: vi.fn(),
     getSettings: vi.fn(),
     updateSettings: vi.fn(),
@@ -91,6 +92,16 @@ const rpcClientMock = {
       registerListener(shellStreamListeners, listener),
     ),
     subscribeThread: vi.fn(() => () => undefined),
+  },
+  provider: {
+    getInstallMethods: vi.fn(),
+    install: vi.fn(),
+  },
+  claudeCode: {
+    install: vi.fn(),
+  },
+  openCode: {
+    install: vi.fn(),
   },
 };
 
@@ -472,6 +483,17 @@ describe("wsApi", () => {
 
     await expect(api.server.refreshProviders()).resolves.toEqual({ providers: nextProviders });
     expect(rpcClientMock.server.refreshProviders).toHaveBeenCalledWith();
+  });
+
+  it("forwards Claude Agent model refreshes directly to the RPC client", async () => {
+    const payload = { ok: true as const, providers: defaultProviders };
+    rpcClientMock.server.refreshClaudeAgentModels.mockResolvedValue(payload);
+    const { createLocalApi } = await import("./localApi");
+
+    const api = createLocalApi(rpcClientMock as never);
+
+    await expect(api.server.refreshClaudeAgentModels()).resolves.toEqual(payload);
+    expect(rpcClientMock.server.refreshClaudeAgentModels).toHaveBeenCalledWith();
   });
 
   it("forwards server settings updates directly to the RPC client", async () => {

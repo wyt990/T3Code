@@ -22,6 +22,13 @@ export interface ProviderRegistryShape {
   readonly refresh: (provider?: ProviderKind) => Effect.Effect<ReadonlyArray<ServerProvider>>;
 
   /**
+   * Merge a single provider snapshot into the registry (publishes when changed).
+   */
+  readonly upsertProvider: (
+    provider: ServerProvider,
+  ) => Effect.Effect<ReadonlyArray<ServerProvider>>;
+
+  /**
    * Stream of provider snapshot updates.
    */
   readonly streamChanges: Stream.Stream<ReadonlyArray<ServerProvider>>;

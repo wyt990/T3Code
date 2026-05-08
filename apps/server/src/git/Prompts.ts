@@ -37,6 +37,7 @@ export function buildCommitMessagePrompt(input: CommitMessagePromptInput) {
       ? ["- branch must be a short semantic git branch fragment for this change"]
       : []),
     "- capture the primary user-visible or developer-visible change",
+    "- subject and body must be written in Simplified Chinese (简体中文)",
     "",
     `Branch: ${input.branch ?? "(detached)"}`,
     "",
@@ -88,6 +89,7 @@ export function buildPrContentPrompt(input: PrContentPromptInput) {
     "- body must be markdown and include headings '## Summary' and '## Testing'",
     "- under Summary, provide short bullet points",
     "- under Testing, include bullet points with concrete checks or 'Not run' where appropriate",
+    "- title and body must be written in Simplified Chinese (简体中文)",
     "",
     `Base branch: ${input.baseBranch}`,
     `Head branch: ${input.headBranch}`,

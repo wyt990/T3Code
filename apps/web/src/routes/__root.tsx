@@ -232,9 +232,10 @@ function StartupTabNavigation() {
       "%c【启动导航】从持久化标签恢复导航",
       "background:#6366f1;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
       {
-        目标: target.kind === "server"
-          ? `会话(${target.threadRef.environmentId}/${target.threadRef.threadId})`
-          : `草稿(${target.draftId})`,
+        目标:
+          target.kind === "server"
+            ? `会话(${target.threadRef.environmentId}/${target.threadRef.threadId})`
+            : `草稿(${target.draftId})`,
         标签ID: activeTabId,
       },
     );

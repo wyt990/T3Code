@@ -6,7 +6,7 @@ import {
 } from "@t3tools/contracts";
 import { resolveSelectableModel } from "@t3tools/shared/model";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { SearchIcon } from "lucide-react";
+import { LoaderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { isModelPickerNewModel } from "./modelPickerModelHighlights";
@@ -21,7 +21,10 @@ import {
 } from "../../keybindings";
 import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
 import { cn, getPlatformString } from "~/lib/utils";
-import { TooltipProvider } from "../ui/tooltip";
+import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { ClaudeAgentModelListRefreshErrorDialog } from "./ClaudeAgentModelListRefreshErrorDialog";
+import { runClaudeAgentModelListRefresh } from "~/lib/claudeAgentModelListRefresh";
 
 type ModelPickerItem = {
   slug: string;
@@ -46,6 +49,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
 }) {
   const { keybindings: providedKeybindings, modelOptionsByProvider, onProviderModelChange } = props;
   const [searchQuery, setSearchQuery] = useState("");
+  const [modelListRefreshBusy, setModelListRefreshBusy] = useState(false);
+  const [modelListRefreshErrorOpen, setModelListRefreshErrorOpen] = useState(false);
+  const [modelListRefreshErrorText, setModelListRefreshErrorText] = useState("");
+  const modelListRefreshBusyRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRegionRef = useRef<HTMLDivElement>(null);
   const highlightedModelKeyRef = useRef<string | null>(null);
@@ -64,6 +71,24 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
 
   const focusSearchInput = useCallback(() => {
     searchInputRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const handleRefreshClaudeModels = useCallback(async () => {
+    if (modelListRefreshBusyRef.current) {
+      return;
+    }
+    modelListRefreshBusyRef.current = true;
+    setModelListRefreshBusy(true);
+    try {
+      const result = await runClaudeAgentModelListRefresh();
+      if (!result.ok) {
+        setModelListRefreshErrorText(result.error);
+        setModelListRefreshErrorOpen(true);
+      }
+    } finally {
+      modelListRefreshBusyRef.current = false;
+      setModelListRefreshBusy(false);
+    }
   }, []);
 
   const handleSelectProvider = useCallback(
@@ -250,6 +275,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const isLocked = props.lockedProvider !== null;
   const isSearching = searchQuery.trim().length > 0;
   const showSidebar = !isLocked && !isSearching;
+  const showClaudeModelListRefresh =
+    (isLocked && props.lockedProvider === "claudeAgent") ||
+    (!isLocked && selectedProvider === "claudeAgent");
   const LockedProviderIcon =
     isLocked && props.lockedProvider ? PROVIDER_ICON_BY_PROVIDER[props.lockedProvider] : null;
   const modelJumpCommandByKey = useMemo(() => {
@@ -395,7 +423,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       >
         {/* Locked provider header (only shown in locked mode) */}
         {isLocked && LockedProviderIcon && props.lockedProvider && (
-          <div className="flex items-center gap-2 px-4 py-3 border-b">
+          <div className="flex items-center gap-2 border-b px-4 py-3">
             <LockedProviderIcon className="size-5 shrink-0" />
             <span className="font-medium text-sm">
               {PROVIDER_DISPLAY_NAMES[props.lockedProvider]}
@@ -439,42 +467,71 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             )}
           >
             {/* Search bar */}
-            <div className="border-b px-3 py-2">
-              <ComboboxInput
-                ref={searchInputRef}
-                className="[&_input]:font-sans rounded-md"
-                inputClassName="border-0 shadow-none ring-0 focus-visible:ring-0"
-                placeholder="搜索模型..."
-                showTrigger={false}
-                startAddon={<SearchIcon className="size-4 shrink-0 text-muted-foreground/50" />}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    e.preventDefault();
+            <div className="flex items-center gap-1 border-b px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <ComboboxInput
+                  ref={searchInputRef}
+                  className="[&_input]:font-sans rounded-md"
+                  inputClassName="border-0 shadow-none ring-0 focus-visible:ring-0"
+                  placeholder="搜索模型..."
+                  showTrigger={false}
+                  startAddon={<SearchIcon className="size-4 shrink-0 text-muted-foreground/50" />}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      props.onRequestClose?.();
+                      return;
+                    }
+                    if (e.key === "Enter" && highlightedModelKeyRef.current) {
+                      (
+                        e as typeof e & { preventBaseUIHandler?: () => void }
+                      ).preventBaseUIHandler?.();
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const [provider, slug] = highlightedModelKeyRef.current.split(":") as [
+                        ProviderKind,
+                        string,
+                      ];
+                      handleModelSelect(slug, provider);
+                      return;
+                    }
                     e.stopPropagation();
-                    props.onRequestClose?.();
-                    return;
-                  }
-                  if (e.key === "Enter" && highlightedModelKeyRef.current) {
-                    (
-                      e as typeof e & { preventBaseUIHandler?: () => void }
-                    ).preventBaseUIHandler?.();
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const [provider, slug] = highlightedModelKeyRef.current.split(":") as [
-                      ProviderKind,
-                      string,
-                    ];
-                    handleModelSelect(slug, provider);
-                    return;
-                  }
-                  e.stopPropagation();
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
-                size="sm"
-              />
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  size="sm"
+                />
+              </div>
+              {showClaudeModelListRefresh ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="shrink-0"
+                        disabled={modelListRefreshBusy}
+                        aria-label="重新获取 Claude 模型列表"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleRefreshClaudeModels();
+                        }}
+                      >
+                        {modelListRefreshBusy ? (
+                          <LoaderIcon className="size-4 animate-spin" />
+                        ) : (
+                          <RefreshCwIcon className="size-4" />
+                        )}
+                      </Button>
+                    }
+                  />
+                  <TooltipPopup side="bottom">重新获取 Claude 模型列表</TooltipPopup>
+                </Tooltip>
+              ) : null}
             </div>
 
             {/* Model list */}
@@ -511,6 +568,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             </ComboboxEmpty>
           </div>
         </Combobox>
+        <ClaudeAgentModelListRefreshErrorDialog
+          open={modelListRefreshErrorOpen}
+          onOpenChange={setModelListRefreshErrorOpen}
+          message={modelListRefreshErrorText}
+        />
       </div>
     </TooltipProvider>
   );
