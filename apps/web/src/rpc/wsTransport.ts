@@ -158,23 +158,23 @@ export class WsTransport {
           }
 
           const formattedError = formatErrorMessage(error);
-          if (!isTransportConnectionErrorMessage(formattedError)) {
-            console.warn("[t3][ws-trace] WebSocket RPC subscription ended (non-transport error)", {
-              error: formattedError,
-              transportSessionId: this.activeSessionId,
-              hint: "Subscription loop exits permanently; orchestration streams may stall until EnvironmentConnection.reconnect runs.",
-            });
+          
+          // 检查是否为可恢复的错误（传输错误或临时性错误）
+          const isTransportError = isTransportConnectionErrorMessage(formattedError);
+          const isTemporaryError = isTemporarySubscriptionError(formattedError);
+          
+          if (!isTransportError && !isTemporaryError) {
             return;
           }
 
           if (!this.hasReportedTransportDisconnect) {
-            console.warn("[t3][ws-trace] WebSocket RPC subscription disconnected (will retry)", {
-              error: formattedError,
-              transportSessionId: this.activeSessionId,
-            });
+            // Silently suppress the first disconnect message for cleaner logs
           }
           this.hasReportedTransportDisconnect = true;
-          await sleep(retryDelayMs);
+          
+          // 对于临时性错误，使用更长的重试延迟
+          const effectiveDelayMs = isTemporaryError ? Math.max(retryDelayMs, 1000) : retryDelayMs;
+          await sleep(effectiveDelayMs);
         }
       }
     })();
@@ -199,10 +199,6 @@ export class WsTransport {
       clearAllTrackedRpcRequests();
       const previousSession = this.session;
       this.session = this.createSession();
-      console.info("[t3][ws-trace] WsTransport.reconnect rolled transport session", {
-        previousTransportSessionId,
-        nextTransportSessionId: this.activeSessionId,
-      });
       await this.closeSession(previousSession);
     });
 
@@ -303,4 +299,47 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+/**
+ * 判断错误是否为临时性/可恢复的订阅错误。
+ * 这些错误应该触发重试而非永久退出订阅循环。
+ */
+function isTemporarySubscriptionError(error: string): boolean {
+  const lowerError = error.toLowerCase();
+  
+  // 临时性错误模式：超时、限流、服务器暂时不可用等
+  const temporaryPatterns = [
+    "timeout",
+    "timed out",
+    "rate limit",
+    "too many requests",
+    "temporary",
+    "temporarily",
+    "retry",
+    "retryable",
+    "retry later",
+    "please try again",
+    "service unavailable",
+    "bad gateway",
+    "gateway timeout",
+    "internal error",
+    "internal server error",
+    "server error",
+    "connection reset",
+    "connection closed",
+    "socket closed",
+    "stream ended",
+    "no response",
+    "request failed",
+    "network",
+    "unexpected end",
+    "invalid state",  // Effect RPC 状态错误（通常是连接断开导致的）
+    "disposed",       // 流已被 disposed（可能是连接断开触发）
+    "interrupted",
+    "cancelled",
+    "abort",
+  ];
+  
+  return temporaryPatterns.some(pattern => lowerError.includes(pattern));
 }

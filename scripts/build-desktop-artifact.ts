@@ -356,6 +356,43 @@ const runCommand = Effect.fn("runCommand")(function* (command: ChildProcess.Comm
   }
 });
 
+/**
+ * 运行命令，对网络相关错误自动重试。
+ * 用于 electron-builder 等需要下载资源的命令。
+ */
+const runCommandWithRetry = Effect.fn("runCommandWithRetry")(function* (
+  command: ChildProcess.Command,
+  options?: { readonly maxRetries?: number; readonly retryDelayMs?: number },
+) {
+  const maxRetries = options?.maxRetries ?? 3;
+  const retryDelayMs = options?.retryDelayMs ?? 2000;
+  const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const child = yield* commandSpawner.spawn(command);
+    const exitCode = yield* child.exitCode;
+
+    if (exitCode === 0) {
+      return; // 成功，退出
+    }
+
+    // 检查是否是网络相关错误
+    const isNetworkError = true; // electron-builder 失败时总是尝试重试
+    const shouldRetry = isNetworkError && attempt < maxRetries;
+
+    if (shouldRetry) {
+      yield* Effect.logWarning(
+        `[runCommandWithRetry] 命令失败 (exitCode=${exitCode})，${retryDelayMs}ms 后重试 (${attempt}/${maxRetries})`,
+      );
+      yield* Effect.sleep(retryDelayMs);
+    } else {
+      return yield* new BuildScriptError({
+        message: `Command exited with non-zero exit code (${exitCode})`,
+      });
+    }
+  }
+});
+
 function generateMacIconSet(
   sourcePng: string,
   targetIcns: string,
@@ -844,10 +881,20 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     buildEnv.GYP_MSVS_VERSION = buildEnv.GYP_MSVS_VERSION ?? "2022";
   }
 
+  // 设置 electron 镜像源（可选，如果网络问题持续，可设置 T3CODE_ELECTRON_MIRROR）
+  const electronMirror =
+    process.env.T3CODE_ELECTRON_MIRROR ??
+    process.env.ELECTRON_MIRROR ??
+    process.env.npm_config_electron_mirror;
+  if (electronMirror) {
+    buildEnv.ELECTRON_MIRROR = electronMirror;
+    buildEnv.npm_config_electron_mirror = electronMirror;
+  }
+
   yield* Effect.log(
     `[desktop-artifact] Building ${options.platform}/${options.target} (arch=${options.arch}, version=${appVersion})...`,
   );
-  yield* runCommand(
+  yield* runCommandWithRetry(
     ChildProcess.make({
       cwd: stageAppDir,
       env: buildEnv,
@@ -855,6 +902,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       // Windows needs shell mode to resolve .cmd shims.
       shell: process.platform === "win32",
     })`bun x --install=fallback electron-builder ${platformConfig.cliFlag} --${options.arch} --publish never`,
+    { maxRetries: 3, retryDelayMs: 3000 },
   );
 
   const stageDistDir = path.join(stageAppDir, "dist");

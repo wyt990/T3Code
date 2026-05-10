@@ -156,14 +156,10 @@ export function WebSocketConnectionCoordinator() {
       toastResetTimerRef.current = null;
     }
     lastForcedReconnectAtRef.current = Date.now();
-    console.info("[t3][ws-trace] UI invoking primary EnvironmentConnection.reconnect", {
-      showFailureToast,
-    });
     void getPrimaryEnvironmentConnection()
       .reconnect()
       .catch((error) => {
         if (!showFailureToast) {
-          console.warn("Automatic WebSocket reconnect failed", { error });
           return;
         }
         toastManager.add(

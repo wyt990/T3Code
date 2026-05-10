@@ -521,7 +521,7 @@ export function TabBar(props: Readonly<TabBarProps>) {
           <button
             type="button"
             aria-label="在新窗口打开开发者工具"
-            title="在新窗口打开开发者工具（控制台 / Network，便于查看 [t3][ws-trace] 等日志）"
+            title="在新窗口打开开发者工具（控制台 / Network）"
             data-testid="tab-bar-devtools"
             onClick={() => {
               void window.desktopBridge?.openDetachedDevTools?.().catch(() => undefined);

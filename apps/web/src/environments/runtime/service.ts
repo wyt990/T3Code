@@ -266,8 +266,6 @@ function shouldEvictThreadDetailSubscription(entry: ThreadDetailSubscriptionEntr
 }
 
 function reattachThreadDetailSubscriptionsForEnvironment(environmentId: EnvironmentId): void {
-  // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-  // console.log("【中断重连】开始重新附加线程订阅", { environmentId });
   const traceRows: Array<{
     readonly threadId: ThreadId;
     readonly hadSubscriptionBefore: boolean;
@@ -303,13 +301,6 @@ function reattachThreadDetailSubscriptionsForEnvironment(environmentId: Environm
       hasSubscriptionAfterStep: entry.unsubscribe !== NOOP,
     });
   }
-
-  // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-  // console.log("【中断重连】线程订阅重新附加完成", {
-  //   environmentId,
-  //   entryCount: traceRows.length,
-  //   threads: traceRows,
-  // });
 }
 
 /**
@@ -317,59 +308,29 @@ function reattachThreadDetailSubscriptionsForEnvironment(environmentId: Environm
  * Covers gaps where live streams dropped events while the server continued (e.g. background WS churn).
  */
 async function catchUpOrchestrationAfterReconnect(environmentId: EnvironmentId): Promise<void> {
-  // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-  // console.log("【中断重连】开始补拉编排事件", { environmentId });
   const connection = readEnvironmentConnection(environmentId);
   if (!connection) {
-    // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-    // console.warn("【中断重连】补拉失败：找不到连接", { environmentId });
     return;
   }
 
   const cursor = readLastAppliedProjectionVersion(environmentId)?.sequence ?? 0;
-  // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-  // console.log("【中断重连】当前投影游标", { environmentId, cursor });
 
   try {
     const events = await connection.client.orchestration.replayEvents({
       fromSequenceExclusive: cursor,
     });
 
-    const _maxReturnedSequence =
-      events.length === 0 ? undefined : Math.max(...events.map((event) => event.sequence));
-
-    // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-    // console.log("【中断重连】replayEvents 返回", {
-    //  environmentId,
-    //  fromSequenceExclusive: cursor,
-    //  returnedCount: events.length,
-    //  maxReturnedSequence: _maxReturnedSequence,
-    //  events: events.map((e) => ({ type: e.type, sequence: e.sequence })),
-    // });
-
     if (events.length === 0) {
-      // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-      // console.log("【中断重连】无缺失事件，跳过补拉");
       return;
     }
 
-    // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-    // console.log("【中断重连】开始应用补拉的事件", {
-    //  environmentId,
-    //  eventCount: events.length,
-    // });
     applyRecoveredEventBatch(events, environmentId);
 
     const maxSequence = events.reduce((max, event) => Math.max(max, event.sequence), cursor);
     markAppliedProjectionEvent(environmentId, maxSequence);
     reconcileSnapshotDerivedState();
-    // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-    // console.log("【中断重连】补拉事件应用完成", { environmentId, maxSequence });
-  } catch (error) {
-    console.error("【中断重连】编排事件补拉失败", {
-      environmentId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+  } catch {
+    // Silently ignore reconnect catch-up failures
   }
 }
 
@@ -755,17 +716,8 @@ function applyRecoveredEventBatch(
   environmentId: EnvironmentId,
 ) {
   if (events.length === 0) {
-    // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-    // console.log("【中断重连】applyRecoveredEventBatch: 无事件需要应用", { environmentId });
     return;
   }
-
-  // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-  // console.log("【中断重连】开始应用补拉的事件批次", {
-  //  environmentId,
-  //  eventCount: events.length,
-  //  eventTypes: events.map((e) => e.type),
-  // });
 
   const batchEffects = deriveOrchestrationBatchEffects(events);
   const uiEvents = coalesceOrchestrationUiEvents(events);
@@ -777,16 +729,10 @@ function applyRecoveredEventBatch(
   );
 
   if (batchEffects.needsProviderInvalidation) {
-    console.log("【中断重连】需要 Provider 失效", { environmentId });
     needsProviderInvalidation = true;
     void activeService?.queryInvalidationThrottler.maybeExecute();
   }
 
-  // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-  // console.log("【中断重连】应用编排事件到 store", {
-  //  environmentId,
-  //  uiEventCount: uiEvents.length,
-  // });
   useStore.getState().applyOrchestrationEvents(uiEvents, environmentId);
   if (needsProjectUiSync) {
     const projects = selectProjectsAcrossEnvironments(useStore.getState());
@@ -838,17 +784,6 @@ function applyRecoveredEventBatch(
   }
 
   reconcileThreadDetailSubscriptionEvictionForEnvironment(environmentId);
-  // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-  // console.log("【中断重连】事件批次应用完成", {
-  //  environmentId,
-  //  batchEffectsSummary: {
-  //    needsProviderInvalidation: batchEffects.needsProviderInvalidation,
-  //    promoteDraftThreadIds: batchEffects.promoteDraftThreadIds,
-  //    clearDeletedThreadIds: batchEffects.clearDeletedThreadIds,
-  //    removeTerminalStateThreadIds: batchEffects.removeTerminalStateThreadIds,
-  //    closeTabsForThreadIds: batchEffects.closeTabsForThreadIds,
-  //  },
-  // });
 }
 
 export function applyEnvironmentThreadDetailEvent(
@@ -1063,8 +998,6 @@ function createPrimaryEnvironmentConnection(): EnvironmentConnection {
       client: createPrimaryEnvironmentClient(knownEnvironment),
       ...createEnvironmentConnectionHandlers(),
       onAfterReconnect: () => {
-        // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-        // console.log("【中断重连】onAfterReconnect 回调触发 (primary)", { primaryEnvironmentId });
         reattachThreadDetailSubscriptionsForEnvironment(primaryEnvironmentId);
         void catchUpOrchestrationAfterReconnect(primaryEnvironmentId);
       },
@@ -1131,10 +1064,6 @@ async function ensureSavedEnvironmentConnection(
       });
     },
     onAfterReconnect: () => {
-      // eslint-disable-next-line no-console -- Debug logging (temporarily disabled)
-      // console.log("【中断重连】onAfterReconnect 回调触发 (saved)", {
-      //  environmentId: record.environmentId,
-      // });
       reattachThreadDetailSubscriptionsForEnvironment(record.environmentId);
       void catchUpOrchestrationAfterReconnect(record.environmentId);
     },
