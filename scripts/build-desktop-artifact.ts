@@ -2,6 +2,7 @@
 
 import nodePath from "node:path";
 import nodeOs from "node:os";
+import nodeFs from "node:fs";
 
 import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
@@ -711,6 +712,49 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const repoRoot = yield* RepoRoot;
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
+
+  // 检查版本号是否变化，如果变化则清理 turbo 缓存
+  const turboCacheDir = nodePath.join(repoRoot, ".turbo");
+  const versionCacheFile = nodePath.join(repoRoot, ".turbo", ".last-build-version");
+  const currentVersion = serverPackageJson.version;
+  
+  let shouldCleanCache = false;
+  if (yield* fs.exists(versionCacheFile)) {
+    const lastVersion = yield* fs.readFileString(versionCacheFile);
+    if (lastVersion.trim() !== currentVersion) {
+      shouldCleanCache = true;
+      yield* Effect.log(
+        `[desktop-artifact] Version changed (${lastVersion.trim()} → ${currentVersion}), cleaning turbo cache...`,
+      );
+    }
+  } else {
+    shouldCleanCache = true;
+    yield* Effect.log("[desktop-artifact] No version cache found, will clean turbo cache...");
+  }
+  
+  if (shouldCleanCache) {
+    yield* Effect.log("[desktop-artifact] Cleaning turbo cache directories...");
+    // 清理所有 turbo 缓存目录 - 使用 node:fs 的 rmSync 递归删除
+    const cacheDirs = [
+      ".turbo",
+      "apps/desktop/.turbo",
+      "apps/server/.turbo",
+      "apps/web/.turbo",
+      "packages/contracts/.turbo",
+      "packages/shared/.turbo",
+      "packages/effect-acp/.turbo",
+      "packages/effect-codex-app-server/.turbo",
+    ];
+    for (const dir of cacheDirs) {
+      const absDir = nodePath.join(repoRoot, dir);
+      nodeFs.rmSync(absDir, { recursive: true, force: true });
+    }
+    // 确保版本缓存目录存在
+    yield* fs.makeDirectory(turboCacheDir, { recursive: true });
+    // 写入新的版本号
+    yield* fs.writeFileString(versionCacheFile, currentVersion);
+    yield* Effect.log("[desktop-artifact] Turbo cache cleaned.");
+  }
 
   const platformConfig = PLATFORM_CONFIG[options.platform];
   if (!platformConfig) {
