@@ -48,6 +48,26 @@ async function canListenOnAllHosts(
   return true;
 }
 
+// 并行检测多个端口，加速端口扫描过程
+async function findAvailablePortInBatch(
+  ports: number[],
+  hosts: ReadonlyArray<string>,
+  canListenOnHost: (port: number, host: string) => Promise<boolean>,
+): Promise<number | null> {
+  const results = await Promise.all(
+    ports.map(async (port) => {
+      const canListen = await canListenOnAllHosts(port, hosts, canListenOnHost);
+      return canListen ? port : null;
+    }),
+  );
+  
+  // 返回第一个可用的端口（按顺序）
+  for (const port of results) {
+    if (port !== null) return port;
+  }
+  return null;
+}
+
 export async function resolveDesktopBackendPort({
   host,
   startPort = DEFAULT_DESKTOP_BACKEND_PORT,
@@ -69,11 +89,18 @@ export async function resolveDesktopBackendPort({
 
   const hostsToCheck = normalizeHosts(host, requiredHosts);
 
-  // Keep desktop startup predictable across app restarts by probing upward from
-  // the same preferred port instead of picking a fresh ephemeral port.
-  for (let port = startPort; port <= maxPort; port += 1) {
-    if (await canListenOnAllHosts(port, hostsToCheck, canListenOnHost)) {
-      return port;
+  // 并行批处理端口扫描：每次检测 10 个端口，显著加速启动过程
+  // 默认从 3773 开始，通常前几个端口就能找到可用的
+  const BATCH_SIZE = 10;
+  for (let batchStart = startPort; batchStart <= maxPort; batchStart += BATCH_SIZE) {
+    const batchPorts: number[] = [];
+    for (let port = batchStart; port <= Math.min(batchStart + BATCH_SIZE - 1, maxPort); port += 1) {
+      batchPorts.push(port);
+    }
+    
+    const availablePort = await findAvailablePortInBatch(batchPorts, hostsToCheck, canListenOnHost);
+    if (availablePort !== null) {
+      return availablePort;
     }
   }
 

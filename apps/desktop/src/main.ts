@@ -77,7 +77,8 @@ import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runti
 import { resolveDesktopAppBranding } from "./appBranding.ts";
 import { bindFirstRevealTrigger, type RevealSubscription } from "./windowReveal.ts";
 
-syncShellEnvironment();
+// Shell 环境同步移到 startBackend() 内部执行，避免阻塞模块加载
+// syncShellEnvironment();
 
 const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 const CONFIRM_CHANNEL = "desktop:confirm";
@@ -290,6 +291,13 @@ function resolveDesktopDevServerUrl(): string {
 }
 
 function backendChildEnv(): NodeJS.ProcessEnv {
+  // Shell 环境同步在启动后端前执行，确保后端进程继承正确的 PATH 等环境变量
+  // 这比在模块加载时同步执行更好，因为不会阻塞 Electron 主进程初始化
+  if (!shellEnvironmentSynced) {
+    syncShellEnvironment();
+    shellEnvironmentSynced = true;
+  }
+  
   const env = { ...process.env };
   delete env.T3CODE_PORT;
   delete env.T3CODE_MODE;
@@ -641,6 +649,7 @@ let updateDownloadInFlight = false;
 let updateInstallInFlight = false;
 let updaterConfigured = false;
 let updateState: DesktopUpdateState = initialUpdateState();
+let shellEnvironmentSynced = false;
 
 function resolveUpdaterErrorContext(): DesktopUpdateErrorContext {
   if (updateInstallInFlight) return "install";

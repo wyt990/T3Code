@@ -11,12 +11,16 @@ const configuredHttpUrl = process.env.VITE_HTTP_URL?.trim();
 const configuredWsUrl = process.env.VITE_WS_URL?.trim();
 const sourcemapEnv = process.env.T3CODE_WEB_SOURCEMAP?.trim().toLowerCase();
 
+// 生产环境默认禁用 sourcemap，开发环境默认启用
+const isProductionBuild = process.env.NODE_ENV === "production";
 const buildSourcemap =
   sourcemapEnv === "0" || sourcemapEnv === "false"
     ? false
     : sourcemapEnv === "hidden"
       ? "hidden"
-      : true;
+      : sourcemapEnv === "true" || sourcemapEnv === "1"
+        ? true
+        : !isProductionBuild;
 
 function resolveDevProxyTarget(wsUrl: string | undefined): string | undefined {
   if (!wsUrl) {
@@ -101,5 +105,20 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: buildSourcemap,
+    // 优化：chunk 大小分割阈值
+    chunkSizeWarningLimit: 500,
+    // Vite 8 使用 Rolldown，manualChunks 需要函数形式
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("/react/")) return "react-vendor";
+            if (id.includes("/effect/")) return "effect-vendor";
+            if (id.includes("/@tanstack/")) return "tanstack-vendor";
+            if (id.includes("/zustand/")) return "state-vendor";
+          }
+        },
+      },
+    },
   },
 });

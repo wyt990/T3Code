@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import nodePath from "node:path";
+import nodeOs from "node:os";
+
 import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
@@ -337,6 +340,24 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
     mockUpdateServerPort,
   } satisfies ResolvedBuildOptions;
 });
+
+// 获取 bun 可执行文件路径
+// 优先使用 npm_execpath 或 process.execPath（如果是 bun 运行的）
+// 否则使用 "bun" 命令名，让系统 PATH 解析
+function resolveBunPath(): string {
+  // 如果是通过 bun 运行的，npm_execpath 会指向 bun
+  if (process.env.npm_execpath?.includes("bun")) {
+    return process.env.npm_execpath;
+  }
+  // 如果 process.execPath 是 bun（直接用 bun 运行），使用它
+  if (process.execPath.includes("bun")) {
+    return process.execPath;
+  }
+  // 回退：使用 "bun" 命令名，让系统 PATH 解析（跨平台兼容）
+  return "bun";
+}
+
+const BUN_EXEC_PATH = resolveBunPath();
 
 const commandOutputOptions = (verbose: boolean) =>
   ({
@@ -766,13 +787,24 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   if (!options.skipBuild) {
     yield* Effect.log("[desktop-artifact] Building desktop/server/web artifacts...");
+    // 添加 bun 路径到 PATH，这样 turbo 等工具也能找到 bun
+    const buildEnv = { ...process.env };
+    const bunDir = nodePath.dirname(BUN_EXEC_PATH);
+    const pathName = process.platform === "win32" ? "PATH" : "PATH";
+    const existingPath = buildEnv[pathName] || "";
+    buildEnv[pathName] = existingPath ? `${bunDir}${nodePath.delimiter}${existingPath}` : bunDir;
+    // 同时设置 npm_execpath 让 turbo 知道用的是 bun
+    buildEnv.npm_execpath = BUN_EXEC_PATH;
+    // 设置 npm_package_manager 帮助 turbo 识别 bun
+    buildEnv.npm_package_manager = `bun@${process.env.npm_package_manager_version || "1.3.13"}`;
+    
+    // 直接运行 bun 命令，不使用 shell（跨平台兼容）
     yield* runCommand(
-      ChildProcess.make({
+      ChildProcess.make(BUN_EXEC_PATH, ["run", "build:desktop"], {
         cwd: repoRoot,
+        env: buildEnv,
         ...commandOutputOptions(options.verbose),
-        // Windows needs shell mode to resolve .cmd shims (e.g. bun.cmd).
-        shell: process.platform === "win32",
-      })`bun run build:desktop`,
+      }),
     );
   }
 
@@ -846,12 +878,10 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   yield* Effect.log("[desktop-artifact] Installing staged production dependencies...");
   yield* runCommand(
-    ChildProcess.make({
+    ChildProcess.make(BUN_EXEC_PATH, ["install", "--production", "--omit", "optional"], {
       cwd: stageAppDir,
       ...commandOutputOptions(options.verbose),
-      // Windows needs shell mode to resolve .cmd shims (e.g. bun.cmd).
-      shell: process.platform === "win32",
-    })`bun install --production --omit optional`,
+    }),
   );
 
   const buildEnv: NodeJS.ProcessEnv = {
@@ -894,14 +924,21 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* Effect.log(
     `[desktop-artifact] Building ${options.platform}/${options.target} (arch=${options.arch}, version=${appVersion})...`,
   );
+  const electronBuilderArgs = [
+    "x",
+    "--install=fallback",
+    "electron-builder",
+    platformConfig.cliFlag,
+    `--${options.arch}`,
+    "--publish",
+    "never",
+  ];
   yield* runCommandWithRetry(
-    ChildProcess.make({
+    ChildProcess.make(BUN_EXEC_PATH, electronBuilderArgs, {
       cwd: stageAppDir,
       env: buildEnv,
       ...commandOutputOptions(options.verbose),
-      // Windows needs shell mode to resolve .cmd shims.
-      shell: process.platform === "win32",
-    })`bun x --install=fallback electron-builder ${platformConfig.cliFlag} --${options.arch} --publish never`,
+    }),
     { maxRetries: 3, retryDelayMs: 3000 },
   );
 
