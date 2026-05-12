@@ -33,6 +33,7 @@ import {
 } from "./ChatView.logic";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import type { TerminalContextDraft } from "../lib/terminalContext";
+import { buildTurnStartCodeQualityGatePayload } from "../codeQualityGateStore";
 
 export type ComposerDraftRouteTarget = ScopedThreadRef | DraftId;
 
@@ -335,7 +336,8 @@ export async function performChatViewSend(deps: PerformChatViewSendDeps): Promis
           }
         : undefined;
     deps.beginLocalDispatch({ preparingWorktree: false });
-    await api.orchestration.dispatchCommand({
+    const codeQualityGate = buildTurnStartCodeQualityGatePayload();
+    const dispatchResult = await api.orchestration.dispatchCommand({
       type: "thread.turn.start",
       commandId: newCommandId(),
       threadId: threadIdForSend,
@@ -350,8 +352,21 @@ export async function performChatViewSend(deps: PerformChatViewSendDeps): Promis
       runtimeMode: deps.runtimeMode,
       interactionMode: deps.interactionMode,
       ...(bootstrap ? { bootstrap } : {}),
+      ...(codeQualityGate ? { codeQualityGate } : {}),
       createdAt: messageCreatedAt,
     });
+    if (dispatchResult.codeQualityTurnGate?.outcome === "warned") {
+      const description =
+        dispatchResult.codeQualityTurnGate.messages.join("\n") ||
+        "部分 Markdown 代码块未达质量阈值，已继续发送。";
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: "代码质量闸门（告警）",
+          description,
+        }),
+      );
+    }
     turnStartSucceeded = true;
   })().catch(async (err: unknown) => {
     if (

@@ -13,6 +13,7 @@ import {
   ArrowDownIcon,
   ArrowLeftIcon,
   ArrowUpIcon,
+  ClockIcon,
   CornerLeftUpIcon,
   FolderIcon,
   FolderPlusIcon,
@@ -35,7 +36,11 @@ import {
   type ReactNode,
 } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useCommandPaletteStore } from "../commandPaletteStore";
+import {
+  parseNaturalLanguage,
+  useCommandPaletteStore,
+  type CommandContext,
+} from "../commandPaletteStore";
 import { readEnvironmentApi } from "../environmentApi";
 import { readPrimaryEnvironmentDescriptor, usePrimaryEnvironmentId } from "../environments/primary";
 import {
@@ -85,6 +90,7 @@ import {
   buildThreadRouteParams,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
+import { CommandPaletteNlBootstrap } from "./CommandPaletteNlBootstrap";
 import {
   ADDON_ICON_CLASS,
   buildBrowseGroups,
@@ -96,6 +102,7 @@ import {
   type CommandPaletteView,
   filterBrowseEntries,
   filterCommandPaletteGroups,
+  type CommandPaletteGroup,
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
   ITEM_ICON_CLASS,
@@ -201,6 +208,7 @@ export function CommandPalette({ children }: { readonly children: ReactNode }) {
   return (
     <ComposerHandleContext.Provider value={composerHandleRef}>
       <CommandDialog open={open} onOpenChange={setOpen}>
+        <CommandPaletteNlBootstrap />
         {children}
         <CommandPaletteDialog />
       </CommandDialog>
@@ -352,6 +360,20 @@ function OpenCommandPaletteDialog() {
   const currentProjectCwd = currentProjectId
     ? (projectCwdById.get(currentProjectId) ?? null)
     : null;
+
+  useEffect(() => {
+    const payload: CommandContext = {};
+    if (currentProjectCwd !== null) {
+      payload.currentFile = currentProjectCwd;
+      payload.recentFiles = [currentProjectCwd];
+    }
+    if (activeThreadId) {
+      payload.currentMode = "thread";
+    } else if (activeDraftThread) {
+      payload.currentMode = "draft";
+    }
+    useCommandPaletteStore.getState().updateContextAwareSuggestions(payload);
+  }, [activeDraftThread, activeThreadId, currentProjectCwd]);
   const currentProjectCwdForBrowse =
     browseEnvironmentId && currentProjectEnvironmentId === browseEnvironmentId
       ? currentProjectCwd
@@ -654,7 +676,38 @@ function OpenCommandPaletteDialog() {
     openAddProjectFlow();
   }, [clearOpenIntent, openAddProjectFlow, openIntent]);
 
+  const paletteRegisteredCommands = useCommandPaletteStore((s) => s.commands);
+  const nlPaletteMatches = useMemo(() => {
+    const q = deferredQuery.trim();
+    if (q.length < 2) {
+      return [];
+    }
+    return parseNaturalLanguage(q, paletteRegisteredCommands);
+  }, [deferredQuery, paletteRegisteredCommands]);
+
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
+
+  const nlQuery = deferredQuery.trim();
+  for (let i = nlPaletteMatches.length - 1; i >= 0; i--) {
+    const cmd = nlPaletteMatches[i]!;
+    actionItems.unshift({
+      kind: "action",
+      value: `nl:${cmd.id}:${encodeURIComponent(cmd.title)}`,
+      searchTerms: [...cmd.keywords, cmd.title, nlQuery],
+      title: (
+        <>
+          <span className="text-muted-foreground me-1">NL</span>
+          {cmd.title}
+        </>
+      ),
+      ...(cmd.description ? { description: cmd.description } : {}),
+      icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useCommandPaletteStore.getState().addRecentQuery(nlQuery, cmd.id);
+        cmd.action();
+      },
+    });
+  }
 
   if (projects.length > 0) {
     const activeProjectTitle = currentProjectId
@@ -890,9 +943,74 @@ function OpenCommandPaletteDialog() {
     browseTo,
   });
 
+  const recentQueries = useCommandPaletteStore((s) => s.recentQueries);
+  const contextAwareSuggestions = useCommandPaletteStore((s) => s.contextAwareSuggestions);
+
+  const supplementaryRootGroups = useMemo((): CommandPaletteGroup[] | null => {
+    if (isBrowsing || currentView !== null || deferredQuery.trim().length > 0) {
+      return null;
+    }
+    const out: CommandPaletteGroup[] = [];
+    const rq = recentQueries.slice(0, 6);
+    if (rq.length > 0) {
+      out.push({
+        value: "recent-nl",
+        label: "最近自然语言",
+        items: rq.map((row, i) => ({
+          kind: "action" as const,
+          value: `recent-nl:${row.id}:${i}`,
+          searchTerms: [row.query],
+          title: row.query,
+          ...(row.parsedCommand
+            ? {
+                description:
+                  row.parsedCommand.length > 40
+                    ? `匹配: ${row.parsedCommand.slice(0, 40)}…`
+                    : `匹配: ${row.parsedCommand}`,
+              }
+            : {}),
+          icon: <ClockIcon className={ITEM_ICON_CLASS} />,
+          keepOpen: true,
+          run: async () => {
+            setQuery(row.query);
+          },
+        })),
+      });
+    }
+    if (contextAwareSuggestions.length > 0) {
+      out.push({
+        value: "ctx-aware",
+        label: "与当前项目上下文相关",
+        items: contextAwareSuggestions.map((cmd) => ({
+          kind: "action" as const,
+          value: `ctx-cmd:${cmd.id}`,
+          searchTerms: [cmd.title, ...cmd.keywords],
+          title: cmd.title,
+          ...(cmd.description ? { description: cmd.description } : {}),
+          icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
+          run: async () => {
+            cmd.action();
+            setOpen(false);
+          },
+        })),
+      });
+    }
+    return out.length > 0 ? out : null;
+  }, [
+    contextAwareSuggestions,
+    currentView,
+    deferredQuery,
+    isBrowsing,
+    recentQueries,
+    setOpen,
+    setQuery,
+  ]);
+
   let displayedGroups = filteredGroups;
   if (isBrowsing) {
     displayedGroups = relativePathNeedsActiveProject ? [] : browseGroups;
+  } else if (currentView === null && supplementaryRootGroups) {
+    displayedGroups = [...supplementaryRootGroups, ...displayedGroups];
   }
 
   const inputPlaceholder = getCommandPaletteInputPlaceholder(paletteMode);

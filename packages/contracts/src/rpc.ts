@@ -78,7 +78,13 @@ import {
 } from "./server.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import { ProviderKind } from "./orchestration.ts";
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { EnvironmentId, ProjectId, TrimmedNonEmptyString, ThreadId } from "./baseSchemas.ts";
+import * as V from "./visualization.ts";
+import * as CQ from "./codeQuality.ts";
+import * as T from "./testing.ts";
+import * as EM from "./environmentManagement.ts";
+import * as MA from "./multiAgent.ts";
+import * as CX from "./context.ts";
 
 // Provider installation schemas
 export const InstallMethodId = Schema.Literals([
@@ -186,7 +192,78 @@ export const WS_METHODS = {
   // Claude Code installation
   claudeCodeInstall: "claudeCode.install",
   openCodeInstall: "openCode.install",
+
+  // Visualization methods
+  visualizationGetSessionData: "visualization.getSessionData",
+  visualizationGetTimelineEvents: "visualization.getTimelineEvents",
+  visualizationGetHotspots: "visualization.getHotspots",
+  visualizationGetOperationStats: "visualization.getOperationStats",
+  visualizationClearSession: "visualization.clearSession",
+
+  // Code quality methods
+  codeQualityLearnProjectStyle: "codeQuality.learnProjectStyle",
+  codeQualityCheckCode: "codeQuality.checkCode",
+  codeQualityDetectTechDebt: "codeQuality.detectTechDebt",
+  codeQualityValidateBestPractices: "codeQuality.validateBestPractices",
+
+  // Testing methods
+  testingCreateTestSuite: "testing.createTestSuite",
+  testingGenerateTests: "testing.generateTests",
+  testingSelectRegressionTests: "testing.selectRegressionTests",
+  testingRunTests: "testing.runTests",
+  testingGetCoverageReport: "testing.getCoverageReport",
+
+  // Environment management methods
+  environmentList: "environment.list",
+  environmentGet: "environment.get",
+  environmentCreate: "environment.create",
+  environmentUpdate: "environment.update",
+  environmentDelete: "environment.delete",
+  environmentExport: "environment.export",
+  environmentImport: "environment.import",
+  environmentRefreshDependencyInsights: "environment.refreshDependencyInsights",
+
+  // Multi-agent orchestration
+  multiAgentRegisterAgent: "multiAgent.registerAgent",
+  multiAgentUnregisterAgent: "multiAgent.unregisterAgent",
+  multiAgentSubmitTask: "multiAgent.submitTask",
+  multiAgentStartTask: "multiAgent.startTask",
+  multiAgentListTasks: "multiAgent.listTasks",
+  multiAgentListAgents: "multiAgent.listAgents",
+  multiAgentCompleteTask: "multiAgent.completeTask",
+  multiAgentFailTask: "multiAgent.failTask",
+  multiAgentSetSharedContext: "multiAgent.setSharedContext",
+  multiAgentGetAllSharedContext: "multiAgent.getAllSharedContext",
+  multiAgentListRoleTemplates: "multiAgent.listRoleTemplates",
+  multiAgentUpsertRoleTemplate: "multiAgent.upsertRoleTemplate",
+  multiAgentDeleteRoleTemplate: "multiAgent.deleteRoleTemplate",
+
+  // Context awareness
+  contextAnalyze: "context.analyze",
+  contextGetContextPool: "context.getContextPool",
+  contextRefreshContextPool: "context.refreshContextPool",
+  contextBuildDependencyGraph: "context.buildDependencyGraph",
+  contextAnalyzeChangeImpact: "context.analyzeChangeImpact",
+  contextGetSmartSuggestions: "context.getSmartSuggestions",
 } as const;
+
+/** Create / switch / delete environment profiles (aligned with server handlers). */
+export const EnvironmentProfileCreateInput = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  templateId: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type EnvironmentProfileCreateInput = typeof EnvironmentProfileCreateInput.Type;
+
+export const EnvironmentProfileSwitchInput = Schema.Struct({
+  profileId: TrimmedNonEmptyString,
+  activeEnvironmentId: EnvironmentId,
+});
+export type EnvironmentProfileSwitchInput = typeof EnvironmentProfileSwitchInput.Type;
+
+export const EnvironmentProfileIdInput = Schema.Struct({
+  profileId: TrimmedNonEmptyString,
+});
+export type EnvironmentProfileIdInput = typeof EnvironmentProfileIdInput.Type;
 
 // Claude Code install input (platform is optional, server will auto-detect)
 export const ClaudeCodeInstallInput = Schema.Struct({
@@ -475,6 +552,287 @@ export const WsOpenCodeInstallRpc = Rpc.make(WS_METHODS.openCodeInstall, {
   success: OpenCodeInstallResult,
 });
 
+// Visualization RPCs
+export const WsVisualizationGetSessionDataRpc = Rpc.make(WS_METHODS.visualizationGetSessionData, {
+  payload: Schema.Struct({ threadId: ThreadId }),
+  success: Schema.Struct({ session: Schema.NullOr(V.VisualizationSession) }),
+});
+
+export const WsVisualizationGetTimelineEventsRpc = Rpc.make(
+  WS_METHODS.visualizationGetTimelineEvents,
+  {
+    payload: Schema.Struct({ threadId: ThreadId }),
+    success: Schema.Struct({ events: Schema.Array(V.ExecutionEvent) }),
+  },
+);
+
+export const WsVisualizationGetHotspotsRpc = Rpc.make(WS_METHODS.visualizationGetHotspots, {
+  payload: Schema.Struct({ threadId: ThreadId }),
+  success: Schema.Struct({ hotspots: Schema.Array(V.PerformanceHotspot) }),
+});
+
+export const WsVisualizationGetOperationStatsRpc = Rpc.make(
+  WS_METHODS.visualizationGetOperationStats,
+  {
+    payload: Schema.Struct({ threadId: ThreadId }),
+    success: Schema.Struct({ stats: Schema.Array(V.OperationStats) }),
+  },
+);
+
+export const WsVisualizationClearSessionRpc = Rpc.make(WS_METHODS.visualizationClearSession, {
+  payload: Schema.Struct({ threadId: ThreadId }),
+  success: Schema.Struct({ success: Schema.Boolean }),
+});
+
+// Code quality RPCs
+export const WsCodeQualityLearnProjectStyleRpc = Rpc.make(WS_METHODS.codeQualityLearnProjectStyle, {
+  payload: Schema.Struct({ projectId: TrimmedNonEmptyString }),
+  success: Schema.Struct({
+    success: Schema.Literal(true),
+    profile: CQ.ProjectStyleProfile,
+  }),
+});
+
+export const WsCodeQualityCheckCodeRpc = Rpc.make(WS_METHODS.codeQualityCheckCode, {
+  payload: Schema.Struct({
+    code: Schema.String,
+    filePath: TrimmedNonEmptyString,
+    profile: CQ.ProjectStyleProfile,
+  }),
+  success: Schema.Struct({ result: CQ.CodeQualityCheckResult }),
+});
+
+export const WsCodeQualityDetectTechDebtRpc = Rpc.make(WS_METHODS.codeQualityDetectTechDebt, {
+  payload: Schema.Struct({ projectId: TrimmedNonEmptyString }),
+  success: Schema.Struct({ debt: Schema.Array(CQ.TechDebtItem) }),
+});
+
+export const WsCodeQualityValidateBestPracticesRpc = Rpc.make(
+  WS_METHODS.codeQualityValidateBestPractices,
+  {
+    payload: Schema.Struct({ code: Schema.String, checklist: CQ.BestPracticeChecklist }),
+    success: Schema.Struct({ passed: Schema.Boolean, violations: Schema.Array(Schema.String) }),
+  },
+);
+
+// Testing RPCs
+export const WsTestingCreateTestSuiteRpc = Rpc.make(WS_METHODS.testingCreateTestSuite, {
+  payload: Schema.Struct({
+    name: TrimmedNonEmptyString,
+    projectId: TrimmedNonEmptyString,
+    testCases: Schema.Array(T.TestCase),
+  }),
+  success: Schema.Struct({ suite: T.TestSuite }),
+});
+
+export const WsTestingGenerateTestsRpc = Rpc.make(WS_METHODS.testingGenerateTests, {
+  payload: T.TestGenerationRequest,
+  success: T.TestGenerationResult,
+});
+
+export const WsTestingSelectRegressionTestsRpc = Rpc.make(WS_METHODS.testingSelectRegressionTests, {
+  payload: Schema.Struct({
+    changedFiles: Schema.Array(TrimmedNonEmptyString),
+    /** 提供时在工作区内扫描 `*.test.*` / `*.spec.*` 并做启发式匹配 */
+    workspaceRoot: Schema.optionalKey(Schema.String),
+  }),
+  success: T.RegressionTestSelection,
+});
+
+export const WsTestingRunTestsRpc = Rpc.make(WS_METHODS.testingRunTests, {
+  payload: T.TestRunConfig,
+  success: T.TestRunResult,
+});
+
+export const WsTestingGetCoverageReportRpc = Rpc.make(WS_METHODS.testingGetCoverageReport, {
+  payload: Schema.Struct({
+    projectId: TrimmedNonEmptyString,
+    /** 工作区根路径；若提供则尝试读取 Vitest `coverage/coverage-summary.json` */
+    workspaceRoot: Schema.optionalKey(Schema.String),
+    /** 若提供：整包行覆盖率（summary.lines）换算为百分比后须 ≥ 该值，否则 `linesThresholdGate.passed === false` */
+    linesCoverageMinPercent: Schema.optionalKey(
+      Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).check(Schema.isLessThanOrEqualTo(100)),
+    ),
+    /**
+     * 单文件「薄弱」判定：行覆盖率（0–1）×100 **低于** 该值则进入 `weakAreas`（默认 50）。
+     * 范围 1–99。
+     */
+    weakAreaMaxLinesPercent: Schema.optionalKey(
+      Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).check(Schema.isLessThanOrEqualTo(99)),
+    ),
+  }),
+  success: T.CoverageReport,
+});
+
+// Environment management RPCs
+export const WsEnvironmentListRpc = Rpc.make(WS_METHODS.environmentList, {
+  payload: Schema.Struct({}),
+  success: Schema.Struct({ environments: Schema.Array(EM.EnvironmentProfile) }),
+});
+
+export const WsEnvironmentGetRpc = Rpc.make(WS_METHODS.environmentGet, {
+  payload: EnvironmentProfileIdInput,
+  success: EM.EnvironmentProfile,
+});
+
+export const WsEnvironmentCreateRpc = Rpc.make(WS_METHODS.environmentCreate, {
+  payload: EnvironmentProfileCreateInput,
+  success: EM.EnvironmentProfile,
+});
+
+export const WsEnvironmentUpdateRpc = Rpc.make(WS_METHODS.environmentUpdate, {
+  payload: EnvironmentProfileSwitchInput,
+  success: EM.EnvironmentProfile,
+});
+
+export const WsEnvironmentDeleteRpc = Rpc.make(WS_METHODS.environmentDelete, {
+  payload: EnvironmentProfileIdInput,
+  success: Schema.Struct({ success: Schema.Boolean }),
+});
+
+export const WsEnvironmentExportRpc = Rpc.make(WS_METHODS.environmentExport, {
+  payload: EM.EnvironmentExportRequest,
+  success: EM.EnvironmentExportResult,
+});
+
+export const WsEnvironmentImportRpc = Rpc.make(WS_METHODS.environmentImport, {
+  payload: EM.EnvironmentImportRequest,
+  success: EM.EnvironmentImportResult,
+});
+
+export const WsEnvironmentRefreshDependencyInsightsRpc = Rpc.make(
+  WS_METHODS.environmentRefreshDependencyInsights,
+  {
+    payload: Schema.Struct({ workspaceRoot: TrimmedNonEmptyString }),
+    success: Schema.Struct({
+      tree: EM.DependencyTree,
+      suggestions: Schema.Array(EM.DependencyUpdateSuggestion),
+      auditFindings: Schema.Array(EM.DependencyAuditFinding),
+    }),
+  },
+);
+
+// Multi-agent RPCs
+export const WsMultiAgentRegisterAgentRpc = Rpc.make(WS_METHODS.multiAgentRegisterAgent, {
+  payload: MA.MultiAgentConfig,
+  success: Schema.Struct({ ok: Schema.Literal(true) }),
+});
+
+export const WsMultiAgentUnregisterAgentRpc = Rpc.make(WS_METHODS.multiAgentUnregisterAgent, {
+  payload: Schema.Struct({ agentId: TrimmedNonEmptyString }),
+  success: Schema.Struct({ ok: Schema.Literal(true) }),
+});
+
+export const WsMultiAgentSubmitTaskRpc = Rpc.make(WS_METHODS.multiAgentSubmitTask, {
+  payload: MA.MultiAgentTaskSubmit,
+  success: MA.MultiAgentTask,
+});
+
+export const WsMultiAgentStartTaskRpc = Rpc.make(WS_METHODS.multiAgentStartTask, {
+  payload: Schema.Struct({ taskId: TrimmedNonEmptyString }),
+  success: Schema.Struct({
+    started: Schema.Boolean,
+    providerDispatched: Schema.optional(Schema.Boolean),
+    providerDispatchError: Schema.optional(TrimmedNonEmptyString),
+  }),
+});
+
+export const WsMultiAgentListAgentsRpc = Rpc.make(WS_METHODS.multiAgentListAgents, {
+  payload: Schema.Struct({}),
+  success: Schema.Struct({ agents: Schema.Array(MA.MultiAgentConfig) }),
+});
+
+export const WsMultiAgentCompleteTaskRpc = Rpc.make(WS_METHODS.multiAgentCompleteTask, {
+  payload: Schema.Struct({
+    taskId: TrimmedNonEmptyString,
+    result: Schema.optionalKey(Schema.Unknown),
+  }),
+  success: Schema.Struct({ ok: Schema.Literal(true) }),
+});
+
+export const WsMultiAgentFailTaskRpc = Rpc.make(WS_METHODS.multiAgentFailTask, {
+  payload: Schema.Struct({
+    taskId: TrimmedNonEmptyString,
+    error: TrimmedNonEmptyString,
+  }),
+  success: Schema.Struct({ ok: Schema.Literal(true) }),
+});
+
+export const WsMultiAgentListTasksRpc = Rpc.make(WS_METHODS.multiAgentListTasks, {
+  payload: Schema.Struct({
+    agentId: Schema.optionalKey(TrimmedNonEmptyString),
+    status: Schema.optionalKey(MA.MultiAgentTaskStatus),
+  }),
+  success: Schema.Struct({ tasks: Schema.Array(MA.MultiAgentTask) }),
+});
+
+export const WsMultiAgentSetSharedContextRpc = Rpc.make(WS_METHODS.multiAgentSetSharedContext, {
+  payload: Schema.Struct({
+    key: TrimmedNonEmptyString,
+    value: Schema.Unknown,
+  }),
+  success: Schema.Struct({ ok: Schema.Literal(true) }),
+});
+
+export const WsMultiAgentGetAllSharedContextRpc = Rpc.make(
+  WS_METHODS.multiAgentGetAllSharedContext,
+  {
+    payload: Schema.Struct({}),
+    success: Schema.Struct({
+      context: Schema.Record(Schema.String, Schema.Unknown),
+    }),
+  },
+);
+
+export const WsMultiAgentListRoleTemplatesRpc = Rpc.make(WS_METHODS.multiAgentListRoleTemplates, {
+  payload: Schema.Struct({}),
+  success: Schema.Struct({ templates: Schema.Array(MA.MultiAgentRoleTemplate) }),
+});
+
+export const WsMultiAgentUpsertRoleTemplateRpc = Rpc.make(WS_METHODS.multiAgentUpsertRoleTemplate, {
+  payload: MA.MultiAgentRoleTemplateUpsert,
+  success: MA.MultiAgentRoleTemplate,
+});
+
+export const WsMultiAgentDeleteRoleTemplateRpc = Rpc.make(WS_METHODS.multiAgentDeleteRoleTemplate, {
+  payload: Schema.Struct({ id: TrimmedNonEmptyString }),
+  success: Schema.Struct({ ok: Schema.Literal(true) }),
+});
+
+// Context awareness RPCs
+export const WsContextAnalyzeRpc = Rpc.make(WS_METHODS.contextAnalyze, {
+  payload: CX.ContextAnalysisRequest,
+  success: CX.ContextAnalysisResponse,
+});
+
+export const WsContextGetContextPoolRpc = Rpc.make(WS_METHODS.contextGetContextPool, {
+  payload: Schema.Struct({ projectId: ProjectId }),
+  success: CX.ContextPool,
+});
+
+export const WsContextRefreshContextPoolRpc = Rpc.make(WS_METHODS.contextRefreshContextPool, {
+  payload: Schema.Struct({
+    projectId: ProjectId,
+    workspaceRoot: TrimmedNonEmptyString,
+  }),
+  success: CX.ContextPool,
+});
+
+export const WsContextBuildDependencyGraphRpc = Rpc.make(WS_METHODS.contextBuildDependencyGraph, {
+  payload: Schema.Struct({ workspaceRoot: TrimmedNonEmptyString }),
+  success: CX.DependencyGraph,
+});
+
+export const WsContextAnalyzeChangeImpactRpc = Rpc.make(WS_METHODS.contextAnalyzeChangeImpact, {
+  payload: CX.ContextChangeImpactRequest,
+  success: CX.ChangeImpact,
+});
+
+export const WsContextGetSmartSuggestionsRpc = Rpc.make(WS_METHODS.contextGetSmartSuggestions, {
+  payload: CX.ThreadContext,
+  success: Schema.Struct({ suggestions: Schema.Array(CX.SmartSuggestion) }),
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -518,4 +876,55 @@ export const WsRpcGroup = RpcGroup.make(
   WsProviderInstallRpc,
   WsClaudeCodeInstallRpc,
   WsOpenCodeInstallRpc,
+
+  // Visualization RPCs
+  WsVisualizationGetSessionDataRpc,
+  WsVisualizationGetTimelineEventsRpc,
+  WsVisualizationGetHotspotsRpc,
+  WsVisualizationGetOperationStatsRpc,
+  WsVisualizationClearSessionRpc,
+
+  // Code quality RPCs
+  WsCodeQualityLearnProjectStyleRpc,
+  WsCodeQualityCheckCodeRpc,
+  WsCodeQualityDetectTechDebtRpc,
+  WsCodeQualityValidateBestPracticesRpc,
+
+  // Testing RPCs
+  WsTestingCreateTestSuiteRpc,
+  WsTestingGenerateTestsRpc,
+  WsTestingSelectRegressionTestsRpc,
+  WsTestingRunTestsRpc,
+  WsTestingGetCoverageReportRpc,
+
+  // Environment management RPCs
+  WsEnvironmentListRpc,
+  WsEnvironmentGetRpc,
+  WsEnvironmentCreateRpc,
+  WsEnvironmentUpdateRpc,
+  WsEnvironmentDeleteRpc,
+  WsEnvironmentExportRpc,
+  WsEnvironmentImportRpc,
+  WsEnvironmentRefreshDependencyInsightsRpc,
+
+  WsMultiAgentRegisterAgentRpc,
+  WsMultiAgentUnregisterAgentRpc,
+  WsMultiAgentSubmitTaskRpc,
+  WsMultiAgentStartTaskRpc,
+  WsMultiAgentListTasksRpc,
+  WsMultiAgentListAgentsRpc,
+  WsMultiAgentCompleteTaskRpc,
+  WsMultiAgentFailTaskRpc,
+  WsMultiAgentSetSharedContextRpc,
+  WsMultiAgentGetAllSharedContextRpc,
+  WsMultiAgentListRoleTemplatesRpc,
+  WsMultiAgentUpsertRoleTemplateRpc,
+  WsMultiAgentDeleteRoleTemplateRpc,
+
+  WsContextAnalyzeRpc,
+  WsContextGetContextPoolRpc,
+  WsContextRefreshContextPoolRpc,
+  WsContextBuildDependencyGraphRpc,
+  WsContextAnalyzeChangeImpactRpc,
+  WsContextGetSmartSuggestionsRpc,
 );

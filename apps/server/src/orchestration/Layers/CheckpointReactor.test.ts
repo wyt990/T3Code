@@ -44,6 +44,8 @@ import { checkpointRefForThreadTurn } from "../../checkpointing/Utils.ts";
 import { ServerConfig } from "../../config.ts";
 import { WorkspaceEntriesLive } from "../../workspace/Layers/WorkspaceEntries.ts";
 import { WorkspacePathsLive } from "../../workspace/Layers/WorkspacePaths.ts";
+import { CodeQualityGuard } from "../../provider/Services/CodeQualityGuard.ts";
+import { ContextAnalyzer } from "../../contextAwareness/Services/ContextAnalyzer.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
@@ -297,6 +299,67 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(GitCoreLive.pipe(Layer.provide(ServerSettingsService.layerTest()))),
       Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(
+        Layer.succeed(CodeQualityGuard, {
+          learnProjectStyle: (_projectId, _files) =>
+            Effect.succeed({
+              id: "mock-profile",
+              projectId: _projectId,
+              patterns: [],
+              rules: [],
+              learnedAt: new Date().toISOString(),
+              lastUpdated: new Date().toISOString(),
+              fileExtensions: [],
+            }),
+          resolveStyleProfile: (projectId) =>
+            Effect.succeed({
+              id: "mock-profile",
+              projectId,
+              patterns: [],
+              rules: [],
+              learnedAt: new Date().toISOString(),
+              lastUpdated: new Date().toISOString(),
+              fileExtensions: [],
+            }),
+          checkCodeQuality: () =>
+            Effect.succeed({
+              filePath: "mock.ts",
+              issues: [],
+              score: 100,
+              checkedAt: new Date().toISOString(),
+            }),
+          detectTechDebt: () => Effect.succeed([]),
+          validateBestPractices: () => Effect.succeed({ passed: true, violations: [] }),
+          enhanceGeneration: () =>
+            Effect.succeed({
+              success: true,
+              issues: [],
+              appliedPatterns: [],
+              qualityScore: 100,
+            }),
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(ContextAnalyzer, {
+          analyzeContext: () => Effect.succeed({} as never),
+          getContextPool: () => Effect.succeed({} as never),
+          updateContextPool: () => Effect.void,
+          buildDependencyGraph: () =>
+            Effect.succeed({ nodes: [], edges: [], lastUpdated: new Date().toISOString() }),
+          analyzeChangeImpact: () =>
+            Effect.succeed({
+              changedFile: "mock.ts",
+              affectedFiles: [],
+              transitiveImporters: [],
+              impactHopDepth: 2,
+              impactLevel: "low" as const,
+              riskReasons: [],
+            }),
+          getSmartSuggestions: () => Effect.succeed([]),
+          refreshContextPool: () => Effect.succeed({} as never),
+          mergeTurnDiffContextEntries: () => Effect.void,
+        }),
+      ),
     );
 
     runtime = ManagedRuntime.make(layer);
@@ -912,7 +975,9 @@ describe("CheckpointReactor", () => {
       threadId: ThreadId.make("thread-1"),
       numTurns: 1,
     });
-    expect(fs.readFileSync(path.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(
+      fs.readFileSync(path.join(harness.cwd, "README.md"), "utf8").replace(/\r\n/g, "\n"),
+    ).toBe("v2\n");
     expect(
       gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)),
     ).toBe(false);

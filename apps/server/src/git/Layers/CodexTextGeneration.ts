@@ -155,7 +155,6 @@ const makeCodexTextGeneration = Effect.gen(function* () {
       Effect.map((settings) => settings.providers.codex),
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(ServerConfig, serverConfig),
-      Effect.catch(() => Effect.succeed(undefined)),
     );
 
     const runCodexCommand = Effect.fn("runCodexJson.runCodexCommand")(function* () {

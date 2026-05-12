@@ -6,6 +6,7 @@ import {
   GitPullRequestIcon,
   PlusIcon,
   SearchIcon,
+  LayoutDashboardIcon,
   SettingsIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -17,6 +18,7 @@ import {
   terminalStatusFromRunningIds,
   ThreadStatusLabel,
 } from "./ThreadStatusIndicators";
+import { FeatureWorkbenchSheet } from "./FeatureWorkbench";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { autoAnimate } from "@formkit/auto-animate";
 import React, { useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
@@ -2437,14 +2439,26 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
 
 const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const navigate = useNavigate();
+  const [workbenchOpen, setWorkbenchOpen] = useState(false);
   const handleSettingsClick = useCallback(() => {
     void navigate({ to: "/settings" });
   }, [navigate]);
 
   return (
     <SidebarFooter className="p-2">
+      <FeatureWorkbenchSheet open={workbenchOpen} onOpenChange={setWorkbenchOpen} />
       <SidebarUpdatePill />
       <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="sm"
+            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            onClick={() => setWorkbenchOpen(true)}
+          >
+            <LayoutDashboardIcon className="size-3.5" />
+            <span className="text-xs">工作台</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
             size="sm"

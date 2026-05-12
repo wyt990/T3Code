@@ -297,7 +297,7 @@ function backendChildEnv(): NodeJS.ProcessEnv {
     syncShellEnvironment();
     shellEnvironmentSynced = true;
   }
-  
+
   const env = { ...process.env };
   delete env.T3CODE_PORT;
   delete env.T3CODE_MODE;

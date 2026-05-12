@@ -20,10 +20,14 @@ import {
 } from "../../uiTabsState";
 import { buildDraftThreadRouteParams, buildThreadRouteParams } from "../../threadRoutes";
 import { useSettings } from "../../hooks/useSettings";
+import { useLayoutStore, isDockPanelDisplayed } from "../../layout/layoutStore";
+import { useContextWorkspaceAutoRefresh } from "../../contextAwareness/useContextWorkspaceAutoRefresh";
+import { cn } from "../../lib/utils";
 
 import { DiffPanelInlineSidebar, LazyDiffPanel } from "../DiffPanelInlineSidebar";
 import { RightPanelSheet } from "../RightPanelSheet";
 import { SidebarInset } from "../ui/sidebar";
+import { PanelRenderer } from "../../layout/PanelRenderer";
 
 import { TabBar } from "./TabBar";
 import { TabContentArea, type MergedPairContext } from "./TabContentArea";
@@ -81,6 +85,7 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
 
   // ── URL → tab sync ─────────────────────────────────────────────────────────
   useUrlTargetSync(urlTarget);
+  useContextWorkspaceAutoRefresh();
 
   // ── Legacy `?diff=1` hydration (one-shot per URL) ──────────────────────────
   useLegacyDiffHydration({
@@ -266,11 +271,34 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
     [navigate],
   );
 
+  /** 与 `PanelRenderer` 右侧 `fixed` 侧栏同宽，避免 ChatHeader（Git 操作等）画在面板下方造成叠字。底部面板在 `SidebarInset` 内流式排版，不再使用整视口 `fixed`。 */
+  const layoutDock = useLayoutStore(
+    useShallow((s) => {
+      let padRight = false;
+      let hasBottomDock = false;
+      for (const p of s.panels) {
+        if (!isDockPanelDisplayed(p)) {
+          continue;
+        }
+        if (p.position === "right") {
+          padRight = true;
+        }
+        if (p.position === "bottom") {
+          hasBottomDock = true;
+        }
+      }
+      return { padRight, hasBottomDock };
+    }),
+  );
+
   return (
     <>
       <SidebarInset
         ref={sidebarInsetRef}
-        className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground"
+        className={cn(
+          "h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground",
+          layoutDock.padRight && "pr-80",
+        )}
       >
         <TabBar
           tabs={orderedTabs}
@@ -308,6 +336,11 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
           onRequestDraftNavigation={onRequestDraftNavigation}
           narrowMergedOnlyShowFocused={containerPrefersSheet}
         />
+        {layoutDock.hasBottomDock ? (
+          <div className="flex h-64 min-h-0 w-full shrink-0 flex-col overflow-hidden border-t border-border bg-background">
+            <PanelRenderer position="bottom" className="h-full min-h-0 w-full" />
+          </div>
+        ) : null}
       </SidebarInset>
       {shouldUseDiffSheet ? (
         <RightPanelSheet variant="diff" open={diffOpen} onClose={closeDiff}>
@@ -334,6 +367,11 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
           renderDiffContent={shouldRenderDiffContent}
         />
       )}
+      {/* Right-side feature panels (non-diff) */}
+      <PanelRenderer
+        position="right"
+        className="fixed right-0 top-[52px] bottom-0 w-80 z-30 wco:top-[env(titlebar-area-height)]"
+      />
     </>
   );
 }
@@ -510,14 +548,17 @@ function navigateAfterStrip(navigate: ReturnType<typeof useNavigate>, target: Ta
  */
 function useUrlTargetSync(urlTarget: TabTarget | null): void {
   const targetKey = urlTarget ? tabTargetKey(urlTarget) : null;
+  const urlTargetRef = useRef(urlTarget);
+  urlTargetRef.current = urlTarget;
   useEffect(() => {
-    if (!urlTarget) return;
+    const currentTarget = urlTargetRef.current;
+    if (!currentTarget) return;
     const tabs = useUiStateStore.getState().tabs;
-    const decision = decideTabActivation(tabs, urlTarget);
+    const decision = decideTabActivation(tabs, currentTarget);
     const targetLabel =
-      urlTarget.kind === "server"
-        ? `会话(${urlTarget.threadRef.environmentId}/${urlTarget.threadRef.threadId})`
-        : `草稿(${urlTarget.draftId})`;
+      currentTarget.kind === "server"
+        ? `会话(${currentTarget.threadRef.environmentId}/${currentTarget.threadRef.threadId})`
+        : `草稿(${currentTarget.draftId})`;
 
     if (decision.action === "activate-existing") {
       console.log(
@@ -531,7 +572,7 @@ function useUrlTargetSync(urlTarget: TabTarget | null): void {
       return;
     }
     if (decision.action === "create") {
-      if (isClosedTabTargetSuppressed(urlTarget)) {
+      if (isClosedTabTargetSuppressed(currentTarget)) {
         console.log(
           "%c【URL同步】目标处于关闭抑制期，跳过创建",
           "background:#f97316;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
@@ -544,7 +585,7 @@ function useUrlTargetSync(urlTarget: TabTarget | null): void {
         "background:#22c55e;color:white;font-weight:bold;padding:2px 4px;border-radius:2px",
         { 目标: targetLabel, 当前标签数: tabs.group.tabIds.length },
       );
-      useUiStateStore.getState().createTab(urlTarget, { newTabId: nextTabId() });
+      useUiStateStore.getState().createTab(currentTarget, { newTabId: nextTabId() });
       return;
     }
     // exceeds-limit: replace the current active tab so direct URL navigations
@@ -562,9 +603,9 @@ function useUrlTargetSync(urlTarget: TabTarget | null): void {
     const existingActiveId = tabs.group.activeTabId;
     if (existingActiveId) {
       useUiStateStore.getState().closeTab(existingActiveId);
-      useUiStateStore.getState().createTab(urlTarget, { newTabId: nextTabId() });
+      useUiStateStore.getState().createTab(currentTarget, { newTabId: nextTabId() });
     }
-  }, [targetKey, urlTarget]);
+  }, [targetKey]);
 }
 
 interface UseLegacyDiffHydrationArgs {

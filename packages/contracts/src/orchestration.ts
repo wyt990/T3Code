@@ -1,4 +1,8 @@
 import { Effect, Option, Schema, SchemaIssue, Struct } from "effect";
+import {
+  ThreadTurnStartCodeQualityGate,
+  CodeQualityTurnGateDispatchSummary,
+} from "./codeQuality.ts";
 import { ProviderOptionSelections } from "./model.ts";
 import { RepositoryIdentity } from "./environment.ts";
 import {
@@ -545,6 +549,7 @@ export const ThreadTurnStartCommand = Schema.Struct({
   ),
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  codeQualityGate: Schema.optional(ThreadTurnStartCodeQualityGate),
   createdAt: IsoDateTime,
 });
 
@@ -564,6 +569,7 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  codeQualityGate: Schema.optional(ThreadTurnStartCodeQualityGate),
   createdAt: IsoDateTime,
 });
 
@@ -1140,6 +1146,7 @@ export type ProjectionPendingApprovalDecision = typeof ProjectionPendingApproval
 
 export const DispatchResult = Schema.Struct({
   sequence: NonNegativeInt,
+  codeQualityTurnGate: Schema.optional(CodeQualityTurnGateDispatchSummary),
 });
 export type DispatchResult = typeof DispatchResult.Type;
 

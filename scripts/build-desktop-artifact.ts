@@ -10,6 +10,7 @@ import serverPackageJson from "../apps/server/package.json" with { type: "json" 
 
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
+import { resolveBunExecutablePath } from "./lib/resolve-bun-path.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -342,27 +343,11 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
   } satisfies ResolvedBuildOptions;
 });
 
-// 获取 bun 可执行文件路径
-// 优先使用 npm_execpath 或 process.execPath（如果是 bun 运行的）
-// 否则使用 "bun" 命令名，让系统 PATH 解析
-function resolveBunPath(): string {
-  // 如果是通过 bun 运行的，npm_execpath 会指向 bun
-  if (process.env.npm_execpath?.includes("bun")) {
-    return process.env.npm_execpath;
-  }
-  // 如果 process.execPath 是 bun（直接用 bun 运行），使用它
-  if (process.execPath.includes("bun")) {
-    return process.execPath;
-  }
-  // 回退：使用 "bun" 命令名，让系统 PATH 解析（跨平台兼容）
-  return "bun";
-}
+const BUN_EXEC_PATH = resolveBunExecutablePath();
 
-const BUN_EXEC_PATH = resolveBunPath();
-
-const commandOutputOptions = (verbose: boolean) =>
+const commandOutputOptions = () =>
   ({
-    stdout: verbose ? "inherit" : "ignore",
+    stdout: "inherit",
     stderr: "inherit",
   }) as const;
 
@@ -431,21 +416,21 @@ function generateMacIconSet(
     for (const size of iconSizes) {
       yield* runCommand(
         ChildProcess.make({
-          ...commandOutputOptions(verbose),
+          ...commandOutputOptions(),
         })`sips -z ${size} ${size} ${sourcePng} --out ${path.join(iconsetDir, `icon_${size}x${size}.png`)}`,
       );
 
       const retinaSize = size * 2;
       yield* runCommand(
         ChildProcess.make({
-          ...commandOutputOptions(verbose),
+          ...commandOutputOptions(),
         })`sips -z ${retinaSize} ${retinaSize} ${sourcePng} --out ${path.join(iconsetDir, `icon_${size}x${size}@2x.png`)}`,
       );
     }
 
     yield* runCommand(
       ChildProcess.make({
-        ...commandOutputOptions(verbose),
+        ...commandOutputOptions(),
       })`iconutil -c icns ${iconsetDir} -o ${targetIcns}`,
     );
   });
@@ -470,7 +455,7 @@ function stageMacIcons(stageResourcesDir: string, sourcePng: string, verbose: bo
 
     yield* runCommand(
       ChildProcess.make({
-        ...commandOutputOptions(verbose),
+        ...commandOutputOptions(),
       })`sips -z 512 512 ${sourcePng} --out ${iconPngPath}`,
     );
 
@@ -717,7 +702,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const turboCacheDir = nodePath.join(repoRoot, ".turbo");
   const versionCacheFile = nodePath.join(repoRoot, ".turbo", ".last-build-version");
   const currentVersion = serverPackageJson.version;
-  
+
   let shouldCleanCache = false;
   if (yield* fs.exists(versionCacheFile)) {
     const lastVersion = yield* fs.readFileString(versionCacheFile);
@@ -731,7 +716,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     shouldCleanCache = true;
     yield* Effect.log("[desktop-artifact] No version cache found, will clean turbo cache...");
   }
-  
+
   if (shouldCleanCache) {
     yield* Effect.log("[desktop-artifact] Cleaning turbo cache directories...");
     // 清理所有 turbo 缓存目录 - 使用 node:fs 的 rmSync 递归删除
@@ -841,13 +826,13 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     buildEnv.npm_execpath = BUN_EXEC_PATH;
     // 设置 npm_package_manager 帮助 turbo 识别 bun
     buildEnv.npm_package_manager = `bun@${process.env.npm_package_manager_version || "1.3.13"}`;
-    
+
     // 直接运行 bun 命令，不使用 shell（跨平台兼容）
     yield* runCommand(
       ChildProcess.make(BUN_EXEC_PATH, ["run", "build:desktop"], {
         cwd: repoRoot,
         env: buildEnv,
-        ...commandOutputOptions(options.verbose),
+        ...commandOutputOptions(),
       }),
     );
   }
@@ -924,7 +909,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* runCommand(
     ChildProcess.make(BUN_EXEC_PATH, ["install", "--production", "--omit", "optional"], {
       cwd: stageAppDir,
-      ...commandOutputOptions(options.verbose),
+      ...commandOutputOptions(),
     }),
   );
 
@@ -981,7 +966,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     ChildProcess.make(BUN_EXEC_PATH, electronBuilderArgs, {
       cwd: stageAppDir,
       env: buildEnv,
-      ...commandOutputOptions(options.verbose),
+      ...commandOutputOptions(),
     }),
     { maxRetries: 3, retryDelayMs: 3000 },
   );

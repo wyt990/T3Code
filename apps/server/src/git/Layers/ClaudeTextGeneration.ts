@@ -116,7 +116,6 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
       Effect.map((settings) => settings.providers.claudeAgent),
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(ServerConfig, serverConfig),
-      Effect.catch(() => Effect.succeed(undefined)),
     );
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {

@@ -14,31 +14,37 @@ import {
 import {
   type AuthAccessStreamEvent,
   AuthSessionId,
+  type ClientOrchestrationCommand,
   CommandId,
+  DEFAULT_PROVIDER_INTERACTION_MODE,
+  DEFAULT_RUNTIME_MODE,
   EventId,
-  type OrchestrationCommand,
   type GitActionProgressEvent,
   type GitManagerServiceError,
+  MessageId,
+  MultiAgentProviderDispatch,
+  type OrchestrationCommand,
   OrchestrationDispatchCommandError,
   type OrchestrationEvent,
-  type OrchestrationShellStreamEvent,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
   OrchestrationGetTurnDiffError,
+  type OrchestrationShellStreamEvent,
+  OrchestrationReplayEventsError,
   ORCHESTRATION_WS_METHODS,
+  FilesystemBrowseError,
+  ProjectId,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
-  OrchestrationReplayEventsError,
-  FilesystemBrowseError,
   ThreadId,
   type TerminalEvent,
+  type ProxySettings,
   WS_METHODS,
   WsRpcGroup,
   type ClaudeCodeInstallInput,
   type OpenCodeInstallInput,
   buildProxyProcessEnv,
   resolveEffectiveProxyUrls,
-  type ProxySettings,
 } from "@t3tools/contracts";
 import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRequest } from "effect/unstable/http";
@@ -52,6 +58,7 @@ import { GitStatusBroadcaster } from "./git/Services/GitStatusBroadcaster.ts";
 import { Keybindings } from "./keybindings.ts";
 import { Open, resolveAvailableEditors } from "./open.ts";
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
+import { runTurnStartCodeQualityGate } from "./codeQuality/turnStartQualityGate.ts";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -86,6 +93,19 @@ import {
 } from "./auth/Services/SessionCredentialService.ts";
 import { respondToAuthError } from "./auth/http.ts";
 import { runProcess } from "./processRunner.ts";
+import { ExecutionVisualizer } from "./observability/Services/ExecutionVisualizer.ts";
+import { CodeQualityGuard } from "./provider/Services/CodeQualityGuard.ts";
+import { TestOrchestrator } from "./testing/Services/TestOrchestrator.ts";
+import { EnvironmentManager } from "./environmentManagement/Services/EnvironmentManager.ts";
+import { runDependencyAuditInWorkspace } from "./environmentManagement/runDependencyAudit.ts";
+import { MultiAgentOrchestrator } from "./orchestration/Services/MultiAgentOrchestrator.ts";
+import {
+  deleteCustomRoleTemplate,
+  listMergedRoleTemplates,
+  upsertCustomRoleTemplate,
+} from "./orchestration/multiAgentRoleTemplatesFile.ts";
+import { buildMultiAgentTurnPrompt } from "./orchestration/multiAgentTurnPrompt.ts";
+import { ContextAnalyzer } from "./contextAwareness/Services/ContextAnalyzer.ts";
 
 // Claude Code install commands by platform
 // Note: For Windows, we build the command dynamically to include proxy settings
@@ -311,6 +331,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
       const startup = yield* ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
+      const codeQualityGuard = yield* CodeQualityGuard;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment;
@@ -714,6 +735,31 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
             ORCHESTRATION_WS_METHODS.dispatchCommand,
             Effect.gen(function* () {
               const normalizedCommand = yield* normalizeDispatchCommand(command);
+              let codeQualityTurnGate:
+                | import("@t3tools/contracts").CodeQualityTurnGateDispatchSummary
+                | undefined;
+              if (
+                normalizedCommand.type === "thread.turn.start" &&
+                normalizedCommand.codeQualityGate &&
+                normalizedCommand.codeQualityGate.mode !== "off"
+              ) {
+                const threadShell = yield* projectionSnapshotQuery
+                  .getThreadShellById(normalizedCommand.threadId)
+                  .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+                if (Option.isNone(threadShell)) {
+                  codeQualityTurnGate = {
+                    outcome: "skipped_no_thread",
+                    checkedSnippets: 0,
+                    messages: [],
+                  };
+                } else {
+                  codeQualityTurnGate = yield* runTurnStartCodeQualityGate({
+                    command: normalizedCommand,
+                    projectId: threadShell.value.projectId,
+                    guard: codeQualityGuard,
+                  });
+                }
+              }
               const shouldStopSessionAfterArchive =
                 normalizedCommand.type === "thread.archive"
                   ? yield* projectionSnapshotQuery
@@ -762,7 +808,9 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
                   ),
                 );
               }
-              return result;
+              return codeQualityTurnGate !== undefined
+                ? { ...result, codeQualityTurnGate }
+                : result;
             }).pipe(
               Effect.mapError((cause) =>
                 Schema.is(OrchestrationDispatchCommandError)(cause)
@@ -1079,6 +1127,593 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
             }),
             { "rpc.aggregate": "opencode" },
           ),
+
+        // Multi-agent orchestration
+        [WS_METHODS.multiAgentRegisterAgent]: (config) =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentRegisterAgent,
+            Effect.gen(function* () {
+              const orch = yield* MultiAgentOrchestrator;
+              yield* orch.registerAgent({
+                id: config.id,
+                role: config.role,
+                name: config.name,
+                capabilities: [...config.capabilities],
+                maxConcurrentTasks: config.maxConcurrentTasks,
+              });
+              return { ok: true as const };
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentUnregisterAgent]: ({ agentId }) =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentUnregisterAgent,
+            Effect.gen(function* () {
+              const orch = yield* MultiAgentOrchestrator;
+              yield* orch.unregisterAgent(agentId);
+              return { ok: true as const };
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentSubmitTask]: (task) =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentSubmitTask,
+            Effect.gen(function* () {
+              const orch = yield* MultiAgentOrchestrator;
+              const created = yield* orch.submitTask({
+                id: task.id,
+                agentId: task.agentId,
+                role: task.role,
+                dependencies: [...task.dependencies],
+                payload: task.payload,
+              });
+              return created;
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentStartTask]: ({ taskId }) =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentStartTask,
+            Effect.gen(function* () {
+              const orch = yield* MultiAgentOrchestrator;
+              const started = yield* orch.startTask(taskId);
+              if (!started) {
+                return { started: false as const };
+              }
+              const task = yield* orch.getTask(taskId);
+              if (!task) {
+                return { started: true as const };
+              }
+              const payload = task.payload;
+              if (typeof payload !== "object" || payload === null) {
+                return { started: true as const, providerDispatched: false as const };
+              }
+              const rawPd = (payload as { providerDispatch?: unknown }).providerDispatch;
+              if (rawPd === undefined) {
+                return { started: true as const, providerDispatched: false as const };
+              }
+              const dispatchDecode = Schema.decodeUnknownExit(MultiAgentProviderDispatch)(rawPd);
+              if (dispatchDecode._tag === "Failure") {
+                return {
+                  started: true as const,
+                  providerDispatched: false as const,
+                  providerDispatchError: "invalid_provider_dispatch",
+                };
+              }
+              const dispatch = dispatchDecode.value;
+              const threadShell = yield* projectionSnapshotQuery
+                .getThreadShellById(dispatch.threadId)
+                .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+              if (Option.isNone(threadShell)) {
+                return {
+                  started: true as const,
+                  providerDispatched: false as const,
+                  providerDispatchError: "unknown_thread",
+                };
+              }
+              if (threadShell.value.projectId !== dispatch.projectId) {
+                return {
+                  started: true as const,
+                  providerDispatched: false as const,
+                  providerDispatchError: "project_thread_mismatch",
+                };
+              }
+              const shared = yield* orch.getAllSharedContext();
+              const depResults: { id: string; result?: unknown }[] = [];
+              for (const depId of task.dependencies) {
+                const depTask = yield* orch.getTask(depId);
+                if (depTask) {
+                  depResults.push({ id: depId, result: depTask.result });
+                }
+              }
+              const userText = buildMultiAgentTurnPrompt({
+                task,
+                sharedContext: shared,
+                dependencyResults: depResults,
+                explicitPrompt: dispatch.prompt,
+              });
+              const command = {
+                type: "thread.turn.start" as const,
+                commandId: serverCommandId("multi-agent-turn"),
+                threadId: dispatch.threadId,
+                message: {
+                  messageId: MessageId.make(crypto.randomUUID()),
+                  role: "user" as const,
+                  text: userText,
+                  attachments: [],
+                },
+                ...(dispatch.modelSelection !== undefined
+                  ? { modelSelection: dispatch.modelSelection }
+                  : {}),
+                runtimeMode: dispatch.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+                interactionMode: dispatch.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
+                codeQualityGate: { mode: "off" as const },
+                createdAt: new Date().toISOString(),
+              } satisfies ClientOrchestrationCommand;
+              const normExit = yield* normalizeDispatchCommand(command).pipe(Effect.exit);
+              if (Exit.isFailure(normExit)) {
+                const err = Cause.squash(normExit.cause);
+                const msg =
+                  err instanceof OrchestrationDispatchCommandError
+                    ? err.message
+                    : err instanceof Error
+                      ? err.message
+                      : "normalize_failed";
+                return {
+                  started: true as const,
+                  providerDispatched: false as const,
+                  providerDispatchError: msg,
+                };
+              }
+              const normalizedCommand = normExit.value;
+              const dispatchExit = yield* dispatchNormalizedCommand(normalizedCommand).pipe(
+                Effect.exit,
+              );
+              if (Exit.isFailure(dispatchExit)) {
+                const err = Cause.squash(dispatchExit.cause);
+                const msg =
+                  err instanceof OrchestrationDispatchCommandError
+                    ? err.message
+                    : err instanceof Error
+                      ? err.message
+                      : "dispatch_failed";
+                return {
+                  started: true as const,
+                  providerDispatched: false as const,
+                  providerDispatchError: msg,
+                };
+              }
+              return { started: true as const, providerDispatched: true as const };
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentListTasks]: (filters) =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentListTasks,
+            Effect.gen(function* () {
+              const orch = yield* MultiAgentOrchestrator;
+              const tasks = yield* orch.listTasks(filters);
+              return { tasks: [...tasks] };
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentListAgents]: () =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentListAgents,
+            Effect.gen(function* () {
+              const orch = yield* MultiAgentOrchestrator;
+              const agents = yield* orch.listAgents();
+              return { agents: [...agents] };
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentCompleteTask]: ({ taskId, result }) =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentCompleteTask,
+            Effect.gen(function* () {
+              const orch = yield* MultiAgentOrchestrator;
+              yield* orch.completeTask(taskId, result);
+              return { ok: true as const };
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentFailTask]: ({ taskId, error }) =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentFailTask,
+            Effect.gen(function* () {
+              const orch = yield* MultiAgentOrchestrator;
+              yield* orch.failTask(taskId, error);
+              return { ok: true as const };
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentSetSharedContext]: ({ key, value }) =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentSetSharedContext,
+            Effect.gen(function* () {
+              const orch = yield* MultiAgentOrchestrator;
+              yield* orch.setSharedContext(key, value);
+              return { ok: true as const };
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentGetAllSharedContext]: () =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentGetAllSharedContext,
+            Effect.gen(function* () {
+              const orch = yield* MultiAgentOrchestrator;
+              const context = yield* orch.getAllSharedContext();
+              return { context };
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentListRoleTemplates]: () =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentListRoleTemplates,
+            Effect.gen(function* () {
+              const templates = yield* listMergedRoleTemplates;
+              return { templates: [...templates] };
+            }),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentUpsertRoleTemplate]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentUpsertRoleTemplate,
+            Effect.gen(function* () {
+              const saved = yield* upsertCustomRoleTemplate(input);
+              return saved;
+            }).pipe(Effect.tapError(Effect.logError), Effect.orDie),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+        [WS_METHODS.multiAgentDeleteRoleTemplate]: ({ id }) =>
+          observeRpcEffect(
+            WS_METHODS.multiAgentDeleteRoleTemplate,
+            Effect.gen(function* () {
+              yield* deleteCustomRoleTemplate(id);
+              return { ok: true as const };
+            }).pipe(Effect.tapError(Effect.logError), Effect.orDie),
+            { "rpc.aggregate": "multiAgent" },
+          ),
+
+        // Context awareness
+        [WS_METHODS.contextAnalyze]: (request) =>
+          observeRpcEffect(
+            WS_METHODS.contextAnalyze,
+            Effect.gen(function* () {
+              const analyzer = yield* ContextAnalyzer;
+              return yield* analyzer.analyzeContext(request);
+            }),
+            { "rpc.aggregate": "context" },
+          ) as any,
+        [WS_METHODS.contextGetContextPool]: ({ projectId }) =>
+          observeRpcEffect(
+            WS_METHODS.contextGetContextPool,
+            Effect.gen(function* () {
+              const analyzer = yield* ContextAnalyzer;
+              return yield* analyzer.getContextPool(projectId);
+            }),
+            { "rpc.aggregate": "context" },
+          ) as any,
+        [WS_METHODS.contextRefreshContextPool]: ({ projectId, workspaceRoot }) =>
+          observeRpcEffect(
+            WS_METHODS.contextRefreshContextPool,
+            Effect.gen(function* () {
+              const analyzer = yield* ContextAnalyzer;
+              return yield* analyzer.refreshContextPool(projectId, workspaceRoot);
+            }),
+            { "rpc.aggregate": "context" },
+          ) as any,
+        [WS_METHODS.contextBuildDependencyGraph]: ({ workspaceRoot }) =>
+          observeRpcEffect(
+            WS_METHODS.contextBuildDependencyGraph,
+            Effect.gen(function* () {
+              const analyzer = yield* ContextAnalyzer;
+              return yield* analyzer.buildDependencyGraph(workspaceRoot);
+            }),
+            { "rpc.aggregate": "context" },
+          ) as any,
+        [WS_METHODS.contextAnalyzeChangeImpact]: (payload) =>
+          observeRpcEffect(
+            WS_METHODS.contextAnalyzeChangeImpact,
+            Effect.gen(function* () {
+              const analyzer = yield* ContextAnalyzer;
+              const graph = yield* analyzer.buildDependencyGraph(payload.workspaceRoot);
+              const hopArg =
+                payload.maxReverseImportHops === undefined
+                  ? {}
+                  : { maxReverseImportHops: payload.maxReverseImportHops };
+              return yield* analyzer.analyzeChangeImpact({
+                changedFile: payload.changedFile,
+                dependencyGraph: graph,
+                ...hopArg,
+              });
+            }),
+            { "rpc.aggregate": "context" },
+          ) as any,
+        [WS_METHODS.contextGetSmartSuggestions]: (threadContext) =>
+          observeRpcEffect(
+            WS_METHODS.contextGetSmartSuggestions,
+            Effect.gen(function* () {
+              const analyzer = yield* ContextAnalyzer;
+              const suggestions = yield* analyzer.getSmartSuggestions(threadContext);
+              return { suggestions };
+            }),
+            { "rpc.aggregate": "context" },
+          ) as any,
+
+        // Visualization methods
+        [WS_METHODS.visualizationGetSessionData]: ({ threadId }) =>
+          observeRpcEffect(
+            WS_METHODS.visualizationGetSessionData,
+            Effect.gen(function* () {
+              const visualizer = yield* ExecutionVisualizer;
+              const session = yield* visualizer.getSessionData(threadId);
+              return { session };
+            }),
+            { "rpc.aggregate": "visualization" },
+          ),
+        [WS_METHODS.visualizationGetTimelineEvents]: ({ threadId }) =>
+          observeRpcEffect(
+            WS_METHODS.visualizationGetTimelineEvents,
+            Effect.gen(function* () {
+              const visualizer = yield* ExecutionVisualizer;
+              const events = yield* visualizer.getTimelineEvents(threadId);
+              return { events };
+            }),
+            { "rpc.aggregate": "visualization" },
+          ),
+        [WS_METHODS.visualizationGetHotspots]: ({ threadId }) =>
+          observeRpcEffect(
+            WS_METHODS.visualizationGetHotspots,
+            Effect.gen(function* () {
+              const visualizer = yield* ExecutionVisualizer;
+              const hotspots = yield* visualizer.calculateHotspots(threadId);
+              return { hotspots };
+            }),
+            { "rpc.aggregate": "visualization" },
+          ),
+        [WS_METHODS.visualizationGetOperationStats]: ({ threadId }) =>
+          observeRpcEffect(
+            WS_METHODS.visualizationGetOperationStats,
+            Effect.gen(function* () {
+              const visualizer = yield* ExecutionVisualizer;
+              const stats = yield* visualizer.getOperationStats(threadId);
+              return { stats };
+            }),
+            { "rpc.aggregate": "visualization" },
+          ),
+        [WS_METHODS.visualizationClearSession]: ({ threadId }) =>
+          observeRpcEffect(
+            WS_METHODS.visualizationClearSession,
+            Effect.gen(function* () {
+              const visualizer = yield* ExecutionVisualizer;
+              yield* visualizer.clearSession(threadId);
+              return { success: true };
+            }),
+            { "rpc.aggregate": "visualization" },
+          ),
+
+        // Code quality methods
+        [WS_METHODS.codeQualityLearnProjectStyle]: ({ projectId }) =>
+          observeRpcEffect(
+            WS_METHODS.codeQualityLearnProjectStyle,
+            Effect.gen(function* () {
+              const guard = yield* CodeQualityGuard;
+              const shellOpt = yield* projectionSnapshotQuery.getProjectShellById(
+                ProjectId.make(projectId),
+              );
+              let files: string[] = [];
+              if (Option.isSome(shellOpt)) {
+                const cwd = shellOpt.value.workspaceRoot;
+                const searchExit = yield* Effect.exit(
+                  workspaceEntries.search({ cwd, query: ".", limit: 200 }),
+                );
+                const searched = Exit.isSuccess(searchExit)
+                  ? searchExit.value
+                  : { entries: [], truncated: false as const };
+                files = [...searched.entries]
+                  .filter((e) => e.kind === "file")
+                  .map((e) => e.path.replace(/\\/g, "/"));
+              }
+              const profile = yield* guard.learnProjectStyle(projectId, files);
+              return { success: true as const, profile };
+            }),
+            { "rpc.aggregate": "codequality" },
+          ) as any,
+        [WS_METHODS.codeQualityCheckCode]: (params) =>
+          observeRpcEffect(
+            WS_METHODS.codeQualityCheckCode,
+            Effect.gen(function* () {
+              const guard = yield* CodeQualityGuard;
+              const result = yield* guard.checkCodeQuality(params);
+              return { result };
+            }),
+            { "rpc.aggregate": "codequality" },
+          ),
+        [WS_METHODS.codeQualityDetectTechDebt]: ({ projectId }) =>
+          observeRpcEffect(
+            WS_METHODS.codeQualityDetectTechDebt,
+            Effect.gen(function* () {
+              const guard = yield* CodeQualityGuard;
+              const debt = yield* guard.detectTechDebt(projectId);
+              return { debt };
+            }),
+            { "rpc.aggregate": "codequality" },
+          ) as any,
+        [WS_METHODS.codeQualityValidateBestPractices]: (params) =>
+          observeRpcEffect(
+            WS_METHODS.codeQualityValidateBestPractices,
+            Effect.gen(function* () {
+              const guard = yield* CodeQualityGuard;
+              return yield* guard.validateBestPractices(params);
+            }),
+            { "rpc.aggregate": "codequality" },
+          ),
+
+        // Testing methods
+        [WS_METHODS.testingCreateTestSuite]: (params) =>
+          observeRpcEffect(
+            WS_METHODS.testingCreateTestSuite,
+            Effect.gen(function* () {
+              const orchestrator = yield* TestOrchestrator;
+              const suite = yield* orchestrator.createTestSuite({
+                name: params.name,
+                projectId: params.projectId,
+                testCases: params.testCases.map((tc) => ({ ...tc })),
+              });
+              return { suite };
+            }),
+            { "rpc.aggregate": "testing" },
+          ) as any,
+        [WS_METHODS.testingGenerateTests]: (request) =>
+          observeRpcEffect(
+            WS_METHODS.testingGenerateTests,
+            Effect.gen(function* () {
+              const orchestrator = yield* TestOrchestrator;
+              const result = yield* orchestrator.generateTests(request);
+              return { result };
+            }),
+            { "rpc.aggregate": "testing" },
+          ) as any,
+        [WS_METHODS.testingSelectRegressionTests]: ({ changedFiles, workspaceRoot }) =>
+          observeRpcEffect(
+            WS_METHODS.testingSelectRegressionTests,
+            Effect.gen(function* () {
+              const orchestrator = yield* TestOrchestrator;
+              return yield* orchestrator.selectRegressionTests(
+                [...changedFiles],
+                workspaceRoot !== undefined ? workspaceRoot : undefined,
+              );
+            }),
+            { "rpc.aggregate": "testing" },
+          ) as any,
+        [WS_METHODS.testingRunTests]: (config) =>
+          observeRpcEffect(
+            WS_METHODS.testingRunTests,
+            Effect.gen(function* () {
+              const orchestrator = yield* TestOrchestrator;
+              return yield* orchestrator.runTests({
+                ...config,
+                testFiles: [...config.testFiles],
+              });
+            }),
+            { "rpc.aggregate": "testing" },
+          ) as any,
+        [WS_METHODS.testingGetCoverageReport]: (payload) =>
+          observeRpcEffect(
+            WS_METHODS.testingGetCoverageReport,
+            Effect.gen(function* () {
+              const orchestrator = yield* TestOrchestrator;
+              const { projectId, workspaceRoot, linesCoverageMinPercent, weakAreaMaxLinesPercent } =
+                payload as {
+                  projectId: string;
+                  workspaceRoot?: string;
+                  linesCoverageMinPercent?: number;
+                  weakAreaMaxLinesPercent?: number;
+                };
+              const covOpts =
+                linesCoverageMinPercent === undefined && weakAreaMaxLinesPercent === undefined
+                  ? undefined
+                  : {
+                      ...(linesCoverageMinPercent !== undefined ? { linesCoverageMinPercent } : {}),
+                      ...(weakAreaMaxLinesPercent !== undefined ? { weakAreaMaxLinesPercent } : {}),
+                    };
+              const report = yield* orchestrator.getCoverageReport(
+                projectId,
+                workspaceRoot !== undefined ? workspaceRoot : undefined,
+                covOpts,
+              );
+              return report;
+            }),
+            { "rpc.aggregate": "testing" },
+          ) as any,
+
+        // Environment management methods
+        [WS_METHODS.environmentList]: () =>
+          observeRpcEffect(
+            WS_METHODS.environmentList,
+            Effect.gen(function* () {
+              const manager = yield* EnvironmentManager;
+              const profiles = yield* manager.listProfiles();
+              return { environments: profiles };
+            }),
+            { "rpc.aggregate": "environment" },
+          ) as any,
+        [WS_METHODS.environmentGet]: ({ profileId }) =>
+          observeRpcEffect(
+            WS_METHODS.environmentGet,
+            Effect.gen(function* () {
+              const manager = yield* EnvironmentManager;
+              return yield* manager.getProfile(profileId);
+            }),
+            { "rpc.aggregate": "environment" },
+          ) as any,
+        [WS_METHODS.environmentCreate]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.environmentCreate,
+            Effect.gen(function* () {
+              const manager = yield* EnvironmentManager;
+              const createParams =
+                input.templateId !== undefined
+                  ? { name: input.name, templateId: input.templateId }
+                  : { name: input.name };
+              return yield* manager.createProfile(createParams);
+            }),
+            { "rpc.aggregate": "environment" },
+          ) as any,
+        [WS_METHODS.environmentUpdate]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.environmentUpdate,
+            Effect.gen(function* () {
+              const manager = yield* EnvironmentManager;
+              return yield* manager.switchEnvironment({
+                profileId: input.profileId,
+                environmentId: input.activeEnvironmentId,
+              });
+            }),
+            { "rpc.aggregate": "environment" },
+          ) as any,
+        [WS_METHODS.environmentDelete]: ({ profileId }) =>
+          observeRpcEffect(
+            WS_METHODS.environmentDelete,
+            Effect.gen(function* () {
+              const manager = yield* EnvironmentManager;
+              yield* manager.deleteProfile(profileId);
+              return { success: true };
+            }),
+            { "rpc.aggregate": "environment" },
+          ) as any,
+        [WS_METHODS.environmentExport]: (request) =>
+          observeRpcEffect(
+            WS_METHODS.environmentExport,
+            Effect.gen(function* () {
+              const manager = yield* EnvironmentManager;
+              return yield* manager.exportEnvironment(request);
+            }),
+            { "rpc.aggregate": "environment" },
+          ) as any,
+        [WS_METHODS.environmentImport]: (request) =>
+          observeRpcEffect(
+            WS_METHODS.environmentImport,
+            Effect.gen(function* () {
+              const manager = yield* EnvironmentManager;
+              return yield* manager.importEnvironment(request);
+            }),
+            { "rpc.aggregate": "environment" },
+          ) as any,
+        [WS_METHODS.environmentRefreshDependencyInsights]: ({ workspaceRoot }) =>
+          observeRpcEffect(
+            WS_METHODS.environmentRefreshDependencyInsights,
+            Effect.gen(function* () {
+              const manager = yield* EnvironmentManager;
+              const tree = yield* manager.analyzeDependencies(workspaceRoot);
+              const suggestions = yield* manager.getUpdateSuggestions(workspaceRoot);
+              const auditFindings = runDependencyAuditInWorkspace(workspaceRoot);
+              return { tree, suggestions, auditFindings };
+            }),
+            { "rpc.aggregate": "environment" },
+          ) as any,
+
         [WS_METHODS.projectsSearchEntries]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectsSearchEntries,

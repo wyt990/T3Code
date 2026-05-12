@@ -53,6 +53,12 @@ import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
 import { ProjectSetupScriptRunnerLive } from "./project/Layers/ProjectSetupScriptRunner.ts";
 import { ObservabilityLive } from "./observability/Layers/Observability.ts";
 import { ServerEnvironmentLive } from "./environment/Layers/ServerEnvironment.ts";
+import { liveExecutionVisualizer as ExecutionVisualizerLive } from "./observability/Layers/ExecutionVisualizer.ts";
+import { MultiAgentOrchestratorLive } from "./orchestration/Layers/MultiAgentOrchestrator.ts";
+import { ContextAnalyzerLive } from "./contextAwareness/Layers/ContextAnalyzer.ts";
+import { CodeQualityGuardLive } from "./provider/Layers/CodeQualityGuard.ts";
+import { TestOrchestratorLive } from "./testing/Layers/TestOrchestrator.ts";
+import { EnvironmentManagerLive } from "./environmentManagement/Layers/EnvironmentManager.ts";
 import {
   authBearerBootstrapRouteLayer,
   authBootstrapRouteLayer,
@@ -225,10 +231,10 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(OrchestrationLayerLive),
 );
 
+/** Split `provideMerge` chains: TS caps `Layer.pipe` arity; Effect LS `unnecessaryPipeChain` is off in tsconfig. */
 const RuntimeDependenciesLive = Layer.empty
   .pipe(
     Layer.provideMerge(ReactorLayerLive),
-    // Core Services
     Layer.provideMerge(CheckpointingLayerLive),
     Layer.provideMerge(GitLayerLive),
     Layer.provideMerge(ProviderRuntimeLayerLive),
@@ -242,8 +248,16 @@ const RuntimeDependenciesLive = Layer.empty
     Layer.provideMerge(RepositoryIdentityResolverLive),
     Layer.provideMerge(ServerEnvironmentLive),
     Layer.provideMerge(AuthLayerLive),
-
-    // Misc.
+  )
+  .pipe(
+    Layer.provideMerge(ExecutionVisualizerLive),
+    Layer.provideMerge(MultiAgentOrchestratorLive),
+    Layer.provideMerge(ContextAnalyzerLive),
+    Layer.provideMerge(CodeQualityGuardLive),
+    Layer.provideMerge(TestOrchestratorLive),
+    Layer.provideMerge(EnvironmentManagerLive),
+  )
+  .pipe(
     Layer.provideMerge(AnalyticsServiceLayerLive),
     Layer.provideMerge(OpenLive),
     Layer.provideMerge(ServerLifecycleEventsLive),

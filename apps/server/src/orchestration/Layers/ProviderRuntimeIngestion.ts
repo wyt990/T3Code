@@ -2,6 +2,8 @@ import {
   ApprovalRequestId,
   type AssistantDeliveryMode,
   CommandId,
+  EventId,
+  type ExecutionEvent,
   MessageId,
   type OrchestrationEvent,
   type OrchestrationProposedPlanId,
@@ -27,10 +29,60 @@ import {
   type ProviderRuntimeIngestionShape,
 } from "../Services/ProviderRuntimeIngestion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import {
+  ExecutionVisualizer,
+  type ExecutionVisualizer as ExecutionVisualizerApi,
+} from "../../observability/Services/ExecutionVisualizer.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerCommandId = (event: ProviderRuntimeEvent, tag: string): CommandId =>
   CommandId.make(`provider:${event.eventId}:${tag}:${crypto.randomUUID()}`);
+
+function runtimeEventTypeToVisualization(
+  type: ProviderRuntimeEvent["type"],
+): ExecutionEvent["eventType"] | null {
+  switch (type) {
+    case "request.opened":
+      return "toolCall";
+    case "request.resolved":
+      return "toolResult";
+    case "runtime.error":
+      return "decisionPoint";
+    case "item.updated":
+    case "item.completed":
+      return "modelResponse";
+    case "turn.completed":
+      return "decisionPoint";
+    case "turn.started":
+      return "modelRequest";
+    default:
+      return null;
+  }
+}
+
+function recordProviderVisualizationEvent(
+  event: ProviderRuntimeEvent,
+  threadId: ThreadId,
+  visualizer: ExecutionVisualizerApi,
+): Effect.Effect<void, never, never> {
+  return Effect.gen(function* () {
+    const evtType = runtimeEventTypeToVisualization(event.type);
+    if (!evtType) {
+      return;
+    }
+    const turnResolved = toTurnId(event.turnId);
+    const turnId = TurnId.make(String(turnResolved ?? event.eventId));
+    yield* visualizer.recordEvent({
+      id: EventId.make(event.eventId),
+      threadId,
+      turnId,
+      timestamp: event.createdAt,
+      eventType: evtType,
+      metadata: { runtimeEventType: event.type },
+      success: event.type !== "runtime.error",
+    });
+  });
+}
 
 interface AssistantSegmentState {
   baseKey: string;
@@ -525,6 +577,7 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
   const serverSettingsService = yield* ServerSettingsService;
+  const executionVisualizer = yield* ExecutionVisualizer;
 
   const readAssistantDeliveryMode = serverSettingsService.getSettings.pipe(
     Effect.map((settings) =>
@@ -1519,6 +1572,8 @@ const make = Effect.gen(function* () {
           createdAt: activity.createdAt,
         }),
       ).pipe(Effect.asVoid);
+
+      yield* recordProviderVisualizationEvent(event, thread.id, executionVisualizer);
     });
 
   const processDomainEvent = (_event: TurnStartRequestedDomainEvent) => Effect.void;

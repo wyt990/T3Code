@@ -158,11 +158,11 @@ export class WsTransport {
           }
 
           const formattedError = formatErrorMessage(error);
-          
+
           // 检查是否为可恢复的错误（传输错误或临时性错误）
           const isTransportError = isTransportConnectionErrorMessage(formattedError);
           const isTemporaryError = isTemporarySubscriptionError(formattedError);
-          
+
           if (!isTransportError && !isTemporaryError) {
             return;
           }
@@ -171,7 +171,7 @@ export class WsTransport {
             // Silently suppress the first disconnect message for cleaner logs
           }
           this.hasReportedTransportDisconnect = true;
-          
+
           // 对于临时性错误，使用更长的重试延迟
           const effectiveDelayMs = isTemporaryError ? Math.max(retryDelayMs, 1000) : retryDelayMs;
           await sleep(effectiveDelayMs);
@@ -307,7 +307,7 @@ function sleep(ms: number): Promise<void> {
  */
 function isTemporarySubscriptionError(error: string): boolean {
   const lowerError = error.toLowerCase();
-  
+
   // 临时性错误模式：超时、限流、服务器暂时不可用等
   const temporaryPatterns = [
     "timeout",
@@ -334,12 +334,12 @@ function isTemporarySubscriptionError(error: string): boolean {
     "request failed",
     "network",
     "unexpected end",
-    "invalid state",  // Effect RPC 状态错误（通常是连接断开导致的）
-    "disposed",       // 流已被 disposed（可能是连接断开触发）
+    "invalid state", // Effect RPC 状态错误（通常是连接断开导致的）
+    "disposed", // 流已被 disposed（可能是连接断开触发）
     "interrupted",
     "cancelled",
     "abort",
   ];
-  
-  return temporaryPatterns.some(pattern => lowerError.includes(pattern));
+
+  return temporaryPatterns.some((pattern) => lowerError.includes(pattern));
 }

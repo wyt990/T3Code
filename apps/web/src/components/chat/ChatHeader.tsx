@@ -6,17 +6,18 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
-import { memo } from "react";
+import { memo, useCallback } from "react";
+import { useShallow } from "zustand/react/shallow";
 import GitActionsControl from "../GitActionsControl";
 import { type DraftId } from "~/composerDraftStore";
-import { DiffIcon, TerminalSquareIcon } from "lucide-react";
+import { Brain, DiffIcon, ServerIcon, TerminalSquareIcon, UsersRoundIcon } from "lucide-react";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
 import { Toggle } from "../ui/toggle";
 import { SidebarTrigger } from "../ui/sidebar";
 import { OpenInPicker } from "./OpenInPicker";
+import { useLayoutStore } from "../../layout/layoutStore";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -69,6 +70,41 @@ export const ChatHeader = memo(function ChatHeader({
   onToggleTerminal,
   onToggleDiff,
 }: ChatHeaderProps) {
+  const {
+    contextShow,
+    contextOpen,
+    environmentShow,
+    environmentOpen,
+    multiAgentShow,
+    multiAgentOpen,
+  } = useLayoutStore(
+    useShallow((s) => {
+      const ctx = s.panels.find((p) => p.id === "context");
+      const env = s.panels.find((p) => p.id === "environment");
+      const ma = s.panels.find((p) => p.id === "multiAgent");
+      return {
+        contextShow: ctx?.visible === true,
+        contextOpen: ctx ? ctx.railDocked !== false : false,
+        environmentShow: env?.visible === true,
+        environmentOpen: env ? env.railDocked !== false : false,
+        multiAgentShow: ma?.visible === true,
+        multiAgentOpen: ma ? ma.railDocked !== false : false,
+      };
+    }),
+  );
+
+  const onToggleContextRail = useCallback((nextPressed: boolean) => {
+    useLayoutStore.getState().updatePanel("context", { railDocked: nextPressed });
+  }, []);
+
+  const onToggleEnvironmentRail = useCallback((nextPressed: boolean) => {
+    useLayoutStore.getState().updatePanel("environment", { railDocked: nextPressed });
+  }, []);
+
+  const onToggleMultiAgentRail = useCallback((nextPressed: boolean) => {
+    useLayoutStore.getState().updatePanel("multiAgent", { railDocked: nextPressed });
+  }, []);
+
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
@@ -164,6 +200,75 @@ export const ChatHeader = memo(function ChatHeader({
                 : "切换 diff 面板"}
           </TooltipPopup>
         </Tooltip>
+        {contextShow && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  className="shrink-0"
+                  pressed={contextOpen}
+                  onPressedChange={onToggleContextRail}
+                  aria-label="切换智能上下文侧栏"
+                  variant="outline"
+                  size="xs"
+                >
+                  <Brain className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {contextOpen
+                ? "隐藏智能上下文侧栏（布局中的「上下文」仍控制是否显示此按钮）"
+                : "显示智能上下文侧栏"}
+            </TooltipPopup>
+          </Tooltip>
+        )}
+        {environmentShow && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  className="shrink-0"
+                  pressed={environmentOpen}
+                  onPressedChange={onToggleEnvironmentRail}
+                  aria-label="切换环境管理侧栏"
+                  variant="outline"
+                  size="xs"
+                >
+                  <ServerIcon className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {environmentOpen
+                ? "隐藏环境管理侧栏（布局中的「环境」仍控制是否显示此按钮）"
+                : "显示环境管理侧栏"}
+            </TooltipPopup>
+          </Tooltip>
+        )}
+        {multiAgentShow && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  className="shrink-0"
+                  pressed={multiAgentOpen}
+                  onPressedChange={onToggleMultiAgentRail}
+                  aria-label="切换多代理侧栏"
+                  variant="outline"
+                  size="xs"
+                >
+                  <UsersRoundIcon className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {multiAgentOpen
+                ? "隐藏多代理侧栏（布局中的「多代理」仍控制是否显示此按钮）"
+                : "显示多代理侧栏"}
+            </TooltipPopup>
+          </Tooltip>
+        )}
       </div>
     </div>
   );

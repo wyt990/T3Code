@@ -87,6 +87,16 @@ import {
   BrowserTraceCollector,
   type BrowserTraceCollectorShape,
 } from "./observability/Services/BrowserTraceCollector.ts";
+import { ExecutionVisualizer } from "./observability/Services/ExecutionVisualizer.ts";
+import { ContextAnalyzer } from "./contextAwareness/Services/ContextAnalyzer.ts";
+import {
+  MultiAgentOrchestrator,
+  type AgentTask,
+  type TaskStatus,
+} from "./orchestration/Services/MultiAgentOrchestrator.ts";
+import { CodeQualityGuard } from "./provider/Services/CodeQualityGuard.ts";
+import { TestOrchestrator } from "./testing/Services/TestOrchestrator.ts";
+import { EnvironmentManager } from "./environmentManagement/Services/EnvironmentManager.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
 import {
   ProjectSetupScriptRunner,
@@ -503,6 +513,235 @@ const buildAppUnderTest = (options?: {
           ...options?.layers?.checkpointDiffQuery,
         }),
       ),
+      Layer.provide(
+        Layer.mock(ExecutionVisualizer)({
+          recordEvent: () => Effect.void,
+          getTimelineEvents: () => Effect.succeed([]),
+          recordDecisionPoint: () => Effect.void,
+          getDecisionPoints: () => Effect.succeed([]),
+          calculateHotspots: () => Effect.succeed([]),
+          getOperationStats: () => Effect.succeed([]),
+          analyzeDependencies: () => Effect.succeed({ nodes: [], edges: [] }),
+          analyzeChangeImpact: () =>
+            Effect.succeed({
+              changedFiles: [],
+              affectedModules: [],
+              directImpacts: [],
+              transitiveImpacts: [],
+              riskLevel: "low",
+              summary: "mock",
+            }),
+          getSessionData: () => Effect.succeed(null),
+          clearSession: () => Effect.void,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ContextAnalyzer)({
+          analyzeContext: () => Effect.succeed({} as never),
+          getContextPool: () => Effect.succeed({} as never),
+          updateContextPool: () => Effect.void,
+          buildDependencyGraph: () => Effect.succeed({} as never),
+          analyzeChangeImpact: () =>
+            Effect.succeed({
+              changedFile: "mock.ts",
+              affectedFiles: [],
+              transitiveImporters: [],
+              impactHopDepth: 2,
+              impactLevel: "low" as const,
+              riskReasons: [],
+            }),
+          getSmartSuggestions: () => Effect.succeed([]),
+          refreshContextPool: () => Effect.succeed({} as never),
+          mergeTurnDiffContextEntries: () => Effect.void,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(MultiAgentOrchestrator)({
+          registerAgent: () => Effect.void,
+          unregisterAgent: () => Effect.void,
+          submitTask: (task) =>
+            Effect.succeed({
+              ...task,
+              status: "pending" as const,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }),
+          startTask: () => Effect.succeed(true),
+          completeTask: () => Effect.void,
+          failTask: () => Effect.void,
+          getTaskStatus: () => Effect.sync((): TaskStatus | undefined => undefined),
+          getTask: () => Effect.sync((): AgentTask | undefined => undefined),
+          listTasks: () => Effect.succeed([]),
+          listAgents: () => Effect.succeed([]),
+          setSharedContext: () => Effect.void,
+          getSharedContext: () => Effect.sync(() => undefined),
+          getAllSharedContext: () => Effect.succeed({}),
+          checkDependencies: () => Effect.succeed(true),
+          getReadyTasks: () => Effect.succeed([]),
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(CodeQualityGuard)({
+          learnProjectStyle: (_projectId, _files) =>
+            Effect.succeed({
+              id: "mock-profile",
+              projectId: _projectId,
+              patterns: [],
+              rules: [],
+              learnedAt: new Date().toISOString(),
+              lastUpdated: new Date().toISOString(),
+              fileExtensions: [],
+            }),
+          checkCodeQuality: () =>
+            Effect.succeed({
+              filePath: "mock.ts",
+              issues: [],
+              score: 100,
+              checkedAt: new Date().toISOString(),
+            }),
+          detectTechDebt: () => Effect.succeed([]),
+          validateBestPractices: () => Effect.succeed({ passed: true, violations: [] }),
+          enhanceGeneration: () =>
+            Effect.succeed({
+              success: true,
+              issues: [],
+              appliedPatterns: [],
+              qualityScore: 100,
+            }),
+          resolveStyleProfile: (projectId) =>
+            Effect.succeed({
+              id: "mock-profile",
+              projectId,
+              patterns: [],
+              rules: [],
+              learnedAt: new Date().toISOString(),
+              lastUpdated: new Date().toISOString(),
+              fileExtensions: [],
+            }),
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(TestOrchestrator)({
+          createTestSuite: () =>
+            Effect.succeed({
+              id: "suite",
+              name: "mock",
+              projectId: "p",
+              status: "idle",
+              testCases: [],
+              createdAt: "",
+              updatedAt: "",
+            }),
+          generateTests: () =>
+            Effect.succeed({
+              success: true,
+              testCases: [],
+              generatedCount: 0,
+              estimatedCoverage: 0,
+            }),
+          selectRegressionTests: () =>
+            Effect.succeed({
+              changedFiles: [],
+              affectedModules: [],
+              selectedTests: [],
+              confidence: 0,
+              reason: "mock",
+            }),
+          runTests: () =>
+            Effect.succeed({
+              configId: "mock-config",
+              status: "passed",
+              duration: 0,
+              testsRun: 0,
+              testsPassed: 0,
+              testsFailed: 0,
+              testsSkipped: 0,
+              failures: [],
+              completedAt: new Date().toISOString(),
+            }),
+          getCoverageReport: (_projectId: string, _workspaceRoot?: string, _covOptions?: unknown) =>
+            Effect.succeed({
+              projectId: "p",
+              timestamp: new Date().toISOString(),
+              summary: {
+                lines: 0,
+                branches: 0,
+                functions: 0,
+                statements: 0,
+              },
+              files: [],
+              weakAreas: [],
+            }),
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(EnvironmentManager)({
+          listTemplates: () => Effect.succeed([]),
+          getTemplate: () => Effect.die("EnvironmentManager.getTemplate: not used in router tests"),
+          createProfile: () =>
+            Effect.succeed({
+              id: "mock-profile",
+              name: "mock",
+              configs: {},
+              activeEnvironmentId: EnvironmentId.make("env-default"),
+              createdAt: "",
+              updatedAt: "",
+            }),
+          getProfile: () =>
+            Effect.succeed({
+              id: "mock-profile",
+              name: "mock",
+              configs: {},
+              activeEnvironmentId: EnvironmentId.make("env-default"),
+              createdAt: "",
+              updatedAt: "",
+            }),
+          listProfiles: () => Effect.succeed([]),
+          deleteProfile: () => Effect.void,
+          switchEnvironment: () =>
+            Effect.succeed({
+              id: "mock-profile",
+              name: "mock",
+              configs: {},
+              activeEnvironmentId: EnvironmentId.make("env-default"),
+              createdAt: "",
+              updatedAt: "",
+            }),
+          compareConfigs: () =>
+            Effect.succeed({
+              baseEnvironmentId: EnvironmentId.make("a"),
+              targetEnvironmentId: EnvironmentId.make("b"),
+              diffs: [],
+            }),
+          analyzeDependencies: () =>
+            Effect.succeed({
+              rootPackage: "root",
+              nodes: [],
+              totalCount: 0,
+              maxDepth: 0,
+            }),
+          checkCompatibility: () =>
+            Effect.succeed({
+              packageName: "x",
+              currentVersion: "1",
+              status: "compatible",
+            }),
+          getUpdateSuggestions: () => Effect.succeed([]),
+          exportEnvironment: () =>
+            Effect.succeed({
+              content: "{}",
+              format: "json",
+              exportedAt: "",
+              environmentCount: 0,
+            }),
+          importEnvironment: () =>
+            Effect.succeed({
+              importedVariables: 0,
+              importedEnvironments: 0,
+              warnings: [],
+            }),
+        }),
+      ),
     );
 
     const appLayer = servedRoutesLayer.pipe(
@@ -547,7 +786,8 @@ const buildAppUnderTest = (options?: {
       Layer.provide(layerConfig),
     );
 
-    yield* Layer.build(appLayer);
+    // Tests fully satisfy `appLayer`; cast avoids `unknown` leaking into R via merged route layers.
+    yield* Layer.build(appLayer as Layer.Layer<any, any, never>);
     return config;
   });
 

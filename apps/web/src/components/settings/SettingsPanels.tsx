@@ -82,6 +82,7 @@ import { ProviderInstallCard } from "./ProviderInstallCard";
 import { ClaudeCodeInstallCard } from "./ClaudeCodeInstallCard";
 import { ClaudeAgentModelListRefreshErrorDialog } from "../chat/ClaudeAgentModelListRefreshErrorDialog";
 import { runClaudeAgentModelListRefresh } from "~/lib/claudeAgentModelListRefresh";
+import { requestOnboardingReplay } from "../OnboardingTour";
 
 const THEME_OPTIONS = [
   {
@@ -1818,6 +1819,15 @@ export function GeneralSettingsPanel() {
         ) : (
           <SettingsRow title={<AboutVersionTitle />} description="应用程序的当前版本。" />
         )}
+        <SettingsRow
+          title="新手引导"
+          description="分步介绍工作台、命令面板自然语言与布局；关闭后也可随时从此处重新打开。"
+          control={
+            <Button size="xs" variant="outline" onClick={() => requestOnboardingReplay()}>
+              显示新手引导
+            </Button>
+          }
+        />
         <SettingsRow
           title="诊断"
           description={diagnosticsDescription}

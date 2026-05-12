@@ -14,7 +14,8 @@
           "instanceOfSchema": "off",
           "deterministicKeys": "off",
           "preferSchemaOverJson": "off",
-          "globalErrorInEffectFailure": "off"
+          "globalErrorInEffectFailure": "off",
+          "unnecessaryPipeChain": "off"
         }
       }
     ]

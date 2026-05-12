@@ -87,6 +87,7 @@ import {
 } from "../../chatViewScrollMemory";
 import { newCommandId, newDraftId, newMessageId, newThreadId, randomUUID } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { buildTurnStartCodeQualityGatePayload } from "../../codeQualityGateStore";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
 import { type NewProjectScriptInput } from "../ProjectScriptsControl";
 import {
@@ -2105,7 +2106,8 @@ export function ChatViewBody(props: ChatViewProps) {
           nextInteractionMode,
         );
 
-        await api.orchestration.dispatchCommand({
+        const codeQualityGate = buildTurnStartCodeQualityGatePayload();
+        const dispatchResult = await api.orchestration.dispatchCommand({
           type: "thread.turn.start",
           commandId: newCommandId(),
           threadId: threadIdForSend,
@@ -2127,8 +2129,21 @@ export function ChatViewBody(props: ChatViewProps) {
                 },
               }
             : {}),
+          ...(codeQualityGate ? { codeQualityGate } : {}),
           createdAt: messageCreatedAt,
         });
+        if (dispatchResult.codeQualityTurnGate?.outcome === "warned") {
+          const description =
+            dispatchResult.codeQualityTurnGate.messages.join("\n") ||
+            "部分 Markdown 代码块未达质量阈值，已继续发送。";
+          toastManager.add(
+            stackedThreadToast({
+              type: "warning",
+              title: "代码质量闸门（告警）",
+              description,
+            }),
+          );
+        }
         // Optimistically open the plan sidebar when implementing (not refining).
         // "default" mode here means the agent is executing the plan, which produces
         // step-tracking activities that the sidebar will display.
@@ -2226,26 +2241,43 @@ export function ChatViewBody(props: ChatViewProps) {
         createdAt,
       })
       .then(() => {
-        return api.orchestration.dispatchCommand({
-          type: "thread.turn.start",
-          commandId: newCommandId(),
-          threadId: nextThreadId,
-          message: {
-            messageId: newMessageId(),
-            role: "user",
-            text: outgoingImplementationPrompt,
-            attachments: [],
-          },
-          modelSelection: ctxSelectedModelSelection,
-          titleSeed: nextThreadTitle,
-          runtimeMode,
-          interactionMode: "default",
-          sourceProposedPlan: {
-            threadId: activeThread.id,
-            planId: activeProposedPlan.id,
-          },
-          createdAt,
-        });
+        const codeQualityGate = buildTurnStartCodeQualityGatePayload();
+        return api.orchestration
+          .dispatchCommand({
+            type: "thread.turn.start",
+            commandId: newCommandId(),
+            threadId: nextThreadId,
+            message: {
+              messageId: newMessageId(),
+              role: "user",
+              text: outgoingImplementationPrompt,
+              attachments: [],
+            },
+            modelSelection: ctxSelectedModelSelection,
+            titleSeed: nextThreadTitle,
+            runtimeMode,
+            interactionMode: "default",
+            sourceProposedPlan: {
+              threadId: activeThread.id,
+              planId: activeProposedPlan.id,
+            },
+            ...(codeQualityGate ? { codeQualityGate } : {}),
+            createdAt,
+          })
+          .then((dispatchResult) => {
+            if (dispatchResult.codeQualityTurnGate?.outcome === "warned") {
+              const description =
+                dispatchResult.codeQualityTurnGate.messages.join("\n") ||
+                "部分 Markdown 代码块未达质量阈值，已继续发送。";
+              toastManager.add(
+                stackedThreadToast({
+                  type: "warning",
+                  title: "代码质量闸门（告警）",
+                  description,
+                }),
+              );
+            }
+          });
       })
       .then(() => {
         return waitForStartedServerThread(scopeThreadRef(activeThread.environmentId, nextThreadId));

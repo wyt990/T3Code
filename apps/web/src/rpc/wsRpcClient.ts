@@ -145,6 +145,65 @@ export interface WsRpcClient {
   readonly openCode: {
     readonly install: (platform?: "linux" | "darwin" | "win32") => Promise<OpenCodeInstallResult>;
   };
+  readonly multiAgent: {
+    readonly registerAgent: RpcUnaryMethod<typeof WS_METHODS.multiAgentRegisterAgent>;
+    readonly unregisterAgent: RpcUnaryMethod<typeof WS_METHODS.multiAgentUnregisterAgent>;
+    readonly submitTask: RpcUnaryMethod<typeof WS_METHODS.multiAgentSubmitTask>;
+    readonly startTask: RpcUnaryMethod<typeof WS_METHODS.multiAgentStartTask>;
+    readonly listTasks: RpcUnaryMethod<typeof WS_METHODS.multiAgentListTasks>;
+    readonly listAgents: RpcUnaryNoArgMethod<typeof WS_METHODS.multiAgentListAgents>;
+    readonly completeTask: RpcUnaryMethod<typeof WS_METHODS.multiAgentCompleteTask>;
+    readonly failTask: RpcUnaryMethod<typeof WS_METHODS.multiAgentFailTask>;
+    readonly setSharedContext: RpcUnaryMethod<typeof WS_METHODS.multiAgentSetSharedContext>;
+    readonly getAllSharedContext: RpcUnaryNoArgMethod<
+      typeof WS_METHODS.multiAgentGetAllSharedContext
+    >;
+    readonly listRoleTemplates: RpcUnaryNoArgMethod<typeof WS_METHODS.multiAgentListRoleTemplates>;
+    readonly upsertRoleTemplate: RpcUnaryMethod<typeof WS_METHODS.multiAgentUpsertRoleTemplate>;
+    readonly deleteRoleTemplate: RpcUnaryMethod<typeof WS_METHODS.multiAgentDeleteRoleTemplate>;
+  };
+  readonly context: {
+    readonly analyze: RpcUnaryMethod<typeof WS_METHODS.contextAnalyze>;
+    readonly getContextPool: RpcUnaryMethod<typeof WS_METHODS.contextGetContextPool>;
+    readonly refreshContextPool: RpcUnaryMethod<typeof WS_METHODS.contextRefreshContextPool>;
+    readonly buildDependencyGraph: RpcUnaryMethod<typeof WS_METHODS.contextBuildDependencyGraph>;
+    readonly analyzeChangeImpact: RpcUnaryMethod<typeof WS_METHODS.contextAnalyzeChangeImpact>;
+    readonly getSmartSuggestions: RpcUnaryMethod<typeof WS_METHODS.contextGetSmartSuggestions>;
+  };
+  readonly visualization: {
+    readonly getSessionData: RpcUnaryMethod<typeof WS_METHODS.visualizationGetSessionData>;
+    readonly getTimelineEvents: RpcUnaryMethod<typeof WS_METHODS.visualizationGetTimelineEvents>;
+    readonly getHotspots: RpcUnaryMethod<typeof WS_METHODS.visualizationGetHotspots>;
+    readonly getOperationStats: RpcUnaryMethod<typeof WS_METHODS.visualizationGetOperationStats>;
+    readonly clearSession: RpcUnaryMethod<typeof WS_METHODS.visualizationClearSession>;
+  };
+  readonly codeQuality: {
+    readonly learnProjectStyle: RpcUnaryMethod<typeof WS_METHODS.codeQualityLearnProjectStyle>;
+    readonly checkCode: RpcUnaryMethod<typeof WS_METHODS.codeQualityCheckCode>;
+    readonly detectTechDebt: RpcUnaryMethod<typeof WS_METHODS.codeQualityDetectTechDebt>;
+    readonly validateBestPractices: RpcUnaryMethod<
+      typeof WS_METHODS.codeQualityValidateBestPractices
+    >;
+  };
+  readonly testing: {
+    readonly createTestSuite: RpcUnaryMethod<typeof WS_METHODS.testingCreateTestSuite>;
+    readonly generateTests: RpcUnaryMethod<typeof WS_METHODS.testingGenerateTests>;
+    readonly selectRegressionTests: RpcUnaryMethod<typeof WS_METHODS.testingSelectRegressionTests>;
+    readonly runTests: RpcUnaryMethod<typeof WS_METHODS.testingRunTests>;
+    readonly getCoverageReport: RpcUnaryMethod<typeof WS_METHODS.testingGetCoverageReport>;
+  };
+  readonly environmentProfiles: {
+    readonly list: RpcUnaryNoArgMethod<typeof WS_METHODS.environmentList>;
+    readonly get: RpcUnaryMethod<typeof WS_METHODS.environmentGet>;
+    readonly create: RpcUnaryMethod<typeof WS_METHODS.environmentCreate>;
+    readonly update: RpcUnaryMethod<typeof WS_METHODS.environmentUpdate>;
+    readonly delete: RpcUnaryMethod<typeof WS_METHODS.environmentDelete>;
+    readonly exportProfile: RpcUnaryMethod<typeof WS_METHODS.environmentExport>;
+    readonly importProfile: RpcUnaryMethod<typeof WS_METHODS.environmentImport>;
+    readonly refreshDependencyInsights: RpcUnaryMethod<
+      typeof WS_METHODS.environmentRefreshDependencyInsights
+    >;
+  };
 }
 
 export function createWsRpcClient(transport: WsTransport): WsRpcClient {
@@ -303,6 +362,94 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
     openCode: {
       install: (platform?: "linux" | "darwin" | "win32") =>
         transport.request((client) => client[WS_METHODS.openCodeInstall]({ platform })),
+    },
+    multiAgent: {
+      registerAgent: (input) =>
+        transport.request((client) => client[WS_METHODS.multiAgentRegisterAgent](input)),
+      unregisterAgent: (input) =>
+        transport.request((client) => client[WS_METHODS.multiAgentUnregisterAgent](input)),
+      submitTask: (input) =>
+        transport.request((client) => client[WS_METHODS.multiAgentSubmitTask](input)),
+      startTask: (input) =>
+        transport.request((client) => client[WS_METHODS.multiAgentStartTask](input)),
+      listTasks: (input) =>
+        transport.request((client) => client[WS_METHODS.multiAgentListTasks](input)),
+      listAgents: () => transport.request((client) => client[WS_METHODS.multiAgentListAgents]({})),
+      completeTask: (input) =>
+        transport.request((client) => client[WS_METHODS.multiAgentCompleteTask](input)),
+      failTask: (input) =>
+        transport.request((client) => client[WS_METHODS.multiAgentFailTask](input)),
+      setSharedContext: (input) =>
+        transport.request((client) => client[WS_METHODS.multiAgentSetSharedContext](input)),
+      getAllSharedContext: () =>
+        transport.request((client) => client[WS_METHODS.multiAgentGetAllSharedContext]({})),
+      listRoleTemplates: () =>
+        transport.request((client) => client[WS_METHODS.multiAgentListRoleTemplates]({})),
+      upsertRoleTemplate: (input) =>
+        transport.request((client) => client[WS_METHODS.multiAgentUpsertRoleTemplate](input)),
+      deleteRoleTemplate: (input) =>
+        transport.request((client) => client[WS_METHODS.multiAgentDeleteRoleTemplate](input)),
+    },
+    context: {
+      analyze: (input) => transport.request((client) => client[WS_METHODS.contextAnalyze](input)),
+      getContextPool: (input) =>
+        transport.request((client) => client[WS_METHODS.contextGetContextPool](input)),
+      refreshContextPool: (input) =>
+        transport.request((client) => client[WS_METHODS.contextRefreshContextPool](input)),
+      buildDependencyGraph: (input) =>
+        transport.request((client) => client[WS_METHODS.contextBuildDependencyGraph](input)),
+      analyzeChangeImpact: (input) =>
+        transport.request((client) => client[WS_METHODS.contextAnalyzeChangeImpact](input)),
+      getSmartSuggestions: (input) =>
+        transport.request((client) => client[WS_METHODS.contextGetSmartSuggestions](input)),
+    },
+    visualization: {
+      getSessionData: (input) =>
+        transport.request((client) => client[WS_METHODS.visualizationGetSessionData](input)),
+      getTimelineEvents: (input) =>
+        transport.request((client) => client[WS_METHODS.visualizationGetTimelineEvents](input)),
+      getHotspots: (input) =>
+        transport.request((client) => client[WS_METHODS.visualizationGetHotspots](input)),
+      getOperationStats: (input) =>
+        transport.request((client) => client[WS_METHODS.visualizationGetOperationStats](input)),
+      clearSession: (input) =>
+        transport.request((client) => client[WS_METHODS.visualizationClearSession](input)),
+    },
+    codeQuality: {
+      learnProjectStyle: (input) =>
+        transport.request((client) => client[WS_METHODS.codeQualityLearnProjectStyle](input)),
+      checkCode: (input) =>
+        transport.request((client) => client[WS_METHODS.codeQualityCheckCode](input)),
+      detectTechDebt: (input) =>
+        transport.request((client) => client[WS_METHODS.codeQualityDetectTechDebt](input)),
+      validateBestPractices: (input) =>
+        transport.request((client) => client[WS_METHODS.codeQualityValidateBestPractices](input)),
+    },
+    testing: {
+      createTestSuite: (input) =>
+        transport.request((client) => client[WS_METHODS.testingCreateTestSuite](input)),
+      generateTests: (input) =>
+        transport.request((client) => client[WS_METHODS.testingGenerateTests](input)),
+      selectRegressionTests: (input) =>
+        transport.request((client) => client[WS_METHODS.testingSelectRegressionTests](input)),
+      runTests: (input) => transport.request((client) => client[WS_METHODS.testingRunTests](input)),
+      getCoverageReport: (input) =>
+        transport.request((client) => client[WS_METHODS.testingGetCoverageReport](input)),
+    },
+    environmentProfiles: {
+      list: () => transport.request((client) => client[WS_METHODS.environmentList]({})),
+      get: (input) => transport.request((client) => client[WS_METHODS.environmentGet](input)),
+      create: (input) => transport.request((client) => client[WS_METHODS.environmentCreate](input)),
+      update: (input) => transport.request((client) => client[WS_METHODS.environmentUpdate](input)),
+      delete: (input) => transport.request((client) => client[WS_METHODS.environmentDelete](input)),
+      exportProfile: (input) =>
+        transport.request((client) => client[WS_METHODS.environmentExport](input)),
+      importProfile: (input) =>
+        transport.request((client) => client[WS_METHODS.environmentImport](input)),
+      refreshDependencyInsights: (input) =>
+        transport.request((client) =>
+          client[WS_METHODS.environmentRefreshDependencyInsights](input),
+        ),
     },
   };
 }

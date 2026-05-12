@@ -8,7 +8,8 @@ import {
   type OrchestrationEvent,
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
-import { Cause, Effect, Layer, Option, Stream } from "effect";
+import { Cause, Effect, FileSystem, Layer, Option, Stream } from "effect";
+import * as NodePath from "node:path";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
@@ -17,10 +18,12 @@ import {
   resolveThreadWorkspaceCwd,
 } from "../../checkpointing/Utils.ts";
 import { CheckpointStore } from "../../checkpointing/Services/CheckpointStore.ts";
+import { ContextAnalyzer } from "../../contextAwareness/Services/ContextAnalyzer.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { CheckpointReactor, type CheckpointReactorShape } from "../Services/CheckpointReactor.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { RuntimeReceiptBus } from "../Services/RuntimeReceiptBus.ts";
+import { CodeQualityGuard } from "../../provider/Services/CodeQualityGuard.ts";
 import type { CheckpointStoreError } from "../../checkpointing/Errors.ts";
 import type { OrchestrationDispatchError } from "../Errors.ts";
 import { isGitRepository } from "../../git/Utils.ts";
@@ -48,6 +51,16 @@ function sameId(left: string | null | undefined, right: string | null | undefine
   return left === right;
 }
 
+function pathRelativeToWorkspaceRoot(cwdAbs: string, filePath: string): string {
+  const c = cwdAbs.replace(/\\/g, "/").replace(/\/+$/, "");
+  let p = filePath.replace(/\\/g, "/");
+  const prefix = `${c}/`;
+  if (p.startsWith(prefix)) {
+    return p.slice(prefix.length);
+  }
+  return p.replace(/^\.\//, "");
+}
+
 function checkpointStatusFromRuntime(status: string | undefined): "ready" | "missing" | "error" {
   switch (status) {
     case "failed":
@@ -71,6 +84,112 @@ const make = Effect.gen(function* () {
   const receiptBus = yield* RuntimeReceiptBus;
   const workspaceEntries = yield* WorkspaceEntries;
   const gitStatusBroadcaster = yield* GitStatusBroadcaster;
+  const codeQualityGuard = yield* CodeQualityGuard;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const contextAnalyzer = yield* ContextAnalyzer;
+
+  const appendPostTurnCodeQualitySummary = Effect.fn("appendPostTurnCodeQualitySummary")(
+    function* (input: {
+      readonly threadId: ThreadId;
+      readonly projectId: ProjectId;
+      readonly cwd: string;
+      readonly files: ReadonlyArray<{
+        readonly path: string;
+        readonly additions: number;
+        readonly deletions: number;
+      }>;
+      readonly turnId: TurnId;
+      readonly createdAt: string;
+    }) {
+      const textLikeExt = new Set([
+        ".ts",
+        ".tsx",
+        ".mts",
+        ".cts",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
+        ".py",
+        ".go",
+        ".rs",
+        ".css",
+        ".scss",
+        ".less",
+        ".vue",
+        ".svelte",
+        ".json",
+        ".md",
+        ".html",
+        ".htm",
+      ]);
+      const minScore = 70;
+      const maxFiles = 6;
+      const maxBytes = 150_000;
+      const profile = yield* codeQualityGuard.resolveStyleProfile(input.projectId);
+      const snippets: { path: string; score: number; issueCount: number }[] = [];
+      let checked = 0;
+      for (const file of input.files) {
+        if (checked >= maxFiles) {
+          break;
+        }
+        const rel = file.path.replace(/\\/g, "/").replace(/^\/+/, "");
+        if (rel.includes("..")) {
+          continue;
+        }
+        const ext = NodePath.extname(rel).toLowerCase();
+        if (!textLikeExt.has(ext)) {
+          continue;
+        }
+        if (file.additions + file.deletions === 0) {
+          continue;
+        }
+        const abs = NodePath.join(input.cwd, rel);
+        const bytes = yield* fileSystem
+          .readFile(abs)
+          .pipe(Effect.catch(() => Effect.succeed(null as Uint8Array | null)));
+        if (bytes === null) {
+          continue;
+        }
+        const slice = bytes.length > maxBytes ? bytes.slice(0, maxBytes) : bytes;
+        const text = new TextDecoder("utf-8", { fatal: false }).decode(slice);
+        const res = yield* codeQualityGuard.checkCodeQuality({
+          code: text,
+          filePath: rel,
+          profile,
+        });
+        checked++;
+        snippets.push({ path: rel, score: res.score, issueCount: res.issues.length });
+      }
+      if (snippets.length === 0) {
+        return;
+      }
+      let worst = snippets[0]!;
+      for (const s of snippets) {
+        if (s.score < worst.score) {
+          worst = s;
+        }
+      }
+      if (worst.score >= minScore) {
+        return;
+      }
+      yield* orchestrationEngine.dispatch({
+        type: "thread.activity.append",
+        commandId: serverCommandId("post-turn-code-quality"),
+        threadId: input.threadId,
+        activity: {
+          id: EventId.make(crypto.randomUUID()),
+          tone: "info",
+          kind: "code-quality.post-turn",
+          summary: `回合结束质检：${worst.path} 得分 ${worst.score}（阈值 ${minScore}）`,
+          payload: { files: snippets, threshold: minScore },
+          turnId: input.turnId,
+          createdAt: input.createdAt,
+        },
+        createdAt: input.createdAt,
+      });
+    },
+  );
 
   const appendRevertFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -194,6 +313,7 @@ const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly turnId: TurnId;
     readonly thread: {
+      readonly projectId: ProjectId;
       readonly messages: ReadonlyArray<{
         readonly id: MessageId;
         readonly role: string;
@@ -285,6 +405,20 @@ const make = Effect.gen(function* () {
       checkpointTurnCount: input.turnCount,
       createdAt: input.createdAt,
     });
+
+    yield* contextAnalyzer
+      .mergeTurnDiffContextEntries({
+        projectId: input.thread.projectId,
+        relativePaths: files.map((f) => pathRelativeToWorkspaceRoot(input.cwd, f.path)),
+      })
+      .pipe(
+        Effect.catch(() =>
+          Effect.logWarning("mergeTurnDiffContextEntries failed", {
+            threadId: input.threadId,
+          }),
+        ),
+      );
+
     yield* receiptBus.publish({
       type: "checkpoint.diff.finalized",
       threadId: input.threadId,
@@ -320,6 +454,14 @@ const make = Effect.gen(function* () {
       },
       createdAt: input.createdAt,
     });
+    yield* appendPostTurnCodeQualitySummary({
+      threadId: input.threadId,
+      projectId: input.thread.projectId,
+      cwd: input.cwd,
+      files,
+      turnId: input.turnId,
+      createdAt: input.createdAt,
+    }).pipe(Effect.catchCause(() => Effect.void));
   });
 
   // Captures a real git checkpoint when a turn completes via a runtime event.

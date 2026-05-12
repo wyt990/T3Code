@@ -1,6 +1,7 @@
 import { defineConfig } from "tsdown";
 
-const isProduction = process.env.NODE_ENV === "production" || process.env.BUILD_TARGET === "production";
+const isProduction =
+  process.env.NODE_ENV === "production" || process.env.BUILD_TARGET === "production";
 
 const shared = {
   format: "cjs" as const,

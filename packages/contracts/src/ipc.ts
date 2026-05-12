@@ -52,6 +52,7 @@ import type {
 import type { ProviderKind } from "./orchestration.ts";
 import type {
   ClientOrchestrationCommand,
+  DispatchResult,
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetFullThreadDiffResult,
   OrchestrationGetTurnDiffInput,
@@ -298,7 +299,7 @@ export interface EnvironmentApi {
     ) => () => void;
   };
   orchestration: {
-    dispatchCommand: (command: ClientOrchestrationCommand) => Promise<{ sequence: number }>;
+    dispatchCommand: (command: ClientOrchestrationCommand) => Promise<DispatchResult>;
     getTurnDiff: (input: OrchestrationGetTurnDiffInput) => Promise<OrchestrationGetTurnDiffResult>;
     getFullThreadDiff: (
       input: OrchestrationGetFullThreadDiffInput,

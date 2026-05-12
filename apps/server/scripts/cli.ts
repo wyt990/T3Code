@@ -12,27 +12,12 @@ import {
   DEVELOPMENT_ICON_OVERRIDES,
   PUBLISH_ICON_OVERRIDES,
 } from "../../../scripts/lib/brand-assets.ts";
+import { resolveBunExecutablePath } from "../../../scripts/lib/resolve-bun-path.ts";
 import { resolveCatalogDependencies } from "../../../scripts/lib/resolve-catalog.ts";
 import rootPackageJson from "../../../package.json" with { type: "json" };
 import serverPackageJson from "../package.json" with { type: "json" };
 
-// 获取 bun 可执行文件路径
-// 优先使用 npm_execpath 或 process.execPath（如果是 bun 运行的）
-// 否则使用 "bun" 命令名，让系统 PATH 解析
-function resolveBunPath(): string {
-  // 如果是通过 bun 运行的，npm_execpath 会指向 bun
-  if (process.env.npm_execpath?.includes("bun")) {
-    return process.env.npm_execpath;
-  }
-  // 如果 process.execPath 是 bun（直接用 bun 运行），使用它
-  if (process.execPath.includes("bun")) {
-    return process.execPath;
-  }
-  // 回退：使用 "bun" 命令名，让系统 PATH 解析（跨平台兼容）
-  return "bun";
-}
-
-const BUN_EXEC_PATH = resolveBunPath();
+const BUN_EXEC_PATH = resolveBunExecutablePath();
 
 interface PackageJson {
   name: string;
@@ -170,7 +155,8 @@ const buildCmd = Command.make(
       yield* runCommand(
         ChildProcess.make(BUN_EXEC_PATH, ["--run", "build:bundle"], {
           cwd: serverDir,
-          stdout: config.verbose ? "inherit" : "ignore",
+          // tsdown often logs diagnostics to stdout; swallowing it hides real build failures on Windows.
+          stdout: "inherit",
           stderr: "inherit",
         }),
       );

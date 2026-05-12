@@ -83,7 +83,6 @@ const makeCursorTextGeneration = Effect.gen(function* () {
         Effect.map((settings) => settings.providers.cursor),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(ServerConfig, serverConfig),
-        Effect.catch(() => Effect.succeed(undefined)),
       );
 
       const outputRef = yield* Ref.make("");

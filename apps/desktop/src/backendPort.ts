@@ -60,7 +60,7 @@ async function findAvailablePortInBatch(
       return canListen ? port : null;
     }),
   );
-  
+
   // 返回第一个可用的端口（按顺序）
   for (const port of results) {
     if (port !== null) return port;
@@ -97,7 +97,7 @@ export async function resolveDesktopBackendPort({
     for (let port = batchStart; port <= Math.min(batchStart + BATCH_SIZE - 1, maxPort); port += 1) {
       batchPorts.push(port);
     }
-    
+
     const availablePort = await findAvailablePortInBatch(batchPorts, hostsToCheck, canListenOnHost);
     if (availablePort !== null) {
       return availablePort;

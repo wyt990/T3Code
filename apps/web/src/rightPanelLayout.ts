@@ -29,7 +29,8 @@ const RIGHT_PANEL_SHEET_SIZE_TAILWIND_PLAN = "w-[min(92vw,340px)] max-w-[340px]"
  */
 const RIGHT_PANEL_SHEET_SIZE_TAILWIND_DIFF = "w-[min(92vw,44rem)] max-w-[44rem]";
 
-const RIGHT_PANEL_SHEET_SHELL_TAILWIND =
+/** 与 `TabBar` / `Plan` 侧栏一致：在 Window Controls Overlay 下为系统标题栏按钮留出垂直空间。 */
+export const RIGHT_PANEL_SHEET_SHELL_TAILWIND =
   "p-0 wco:mt-[env(titlebar-area-height)] wco:h-[calc(100%-env(titlebar-area-height))] wco:max-h-[calc(100%-env(titlebar-area-height))]";
 
 /** @deprecated Use `RIGHT_PANEL_SHEET_PLAN_CLASS_NAME` or `RIGHT_PANEL_SHEET_DIFF_CLASS_NAME`. */
