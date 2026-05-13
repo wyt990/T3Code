@@ -106,7 +106,7 @@ export function FeatureWorkbenchSheet(props: {
           RIGHT_PANEL_SHEET_SHELL_TAILWIND,
         )}
       >
-        {/* 关闭：流式 flex 保证命中区在文档顺序最前；[&_svg]:pointer-events-auto 抵消全局 Button 对 svg 的 pointer-events-none，避免点击穿透 */}
+        {/* 关闭：底层全宽命中层 + SVG pointer-events-none，避免「线条间透明区」穿透到 Button 的 ::before（pointer-events-none）再落到下层 */}
         <div
           data-slot="sheet-header"
           className="relative flex flex-row items-center justify-between gap-2 border-b px-4 py-3"
@@ -122,12 +122,16 @@ export function FeatureWorkbenchSheet(props: {
             size="icon"
             variant="ghost"
             aria-label="关闭"
-            className="relative z-10 shrink-0 [&_svg]:pointer-events-auto"
+            className="relative z-10 shrink-0"
             onClick={() => {
               onOpenChange(false);
             }}
           >
-            <XIcon className="size-4 shrink-0" />
+            <span
+              aria-hidden
+              className="pointer-events-auto absolute inset-0 z-0 rounded-[inherit]"
+            />
+            <XIcon className="relative z-10 size-4 shrink-0 pointer-events-none" />
           </Button>
         </div>
 

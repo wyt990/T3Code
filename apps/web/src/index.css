@@ -244,6 +244,19 @@ code {
   -webkit-app-region: no-drag;
 }
 
+/*
+ * Electron + titleBarOverlay: underlying `drag-region` (e.g. TabBar trailing
+ * spacer) can still win hit-testing over the top-right of a right sheet when
+ * maximized. Force sheet layers out of the window-drag region so controls
+ * (e.g. FeatureWorkbench close) receive hover/click. Matches ad-hoc fixes in
+ * ExpandedImageDialog / DiffPanel.
+ */
+[data-slot="sheet-backdrop"],
+[data-slot="sheet-viewport"],
+[data-slot="sheet-popup"] {
+  -webkit-app-region: no-drag;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
