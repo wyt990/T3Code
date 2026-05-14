@@ -20,7 +20,7 @@ export const FEATURE_DISCOVERY_TIPS: readonly FeatureDiscoveryTip[] = [
   {
     id: "tip-command-palette",
     title: "命令面板与自然语言",
-    body: "使用全局快捷键打开命令面板，支持中文短语（如「打开设置」「新建对话」）。",
+    body: "默认全局快捷键为 Ctrl+K（Windows/Linux）或 Cmd+K（macOS）；终端输入区获得焦点时不会触发，可先点回聊天或侧栏。打开后支持中文短语（如「打开设置」「新建对话」）。在设置中找到「快捷键」→「打开文件」可编辑持久化绑定；侧栏「搜索」旁也会显示当前快捷键。",
   },
   {
     id: "tip-layout-editor",
