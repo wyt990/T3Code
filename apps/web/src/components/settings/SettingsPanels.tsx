@@ -83,6 +83,7 @@ import { ClaudeCodeInstallCard } from "./ClaudeCodeInstallCard";
 import { ClaudeAgentModelListRefreshErrorDialog } from "../chat/ClaudeAgentModelListRefreshErrorDialog";
 import { runClaudeAgentModelListRefresh } from "~/lib/claudeAgentModelListRefresh";
 import { requestOnboardingReplay } from "../OnboardingTour";
+import { useFeatureDiscoveryStore } from "../../featureDiscovery/featureDiscoveryStore";
 
 const THEME_OPTIONS = [
   {
@@ -1825,6 +1826,21 @@ export function GeneralSettingsPanel() {
           control={
             <Button size="xs" variant="outline" onClick={() => requestOnboardingReplay()}>
               显示新手引导
+            </Button>
+          }
+        />
+        <SettingsRow
+          title="功能发现提示"
+          description="重置后将再次在适当时机展示右下角「功能发现」卡片（含已点「不再提示」的条目），并清除本标签页的「稍后」暂延。"
+          control={
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => {
+                useFeatureDiscoveryStore.getState().resetAllDismissals();
+              }}
+            >
+              重置功能发现
             </Button>
           }
         />

@@ -6,6 +6,7 @@ import type {
   FileCoverage,
   WeakArea,
   ProjectId,
+  TestGenerationResult,
 } from "@t3tools/contracts";
 import type { CoverageReportType } from "./testStore";
 import {
@@ -14,6 +15,8 @@ import {
   useLatestCoverageReport,
   useRegressionSelection,
   useLastTestRun,
+  useTestGenerationResults,
+  testCaseToCreateInput,
 } from "./testStore";
 
 interface TestCoveragePanelProps {
@@ -50,6 +53,10 @@ export function TestCoveragePanel({
   const isGenerating = useTestStore((s) => s.isGenerating);
   const generateTests = useTestStore((s) => s.generateTests);
   const fetchCoverageReport = useTestStore((s) => s.fetchCoverageReport);
+  const refreshSuitesFromServer = useTestStore((s) => s.refreshSuitesFromServer);
+  const createTestSuiteOnServer = useTestStore((s) => s.createTestSuiteOnServer);
+  const deleteTestSuiteOnServer = useTestStore((s) => s.deleteTestSuiteOnServer);
+  const generationResults = useTestGenerationResults();
 
   const coverageFetchOpts = useCallback((): {
     weakAreaMaxLinesPercent: number;
@@ -62,6 +69,13 @@ export function TestCoveragePanel({
         : {}),
     };
   }, [covWeakMaxPct, covLinesMinPct]);
+
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+    void refreshSuitesFromServer(projectId);
+  }, [projectId, refreshSuitesFromServer]);
 
   useEffect(() => {
     if (!projectId || !workspaceRoot?.trim()) {
@@ -141,7 +155,32 @@ export function TestCoveragePanel({
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
         {activeTab === "suites" && (
-          <TestSuitesTab suites={suites} isGenerating={isGenerating} onGenerate={generateTests} />
+          <TestSuitesTab
+            {...(projectId !== undefined ? { projectId } : {})}
+            suites={suites}
+            isGenerating={isGenerating}
+            onGenerate={generateTests}
+            generationResults={generationResults}
+            onCreateSuiteFromGeneration={async (name, source) => {
+              if (!projectId) {
+                return;
+              }
+              const inputs = source.testCases.map((tc) => testCaseToCreateInput(tc));
+              await createTestSuiteOnServer(projectId, name, inputs);
+            }}
+            onCreateEmptySuite={async (name) => {
+              if (!projectId) {
+                return;
+              }
+              await createTestSuiteOnServer(projectId, name, []);
+            }}
+            onDeleteSuite={async (suiteId) => {
+              if (!projectId) {
+                return;
+              }
+              await deleteTestSuiteOnServer(projectId, suiteId);
+            }}
+          />
         )}
         {activeTab === "coverage" && (
           <CoverageTab
@@ -218,16 +257,49 @@ function TabButton({
   );
 }
 
+/** 24 段行覆盖率热力条（总览或单文件） */
+function CoverageLineHeatmap({ lineRatio }: { readonly lineRatio: number }) {
+  const n = 24;
+  const filledCount = Math.min(n, Math.max(0, Math.round(lineRatio * n)));
+  return (
+    <div
+      className="flex gap-px mt-1 w-full"
+      title={`行覆盖率热力（${n} 段）约 ${Math.round(lineRatio * 100)}%`}
+    >
+      {Array.from({ length: n }, (_, i) => (
+        <div
+          key={i}
+          className={`h-2 flex-1 min-w-[2px] rounded-sm ${
+            i < filledCount ? "bg-emerald-500" : "bg-gray-200 dark:bg-gray-600"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
 function TestSuitesTab({
+  projectId,
   suites,
   isGenerating,
   onGenerate,
+  generationResults,
+  onCreateSuiteFromGeneration,
+  onCreateEmptySuite,
+  onDeleteSuite,
 }: {
+  projectId?: ProjectId;
   suites: TestSuite[];
   isGenerating: boolean;
   onGenerate: (targetFile: string) => Promise<void>;
+  generationResults: readonly TestGenerationResult[];
+  onCreateSuiteFromGeneration: (name: string, source: TestGenerationResult) => Promise<void>;
+  onCreateEmptySuite: (name: string) => Promise<void>;
+  onDeleteSuite: (suiteId: string) => Promise<void>;
 }) {
   const [targetFile, setTargetFile] = useState("");
+  const [newSuiteName, setNewSuiteName] = useState("");
+  const [suiteFromGenName, setSuiteFromGenName] = useState("");
 
   const handleGenerate = async () => {
     if (targetFile.trim()) {
@@ -236,8 +308,17 @@ function TestSuitesTab({
     }
   };
 
+  const lastGen =
+    generationResults.length > 0 ? generationResults[generationResults.length - 1]! : null;
+
   return (
     <div className="space-y-4">
+      {!projectId ? (
+        <div className="text-center py-6 text-sm text-gray-500 dark:text-gray-400">
+          请先打开某个项目下的会话，以便同步服务端测试套件（持久化在服务器 userdata）。
+        </div>
+      ) : null}
+
       {/* Generate Tests */}
       <div className="p-3 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
         <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">生成测试</h4>
@@ -259,6 +340,62 @@ function TestSuitesTab({
         </div>
       </div>
 
+      {projectId ? (
+        <div className="p-3 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 space-y-2">
+          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            新建套件（服务端）
+          </h4>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              type="text"
+              value={newSuiteName}
+              onChange={(e) => setNewSuiteName(e.target.value)}
+              placeholder="套件名称"
+              className="flex-1 min-w-[120px] text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700"
+            />
+            <button
+              type="button"
+              disabled={!newSuiteName.trim()}
+              onClick={() => {
+                const n = newSuiteName.trim();
+                if (!n) {
+                  return;
+                }
+                void onCreateEmptySuite(n).then(() => setNewSuiteName(""));
+              }}
+              className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+            >
+              创建空套件
+            </button>
+          </div>
+          {lastGen && lastGen.testCases.length > 0 ? (
+            <div className="flex flex-wrap gap-2 items-center pt-1 border-t border-gray-200 dark:border-gray-700">
+              <input
+                type="text"
+                value={suiteFromGenName}
+                onChange={(e) => setSuiteFromGenName(e.target.value)}
+                placeholder="从上次生成保存为套件…"
+                className="flex-1 min-w-[120px] text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700"
+              />
+              <button
+                type="button"
+                disabled={!suiteFromGenName.trim()}
+                onClick={() => {
+                  const n = suiteFromGenName.trim();
+                  if (!n || !lastGen) {
+                    return;
+                  }
+                  void onCreateSuiteFromGeneration(n, lastGen).then(() => setSuiteFromGenName(""));
+                }}
+                className="text-xs px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+              >
+                保存生成结果
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Suites List */}
       <div>
         <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">测试套件</h4>
@@ -268,7 +405,13 @@ function TestSuitesTab({
               暂无测试套件
             </div>
           ) : (
-            suites.map((suite) => <SuiteCard key={suite.id} suite={suite} />)
+            suites.map((suite) => (
+              <SuiteCard
+                key={suite.id}
+                suite={suite}
+                {...(projectId ? { onDelete: () => void onDeleteSuite(suite.id) } : {})}
+              />
+            ))
           )}
         </div>
       </div>
@@ -276,19 +419,36 @@ function TestSuitesTab({
   );
 }
 
-function SuiteCard({ suite }: { suite: TestSuite }) {
+function SuiteCard({ suite, onDelete }: { suite: TestSuite; onDelete?: () => void }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="p-3 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
-      <div
-        className="flex items-center justify-between cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <span className="text-xs font-medium text-gray-900 dark:text-gray-100">{suite.name}</span>
-        <span className="text-[10px] text-gray-500 dark:text-gray-400">
-          {suite.testCases.length} 用例
-        </span>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          className="flex-1 text-left flex items-center justify-between cursor-pointer min-w-0"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <span className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
+            {suite.name}
+          </span>
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 shrink-0">
+            {suite.testCases.length} 用例
+          </span>
+        </button>
+        {onDelete ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="text-[10px] px-2 py-0.5 rounded border border-red-300 text-red-700 dark:border-red-800 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
+          >
+            删除
+          </button>
+        ) : null}
       </div>
 
       {expanded && suite.testCases.length > 0 && (
@@ -416,18 +576,22 @@ function CoverageTab({
             {Math.round(report.summary.lines * 100)}%
           </div>
           <div className="text-[10px] text-gray-600 dark:text-gray-400">行覆盖率</div>
+          <CoverageLineHeatmap lineRatio={report.summary.lines} />
         </div>
         <div className="p-2 rounded bg-green-50 dark:bg-green-900/20 text-center">
           <div className="text-lg font-semibold text-green-600 dark:text-green-400">
             {Math.round(report.summary.functions * 100)}%
           </div>
           <div className="text-[10px] text-gray-600 dark:text-gray-400">函数覆盖率</div>
+          <CoverageLineHeatmap lineRatio={report.summary.functions} />
         </div>
       </div>
 
       {/* Files */}
       <div>
-        <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">文件覆盖率</h4>
+        <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+          文件覆盖率与热图
+        </h4>
         <div className="space-y-2">
           {report.files.map((file: FileCoverage) => (
             <div key={file.path} className="p-2 rounded bg-gray-50 dark:bg-gray-800/50">
@@ -445,6 +609,7 @@ function CoverageTab({
                   style={{ width: `${file.lines * 100}%` }}
                 />
               </div>
+              <CoverageLineHeatmap lineRatio={file.lines} />
             </div>
           ))}
         </div>
@@ -483,6 +648,8 @@ function RegressionTab({
   const [changedInput, setChangedInput] = useState(
     "apps/server/src/testing/discoverRegressionCandidates.ts",
   );
+  const [vitestConfigPath, setVitestConfigPath] = useState("apps/server/vitest.config.ts");
+  const [turboFilter, setTurboFilter] = useState("");
   const runRegressionTests = useTestStore((s) => s.runRegressionTests);
   const executeWorkspaceTests = useTestStore((s) => s.executeWorkspaceTests);
   const isSelectingRegression = useTestStore((s) => s.isSelectingRegression);
@@ -504,9 +671,62 @@ function RegressionTab({
   }
 
   const wr = workspaceRoot.trim();
+  const vitestCfg = vitestConfigPath.trim();
 
   return (
     <div className="space-y-4">
+      <div className="p-3 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 space-y-2">
+        <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          Vitest / Turbo 运行参数
+        </h4>
+        <label className="flex flex-col gap-0.5 text-[10px]">
+          <span className="text-gray-500 dark:text-gray-400">
+            Vitest 配置文件路径（相对工作区根，可填 `apps/server/vitest.config.ts`
+            避免根目录默认超时）
+          </span>
+          <input
+            type="text"
+            value={vitestConfigPath}
+            onChange={(e) => setVitestConfigPath(e.target.value)}
+            className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 font-mono"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5 text-[10px]">
+          <span className="text-gray-500 dark:text-gray-400">
+            Turbo 过滤（可选，`turbo run test --filter=`，例如 `@t3tools/server`；留空则全仓）
+          </span>
+          <input
+            type="text"
+            value={turboFilter}
+            onChange={(e) => setTurboFilter(e.target.value)}
+            placeholder="@t3tools/server"
+            className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 font-mono"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={isRunningWorkspaceTests}
+          onClick={() =>
+            void executeWorkspaceTests({
+              id: `turbo-${Date.now()}`,
+              name: "Turbo 编排 test",
+              testFiles: [],
+              parallel: false,
+              timeout: 900_000,
+              environment: {},
+              coverage: false,
+              coverageThreshold: 0,
+              workspaceRoot: wr,
+              turboRunTest: true,
+              ...(turboFilter.trim().length > 0 ? { turboFilter: turboFilter.trim() } : {}),
+            })
+          }
+          className="text-xs px-3 py-1 bg-violet-600 text-white rounded hover:bg-violet-700 disabled:opacity-50"
+        >
+          {isRunningWorkspaceTests ? "运行中…" : "Turbo 全仓测试 (turbo run test)"}
+        </button>
+      </div>
+
       <div className="p-3 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
         <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
           变更文件列表（相对工作区根，每行一个或用逗号分隔）
@@ -545,6 +765,7 @@ function RegressionTab({
                 coverage: false,
                 coverageThreshold: 0,
                 workspaceRoot: wr,
+                ...(vitestCfg.length > 0 ? { vitestConfigPath: vitestCfg } : {}),
               });
             }}
             className="text-xs px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50"

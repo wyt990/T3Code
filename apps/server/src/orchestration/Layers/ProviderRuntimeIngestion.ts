@@ -33,6 +33,7 @@ import {
   ExecutionVisualizer,
   type ExecutionVisualizer as ExecutionVisualizerApi,
 } from "../../observability/Services/ExecutionVisualizer.ts";
+import { appendToolTimingFromProviderToolEvent } from "../../contextAwareness/toolTimingRingBuffer.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerCommandId = (event: ProviderRuntimeEvent, tag: string): CommandId =>
@@ -238,6 +239,28 @@ function runtimeEventToActivities(
       ? { sequence: eventWithSequence.sessionSequence }
       : {};
   })();
+
+  if (
+    event.type === "item.started" ||
+    event.type === "item.completed" ||
+    event.type === "item.updated"
+  ) {
+    if (isToolLifecycleItemType(event.payload.itemType)) {
+      const phase =
+        event.type === "item.started"
+          ? "started"
+          : event.type === "item.completed"
+            ? "completed"
+            : "updated";
+      appendToolTimingFromProviderToolEvent({
+        createdAtIso: event.createdAt,
+        phase,
+        summary: event.payload.title ?? "tool",
+        threadId: event.threadId,
+      });
+    }
+  }
+
   switch (event.type) {
     case "request.opened": {
       if (event.payload.requestType === "tool_user_input") {

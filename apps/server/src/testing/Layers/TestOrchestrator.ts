@@ -2,6 +2,7 @@ import { Effect, Layer, Ref } from "effect";
 import * as Path from "node:path";
 import type {
   TestCase,
+  TestCaseCreateInput,
   TestSuite,
   CoverageReport,
   TestGenerationRequest,
@@ -9,43 +10,61 @@ import type {
   TestRunConfig,
   TestRunResult,
 } from "@t3tools/contracts";
+import { ServerConfig } from "../../config.ts";
 import { TestOrchestrator } from "../Services/TestOrchestrator.ts";
 import { buildRegressionSelection } from "../discoverRegressionCandidates.ts";
 import {
   tryLoadCoverageReportFromWorkspace,
   applyLinesThresholdGate,
 } from "../parseVitestCoverageSummary.ts";
-import { runVitestInWorkspace } from "../runVitestInWorkspace.ts";
+import { executeWorkspaceTestRun } from "../runVitestInWorkspace.ts";
+import { loadTestSuitesFromStateDir, saveTestSuitesToStateDir } from "../testSuitesPersistence.ts";
+
+const mapCreateInputToCase = (tc: TestCaseCreateInput, now: string, idx: number): TestCase => {
+  const base: TestCase = {
+    id: `test-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 9)}`,
+    name: tc.name,
+    ...(tc.description !== undefined ? { description: tc.description } : {}),
+    type: tc.type,
+    ...(tc.targetFunction !== undefined ? { targetFunction: tc.targetFunction } : {}),
+    ...(tc.targetFile !== undefined ? { targetFile: tc.targetFile } : {}),
+    code: tc.code,
+    status: tc.status,
+    ...(tc.coverage !== undefined ? { coverage: tc.coverage } : {}),
+    createdAt: now,
+    updatedAt: now,
+  };
+  return base;
+};
 
 export const makeTestOrchestrator = Effect.gen(function* () {
-  const suitesRef = yield* Ref.make<Map<string, TestSuite>>(new Map());
+  const serverConfig = yield* ServerConfig;
+  const initial = loadTestSuitesFromStateDir(serverConfig.stateDir);
+  const suitesRef = yield* Ref.make<readonly TestSuite[]>(initial);
+
+  const flushSuites = Effect.gen(function* () {
+    const all = yield* Ref.get(suitesRef);
+    yield* Effect.sync(() => saveTestSuitesToStateDir(serverConfig.stateDir, all));
+  });
 
   const createTestSuite = Effect.fn("TestOrchestrator.createTestSuite")(function* (params: {
     name: string;
     projectId: string;
-    testCases: Omit<TestCase, "id" | "createdAt" | "updatedAt">[];
+    testCases: readonly TestCaseCreateInput[];
   }) {
     const now = new Date().toISOString();
     const suite: TestSuite = {
       id: `suite-${Date.now()}`,
       name: params.name,
       projectId: params.projectId,
-      testCases: params.testCases.map((tc) => ({
-        ...tc,
-        id: `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        createdAt: now,
-        updatedAt: now,
-      })),
+      testCases: params.testCases.map((tc, idx) => mapCreateInputToCase(tc, now, idx)),
       status: "idle",
       createdAt: now,
       updatedAt: now,
     };
 
-    yield* Ref.update(suitesRef, (suites) => {
-      const newSuites = new Map(suites);
-      newSuites.set(suite.id, suite);
-      return newSuites;
-    });
+    yield* Ref.update(suitesRef, (suites) => [...suites, suite]);
+    yield* flushSuites;
 
     yield* Effect.log(
       `[Testing] Created test suite: ${suite.name} (${suite.testCases.length} tests)`,
@@ -53,11 +72,29 @@ export const makeTestOrchestrator = Effect.gen(function* () {
     return suite;
   });
 
+  const listTestSuites = Effect.fn("TestOrchestrator.listTestSuites")(function* (
+    projectId: string,
+  ) {
+    const all = yield* Ref.get(suitesRef);
+    return all.filter((s) => s.projectId === projectId);
+  });
+
+  const deleteTestSuite = Effect.fn("TestOrchestrator.deleteTestSuite")(function* (params: {
+    projectId: string;
+    suiteId: string;
+  }) {
+    yield* Ref.update(suitesRef, (suites) =>
+      suites.filter((s) => !(s.id === params.suiteId && s.projectId === params.projectId)),
+    );
+    yield* flushSuites;
+    yield* Effect.log(
+      `[Testing] Deleted test suite ${params.suiteId} for project ${params.projectId}`,
+    );
+  });
+
   const generateTests = Effect.fn("TestOrchestrator.generateTests")(function* (
     request: TestGenerationRequest,
   ) {
-    // In a real implementation, this would call an AI to generate test code
-    // For now, return sample result
     const testCases: TestCase[] = [];
     const now = new Date().toISOString();
 
@@ -105,8 +142,10 @@ export const makeTestOrchestrator = Effect.gen(function* () {
 
   const runTests = Effect.fn("TestOrchestrator.runTests")(function* (config: TestRunConfig) {
     const ws = config.workspaceRoot?.trim();
-    if (ws !== undefined && ws.length > 0 && config.testFiles.length > 0) {
-      return yield* Effect.sync(() => runVitestInWorkspace(config));
+    const turbo = config.turboRunTest === true;
+    const hasFiles = config.testFiles.length > 0;
+    if (ws !== undefined && ws.length > 0 && (turbo || hasFiles)) {
+      return yield* Effect.sync(() => executeWorkspaceTestRun(config));
     }
 
     const passed = Math.random() > 0.2;
@@ -237,6 +276,8 @@ export const makeTestOrchestrator = Effect.gen(function* () {
 
   return {
     createTestSuite,
+    listTestSuites,
+    deleteTestSuite,
     generateTests,
     selectRegressionTests,
     runTests,

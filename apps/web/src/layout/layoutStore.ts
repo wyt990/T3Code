@@ -276,6 +276,12 @@ interface LayoutState {
   updatePanel: (panelId: string, updates: Partial<PanelConfig>) => void;
   togglePanel: (panelId: string) => void;
   movePanel: (panelId: string, newPosition: PanelConfig["position"]) => void;
+  /** 在同一 `position` 分组内调整顺序（用于可视化拖拽编排）。 */
+  reorderPanelsAtPosition: (
+    position: PanelConfig["position"],
+    fromIndex: number,
+    toIndex: number,
+  ) => void;
   resizePanel: (panelId: string, width: number, height: number) => void;
   saveCustomLayout: (name: string, description: string) => void;
   deleteCustomLayout: (layoutId: string) => void;
@@ -329,6 +335,34 @@ export const useLayoutStore = create<LayoutState>()(
         set((state) => ({
           panels: state.panels.map((p) => (p.id === panelId ? { ...p, position: newPosition } : p)),
         }));
+      },
+
+      reorderPanelsAtPosition: (position, fromIndex, toIndex) => {
+        set((state) => {
+          const atPos = state.panels
+            .filter((p) => p.position === position)
+            .toSorted((a, b) => a.order - b.order);
+          if (
+            fromIndex < 0 ||
+            fromIndex >= atPos.length ||
+            toIndex < 0 ||
+            toIndex >= atPos.length
+          ) {
+            return state;
+          }
+          const next = [...atPos];
+          const [moved] = next.splice(fromIndex, 1);
+          if (moved === undefined) {
+            return state;
+          }
+          next.splice(toIndex, 0, moved);
+          const orderById = new Map(next.map((p, i) => [p.id, i] as const));
+          return {
+            panels: state.panels.map((p) =>
+              orderById.has(p.id) ? { ...p, order: orderById.get(p.id)! } : p,
+            ),
+          };
+        });
       },
 
       resizePanel: (panelId, width, height) => {

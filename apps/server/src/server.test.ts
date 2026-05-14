@@ -95,6 +95,7 @@ import {
   type TaskStatus,
 } from "./orchestration/Services/MultiAgentOrchestrator.ts";
 import { CodeQualityGuard } from "./provider/Services/CodeQualityGuard.ts";
+import { CodeQualityProjectPreferences } from "./codeQuality/Services/CodeQualityProjectPreferences.ts";
 import { TestOrchestrator } from "./testing/Services/TestOrchestrator.ts";
 import { EnvironmentManager } from "./environmentManagement/Services/EnvironmentManager.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
@@ -621,6 +622,18 @@ const buildAppUnderTest = (options?: {
         }),
       ),
       Layer.provide(
+        Layer.mock(CodeQualityProjectPreferences)({
+          getForProject: () =>
+            Effect.succeed({
+              turnStartGateMode: "off" as const,
+              minScorePerSnippet: 70,
+              checklist: null,
+            }),
+          setForProject: () => Effect.void,
+          mergeFromTurnStartGate: () => Effect.void,
+        }),
+      ),
+      Layer.provide(
         Layer.mock(TestOrchestrator)({
           createTestSuite: () =>
             Effect.succeed({
@@ -632,6 +645,8 @@ const buildAppUnderTest = (options?: {
               createdAt: "",
               updatedAt: "",
             }),
+          listTestSuites: () => Effect.succeed([]),
+          deleteTestSuite: () => Effect.void,
           generateTests: () =>
             Effect.succeed({
               success: true,

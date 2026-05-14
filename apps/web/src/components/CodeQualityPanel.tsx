@@ -2,17 +2,18 @@
 
 import type {
   BestPracticeChecklist,
+  BestPracticeChecklistItem,
   ProjectId,
   ProjectStyleProfile,
   TechDebtItem,
 } from "@t3tools/contracts";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import { readPrimaryWsRpcClient } from "../rpc/wsClientHelpers";
 import { useCodeQualityGateStore } from "../codeQualityGateStore";
 
-function buildDemoChecklist(projectId: string): BestPracticeChecklist {
+function defaultCodeQualityChecklist(projectId: string): BestPracticeChecklist {
   const now = new Date().toISOString();
   return {
     id: `checklist-${projectId}`,
@@ -46,7 +47,13 @@ interface CodeQualityPanelProps {
 
 export function CodeQualityPanel({ projectId, className = "" }: CodeQualityPanelProps) {
   const client = readPrimaryWsRpcClient();
-  const checklist = useMemo(() => buildDemoChecklist(projectId), [projectId]);
+  const projectIdStr = String(projectId);
+
+  const [checklist, setChecklist] = useState<BestPracticeChecklist>(() =>
+    defaultCodeQualityChecklist(projectIdStr),
+  );
+  const checklistRef = useRef(checklist);
+  checklistRef.current = checklist;
 
   const { turnStartGateMode, minScorePerSnippet, setTurnStartGateMode, setMinScorePerSnippet } =
     useCodeQualityGateStore(
@@ -58,6 +65,7 @@ export function CodeQualityPanel({ projectId, className = "" }: CodeQualityPanel
       })),
     );
 
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [profile, setProfile] = useState<ProjectStyleProfile | null>(null);
   const [debt, setDebt] = useState<TechDebtItem[]>([]);
   const [checkScore, setCheckScore] = useState<number | null>(null);
@@ -68,6 +76,64 @@ export function CodeQualityPanel({ projectId, className = "" }: CodeQualityPanel
   const [filePath, setFilePath] = useState("src/example.ts");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!client) {
+      setPrefsLoaded(false);
+      return;
+    }
+    setPrefsLoaded(false);
+    setChecklist(defaultCodeQualityChecklist(projectIdStr));
+    let cancelled = false;
+    void (async () => {
+      try {
+        const p = await client.codeQuality.getProjectPreferences({ projectId: projectIdStr });
+        if (cancelled) {
+          return;
+        }
+        setTurnStartGateMode(p.turnStartGateMode);
+        setMinScorePerSnippet(p.minScorePerSnippet);
+        if (p.checklist) {
+          setChecklist(p.checklist);
+        } else {
+          setChecklist(defaultCodeQualityChecklist(projectIdStr));
+        }
+        setPrefsLoaded(true);
+      } catch {
+        if (!cancelled) {
+          setPrefsLoaded(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, projectIdStr, setMinScorePerSnippet, setTurnStartGateMode]);
+
+  useEffect(() => {
+    if (!client || !prefsLoaded) {
+      return;
+    }
+    const t = setTimeout(() => {
+      void (async () => {
+        try {
+          const now = new Date().toISOString();
+          const c = checklistRef.current;
+          await client.codeQuality.setProjectPreferences({
+            projectId: projectIdStr,
+            preferences: {
+              turnStartGateMode,
+              minScorePerSnippet,
+              checklist: { ...c, projectId: projectIdStr, updatedAt: now },
+            },
+          });
+        } catch {
+          /* best-effort sync */
+        }
+      })();
+    }, 500);
+    return () => clearTimeout(t);
+  }, [client, prefsLoaded, projectIdStr, turnStartGateMode, minScorePerSnippet]);
 
   const run = useCallback(
     async (label: string, fn: () => Promise<void>) => {
@@ -86,6 +152,36 @@ export function CodeQualityPanel({ projectId, className = "" }: CodeQualityPanel
       }
     },
     [client],
+  );
+
+  const saveChecklistOnly = useCallback(() => {
+    void run("保存清单", async () => {
+      const now = new Date().toISOString();
+      const next = { ...checklistRef.current, projectId: projectIdStr, updatedAt: now };
+      await client!.codeQuality.setProjectPreferences({
+        projectId: projectIdStr,
+        preferences: {
+          turnStartGateMode,
+          minScorePerSnippet,
+          checklist: next,
+        },
+      });
+      setChecklist(next);
+    });
+  }, [client, projectIdStr, run, turnStartGateMode, minScorePerSnippet]);
+
+  const patchChecklistItem = useCallback(
+    (itemId: string, patch: Partial<BestPracticeChecklistItem>) => {
+      setChecklist((prev) => {
+        const now = new Date().toISOString();
+        return {
+          ...prev,
+          updatedAt: now,
+          items: prev.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
+        };
+      });
+    },
+    [],
   );
 
   return (
@@ -107,7 +203,8 @@ export function CodeQualityPanel({ projectId, className = "" }: CodeQualityPanel
           <p className="text-[10px] text-gray-600 dark:text-gray-400 leading-relaxed">
             发送回合前：扫描消息中的 Markdown
             围栏代码块并打分；拦截或仅告警由模式决定。回合结束后：对本轮 diff
-            中的文本类文件做质检，未达标时在时间线写入「code-quality.post-turn」活动。
+            中的文本类文件做质检（阈值与下方「代码块最低分」一致），未达标时在时间线写入「code-quality.post-turn」活动。偏好持久化在服务器{" "}
+            <span className="font-mono">userdata/code-quality-project-preferences.json</span>。
           </p>
           <div className="flex flex-wrap gap-1.5">
             {(
@@ -152,7 +249,7 @@ export function CodeQualityPanel({ projectId, className = "" }: CodeQualityPanel
             onClick={() =>
               void run("学习风格", async () => {
                 const { profile: next } = await client!.codeQuality.learnProjectStyle({
-                  projectId,
+                  projectId: projectIdStr,
                 });
                 setProfile(next);
               })
@@ -175,7 +272,9 @@ export function CodeQualityPanel({ projectId, className = "" }: CodeQualityPanel
             disabled={!client || busy !== null}
             onClick={() =>
               void run("技术债", async () => {
-                const { debt: items } = await client!.codeQuality.detectTechDebt({ projectId });
+                const { debt: items } = await client!.codeQuality.detectTechDebt({
+                  projectId: projectIdStr,
+                });
                 setDebt([...items]);
               })
             }
@@ -246,13 +345,51 @@ export function CodeQualityPanel({ projectId, className = "" }: CodeQualityPanel
           )}
         </section>
 
-        <section className="space-y-2">
-          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400">清单校验</h4>
+        <section className="space-y-2 rounded-md border border-gray-200 dark:border-gray-700 p-3">
+          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400">最佳实践清单</h4>
+          <p className="text-[10px] text-gray-600 dark:text-gray-400 leading-relaxed">
+            清单按项目保存在服务器；修改「必填 / 已对照」后点「保存清单」；闸门模式与阈值会在约 0.5s
+            内自动同步（含当前清单副本）。
+          </p>
+          <ul className="space-y-2 text-[10px] text-gray-700 dark:text-gray-300">
+            {checklist.items.map((item) => (
+              <li
+                key={item.id}
+                className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-2 dark:border-gray-800"
+              >
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={item.required}
+                    onChange={(e) => patchChecklistItem(item.id, { required: e.target.checked })}
+                  />
+                  必填
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={item.checked}
+                    onChange={(e) => patchChecklistItem(item.id, { checked: e.target.checked })}
+                  />
+                  已对照
+                </label>
+                <span>{item.description}</span>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            disabled={!client || busy !== null || !prefsLoaded}
+            onClick={saveChecklistOnly}
+            className="text-xs rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+          >
+            保存清单到服务器
+          </button>
           <button
             type="button"
             disabled={!client || busy !== null}
             onClick={() =>
-              void run("清单", async () => {
+              void run("清单校验", async () => {
                 const res = await client!.codeQuality.validateBestPractices({
                   code,
                   checklist,
@@ -261,12 +398,12 @@ export function CodeQualityPanel({ projectId, className = "" }: CodeQualityPanel
                 setValidateViolations([...res.violations]);
               })
             }
-            className="text-xs rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+            className="text-xs rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 ml-2"
           >
-            验证演示清单
+            对照清单校验片段
           </button>
           {validatePassed !== null && (
-            <p className="text-[10px] text-gray-700 dark:text-gray-300">
+            <p className="text-[10px] text-gray-700 dark:text-gray-300 mt-2">
               {validatePassed ? "通过" : "未通过"}
               {validateViolations.length > 0 && (
                 <ul className="mt-1 list-disc pl-4">

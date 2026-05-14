@@ -12,7 +12,9 @@ export type GlobalLayoutNode = {
 export type GlobalLayoutLink = {
   readonly source: string;
   readonly target: string;
+  /** @deprecated 使用 `edgeType` 与 `import`/`call` 动画一致 */
   readonly importLike: boolean;
+  readonly edgeType: DependencyEdge["type"];
 };
 
 const GLOBAL_EDGE_CAP = 620;
@@ -49,7 +51,8 @@ export function layoutGlobalModuleDependencyGraph(
   const links: GlobalLayoutLink[] = rawEdges.map((e) => ({
     source: e.from.replace(/\\/g, "/"),
     target: e.to.replace(/\\/g, "/"),
-    importLike: e.type === "import",
+    importLike: e.type === "import" || e.type === "call",
+    edgeType: e.type,
   }));
 
   const groups = new Map<string, string[]>();

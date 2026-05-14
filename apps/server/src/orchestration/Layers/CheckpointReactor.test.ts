@@ -45,6 +45,7 @@ import { ServerConfig } from "../../config.ts";
 import { WorkspaceEntriesLive } from "../../workspace/Layers/WorkspaceEntries.ts";
 import { WorkspacePathsLive } from "../../workspace/Layers/WorkspacePaths.ts";
 import { CodeQualityGuard } from "../../provider/Services/CodeQualityGuard.ts";
+import { CodeQualityProjectPreferences } from "../../codeQuality/Services/CodeQualityProjectPreferences.ts";
 import { ContextAnalyzer } from "../../contextAwareness/Services/ContextAnalyzer.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
@@ -337,6 +338,18 @@ describe("CheckpointReactor", () => {
               appliedPatterns: [],
               qualityScore: 100,
             }),
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(CodeQualityProjectPreferences, {
+          getForProject: () =>
+            Effect.succeed({
+              turnStartGateMode: "off" as const,
+              minScorePerSnippet: 70,
+              checklist: null,
+            }),
+          setForProject: () => Effect.void,
+          mergeFromTurnStartGate: () => Effect.void,
         }),
       ),
       Layer.provideMerge(

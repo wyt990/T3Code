@@ -1,6 +1,6 @@
 import { Context, Effect } from "effect";
 import type {
-  TestCase,
+  TestCaseCreateInput,
   TestSuite,
   CoverageReport,
   TestGenerationRequest,
@@ -14,8 +14,15 @@ export interface TestOrchestrator {
   readonly createTestSuite: (params: {
     name: string;
     projectId: string;
-    testCases: Omit<TestCase, "id" | "createdAt" | "updatedAt">[];
+    testCases: readonly TestCaseCreateInput[];
   }) => Effect.Effect<TestSuite, never, never>;
+  readonly listTestSuites: (
+    projectId: string,
+  ) => Effect.Effect<ReadonlyArray<TestSuite>, never, never>;
+  readonly deleteTestSuite: (params: {
+    projectId: string;
+    suiteId: string;
+  }) => Effect.Effect<void, never, never>;
   readonly generateTests: (
     request: TestGenerationRequest,
   ) => Effect.Effect<TestGenerationResult, never, never>;

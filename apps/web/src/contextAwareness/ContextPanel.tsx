@@ -5,6 +5,7 @@ import type {
   SmartSuggestion,
   DependencyGraph,
   ChangeImpact,
+  ContextToolTimingEntry,
   EnvironmentId,
   ProjectId,
   ThreadId,
@@ -21,6 +22,9 @@ import {
 import { useComposerDraftStore } from "../composerDraftStore";
 import { DependencyGraphFlow } from "./DependencyGraphFlow";
 import { buildImpactHighlightFromChangeImpact } from "./dependencyImpactHighlight";
+import { readPrimaryWsRpcClient } from "../rpc/wsClientHelpers";
+
+const DEP_EDGE_HIDE_STORAGE_KEY = "t3-context-dep-hidden-edges-v1";
 
 interface ContextPanelProps {
   projectId: ProjectId;
@@ -528,6 +532,71 @@ function ImpactTab({
   );
 }
 
+function readHiddenEdgeKeysFromStorage(): Set<string> {
+  if (typeof globalThis.window === "undefined") {
+    return new Set();
+  }
+  try {
+    const raw = globalThis.window.sessionStorage.getItem(DEP_EDGE_HIDE_STORAGE_KEY);
+    if (raw === null || raw.length === 0) {
+      return new Set();
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return new Set();
+    }
+    return new Set(parsed.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function ToolTimingStrip() {
+  const [rows, setRows] = useState<ContextToolTimingEntry[]>([]);
+  const load = useCallback(async () => {
+    const client = readPrimaryWsRpcClient();
+    if (!client) {
+      return;
+    }
+    const pool = await client.context.getToolTimingPool({ limit: 100 });
+    setRows([...pool.entries]);
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  return (
+    <div className="mt-6 space-y-2 border-t border-gray-200 pt-3 dark:border-gray-700">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+          工具事件（毫秒时间轴）
+        </span>
+        <button
+          type="button"
+          className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+          onClick={() => void load()}
+        >
+          刷新
+        </button>
+      </div>
+      <div className="max-h-40 space-y-1 overflow-auto font-mono text-[10px] text-gray-700 dark:text-gray-300">
+        {rows.length === 0 ? (
+          <span className="text-gray-400">暂无记录；代理工具开始/完成后自动写入环形缓冲。</span>
+        ) : (
+          rows.map((r) => (
+            <div key={`${r.atMs}-${r.phase}-${r.summary}`} className="flex gap-2">
+              <span className="shrink-0 text-gray-400">{r.atMs}</span>
+              <span className="shrink-0 uppercase text-[9px] text-amber-700 dark:text-amber-400">
+                {r.phase}
+              </span>
+              <span className="min-w-0 truncate">{r.summary}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DependenciesTab({
   graph,
   changeImpact,
@@ -541,17 +610,56 @@ function DependenciesTab({
 }) {
   const [filter, setFilter] = useState("");
   const [view, setView] = useState<"list" | "graph">("list");
+  const [hiddenEdgeKeys, setHiddenEdgeKeys] = useState<Set<string>>(readHiddenEdgeKeysFromStorage);
 
   const impactHighlight = useMemo(
     () => buildImpactHighlightFromChangeImpact(changeImpact),
     [changeImpact],
   );
 
+  const displayGraph = useMemo(() => {
+    if (!graph) {
+      return null;
+    }
+    return {
+      ...graph,
+      edges: graph.edges.filter((e) => !hiddenEdgeKeys.has(`${e.from}|${e.to}|${e.type}`)),
+    };
+  }, [graph, hiddenEdgeKeys]);
+
+  const hideEdge = useCallback((from: string, to: string, type: string) => {
+    const key = `${from}|${to}|${type}`;
+    setHiddenEdgeKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      try {
+        globalThis.window.sessionStorage.setItem(
+          DEP_EDGE_HIDE_STORAGE_KEY,
+          JSON.stringify([...next]),
+        );
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  const resetHiddenEdges = useCallback(() => {
+    setHiddenEdgeKeys(new Set());
+    try {
+      globalThis.window.sessionStorage.removeItem(DEP_EDGE_HIDE_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   if (!graph || graph.nodes.length === 0) {
     return (
       <div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">暂无依赖图谱</div>
     );
   }
+
+  const flowGraph = displayGraph ?? graph;
 
   const q = filter.trim().toLowerCase();
   const filtered = q ? graph.nodes.filter((n) => n.path.toLowerCase().includes(q)) : graph.nodes;
@@ -563,15 +671,18 @@ function DependenciesTab({
         ? (graph.nodes[0]?.path ?? null)
         : null;
 
+  const hiddenCount = graph.edges.length - flowGraph.edges.length;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-gray-500 dark:text-gray-400">
         <span>
           {graph.nodes.length} 个节点 · {graph.edges.length} 条边
+          {hiddenCount > 0 ? ` · 已隐藏 ${hiddenCount} 条` : ""}
           {q ? ` · 筛选 ${filtered.length} 个` : ""}
         </span>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden text-[10px]">
+          <div className="inline-flex overflow-hidden rounded-md border border-gray-200 text-[10px] dark:border-gray-600">
             <button
               type="button"
               onClick={() => setView("list")}
@@ -601,15 +712,56 @@ function DependenciesTab({
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         placeholder="按路径筛选节点…"
-        className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 font-mono"
+        className="w-full rounded border border-gray-300 bg-white px-2 py-1 font-mono text-xs dark:border-gray-600 dark:bg-gray-700"
       />
+      <details className="rounded-md border border-gray-200 bg-gray-50/80 px-2 py-2 text-[11px] dark:border-gray-700 dark:bg-gray-900/40">
+        <summary className="cursor-pointer text-gray-700 dark:text-gray-200">
+          编辑视图：隐藏边（本地）
+        </summary>
+        <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          从下列边中移除后，上图谱与列表统计会立即生效；数据仅存于本浏览器 session。
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded border border-gray-300 px-2 py-0.5 text-[10px] dark:border-gray-600"
+            onClick={resetHiddenEdges}
+          >
+            重置隐藏
+          </button>
+        </div>
+        <ul className="mt-2 max-h-32 space-y-1 overflow-auto font-mono text-[10px] text-gray-700 dark:text-gray-300">
+          {graph.edges.slice(0, 40).map((e) => {
+            const k = `${e.from}|${e.to}|${e.type}`;
+            const hidden = hiddenEdgeKeys.has(k);
+            return (
+              <li key={k} className="flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate">
+                  {e.from} → {e.to} <span className="text-gray-400">({e.type})</span>
+                </span>
+                <button
+                  type="button"
+                  disabled={hidden}
+                  className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[9px] text-slate-800 disabled:opacity-40 dark:bg-slate-700 dark:text-slate-100"
+                  onClick={() => hideEdge(e.from, e.to, e.type)}
+                >
+                  {hidden ? "已隐藏" : "隐藏"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {graph.edges.length > 40 ? (
+          <p className="mt-1 text-[10px] text-gray-400">仅列出前 40 条边。</p>
+        ) : null}
+      </details>
       {view === "graph" ? (
         <div className="space-y-2">
           <p className="text-[10px] text-gray-500 dark:text-gray-400">
             基于当前筛选结果展示子图（可拖拽、缩放）；聚焦节点：{focusForGraph ?? "—"}
           </p>
           <DependencyGraphFlow
-            graph={graph}
+            graph={flowGraph}
             focusPath={focusForGraph}
             maxNodes={56}
             impactHighlight={impactHighlight}
@@ -620,13 +772,13 @@ function DependenciesTab({
           {visible.map((node) => (
             <div
               key={node.id}
-              className="p-2 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700"
+              className="rounded-md border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800/50"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
+                <span className="truncate text-xs font-medium text-gray-900 dark:text-gray-100">
                   {node.path}
                 </span>
-                <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+                <span className="shrink-0 text-[10px] text-gray-400 dark:text-gray-500">
                   {node.type}
                 </span>
               </div>
@@ -639,7 +791,7 @@ function DependenciesTab({
                 <button
                   type="button"
                   onClick={() => onAnalyzeFile(node.path)}
-                  className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
+                  className="rounded bg-slate-200 px-2 py-0.5 text-[10px] text-slate-800 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
                 >
                   分析影响
                 </button>
@@ -656,6 +808,7 @@ function DependenciesTab({
           )}
         </div>
       )}
+      <ToolTimingStrip />
     </div>
   );
 }

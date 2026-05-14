@@ -87,6 +87,7 @@ import { useModelPickerOpen } from "../modelPickerOpenState";
 import { useShortcutModifierState } from "../shortcutModifierState";
 import { useGitStatus } from "../lib/gitStatusState";
 import { readLocalApi } from "../localApi";
+import { OPEN_FEATURE_WORKBENCH_EVENT } from "../onboardingConstants";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
@@ -2444,8 +2445,18 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     void navigate({ to: "/settings" });
   }, [navigate]);
 
+  useEffect(() => {
+    const onOpenWorkbench = () => {
+      setWorkbenchOpen(true);
+    };
+    window.addEventListener(OPEN_FEATURE_WORKBENCH_EVENT, onOpenWorkbench);
+    return () => {
+      window.removeEventListener(OPEN_FEATURE_WORKBENCH_EVENT, onOpenWorkbench);
+    };
+  }, []);
+
   return (
-    <SidebarFooter className="p-2">
+    <SidebarFooter className="p-2" data-t3-onboarding-target="sidebar-footer">
       <FeatureWorkbenchSheet open={workbenchOpen} onOpenChange={setWorkbenchOpen} />
       <SidebarUpdatePill />
       <SidebarMenu>
@@ -2453,6 +2464,7 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
           <SidebarMenuButton
             size="sm"
             className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            data-t3-onboarding-target="sidebar-workbench"
             onClick={() => setWorkbenchOpen(true)}
           >
             <LayoutDashboardIcon className="size-3.5" />
@@ -2581,6 +2593,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                   size="sm"
                   className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground focus-visible:ring-0"
                   data-testid="command-palette-trigger"
+                  data-t3-onboarding-target="sidebar-command"
                 />
               }
             >

@@ -205,9 +205,13 @@ export const WS_METHODS = {
   codeQualityCheckCode: "codeQuality.checkCode",
   codeQualityDetectTechDebt: "codeQuality.detectTechDebt",
   codeQualityValidateBestPractices: "codeQuality.validateBestPractices",
+  codeQualityGetProjectPreferences: "codeQuality.getProjectPreferences",
+  codeQualitySetProjectPreferences: "codeQuality.setProjectPreferences",
 
   // Testing methods
   testingCreateTestSuite: "testing.createTestSuite",
+  testingListTestSuites: "testing.listTestSuites",
+  testingDeleteTestSuite: "testing.deleteTestSuite",
   testingGenerateTests: "testing.generateTests",
   testingSelectRegressionTests: "testing.selectRegressionTests",
   testingRunTests: "testing.runTests",
@@ -245,6 +249,7 @@ export const WS_METHODS = {
   contextBuildDependencyGraph: "context.buildDependencyGraph",
   contextAnalyzeChangeImpact: "context.analyzeChangeImpact",
   contextGetSmartSuggestions: "context.getSmartSuggestions",
+  contextGetToolTimingPool: "context.getToolTimingPool",
 } as const;
 
 /** Create / switch / delete environment profiles (aligned with server handlers). */
@@ -615,14 +620,46 @@ export const WsCodeQualityValidateBestPracticesRpc = Rpc.make(
   },
 );
 
+export const WsCodeQualityGetProjectPreferencesRpc = Rpc.make(
+  WS_METHODS.codeQualityGetProjectPreferences,
+  {
+    payload: Schema.Struct({ projectId: TrimmedNonEmptyString }),
+    success: CQ.CodeQualityProjectPreferencesValue,
+  },
+);
+
+export const WsCodeQualitySetProjectPreferencesRpc = Rpc.make(
+  WS_METHODS.codeQualitySetProjectPreferences,
+  {
+    payload: Schema.Struct({
+      projectId: TrimmedNonEmptyString,
+      preferences: CQ.CodeQualityProjectPreferencesValue,
+    }),
+    success: Schema.Struct({ success: Schema.Literal(true) }),
+  },
+);
+
 // Testing RPCs
 export const WsTestingCreateTestSuiteRpc = Rpc.make(WS_METHODS.testingCreateTestSuite, {
   payload: Schema.Struct({
     name: TrimmedNonEmptyString,
     projectId: TrimmedNonEmptyString,
-    testCases: Schema.Array(T.TestCase),
+    testCases: Schema.Array(T.TestCaseCreateInput),
   }),
   success: Schema.Struct({ suite: T.TestSuite }),
+});
+
+export const WsTestingListTestSuitesRpc = Rpc.make(WS_METHODS.testingListTestSuites, {
+  payload: Schema.Struct({ projectId: TrimmedNonEmptyString }),
+  success: Schema.Struct({ suites: Schema.Array(T.TestSuite) }),
+});
+
+export const WsTestingDeleteTestSuiteRpc = Rpc.make(WS_METHODS.testingDeleteTestSuite, {
+  payload: Schema.Struct({
+    projectId: TrimmedNonEmptyString,
+    suiteId: TrimmedNonEmptyString,
+  }),
+  success: Schema.Struct({ success: Schema.Literal(true) }),
 });
 
 export const WsTestingGenerateTestsRpc = Rpc.make(WS_METHODS.testingGenerateTests, {
@@ -833,6 +870,11 @@ export const WsContextGetSmartSuggestionsRpc = Rpc.make(WS_METHODS.contextGetSma
   success: Schema.Struct({ suggestions: Schema.Array(CX.SmartSuggestion) }),
 });
 
+export const WsContextGetToolTimingPoolRpc = Rpc.make(WS_METHODS.contextGetToolTimingPool, {
+  payload: Schema.Struct({ limit: Schema.optional(Schema.Number) }),
+  success: CX.ContextToolTimingPool,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
@@ -889,9 +931,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsCodeQualityCheckCodeRpc,
   WsCodeQualityDetectTechDebtRpc,
   WsCodeQualityValidateBestPracticesRpc,
+  WsCodeQualityGetProjectPreferencesRpc,
+  WsCodeQualitySetProjectPreferencesRpc,
 
   // Testing RPCs
   WsTestingCreateTestSuiteRpc,
+  WsTestingListTestSuitesRpc,
+  WsTestingDeleteTestSuiteRpc,
   WsTestingGenerateTestsRpc,
   WsTestingSelectRegressionTestsRpc,
   WsTestingRunTestsRpc,
@@ -927,4 +973,5 @@ export const WsRpcGroup = RpcGroup.make(
   WsContextBuildDependencyGraphRpc,
   WsContextAnalyzeChangeImpactRpc,
   WsContextGetSmartSuggestionsRpc,
+  WsContextGetToolTimingPoolRpc,
 );

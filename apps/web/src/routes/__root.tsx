@@ -14,6 +14,7 @@ import { APP_DISPLAY_NAME } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { OnboardingTour } from "../components/OnboardingTour";
+import { FeatureDiscoveryHost } from "../featureDiscovery/FeatureDiscoveryHost";
 import {
   SlowRpcAckToastCoordinator,
   WebSocketConnectionCoordinator,
@@ -113,6 +114,7 @@ function RootRouteView() {
             </AppSidebarLayout>
           </CommandPalette>
           <OnboardingTour />
+          <FeatureDiscoveryHost />
         </WebSocketConnectionSurface>
       </AnchoredToastProvider>
     </ToastProvider>

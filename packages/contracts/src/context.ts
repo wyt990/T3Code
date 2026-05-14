@@ -93,7 +93,7 @@ export type DependencyNode = typeof DependencyNode.Type;
 export const DependencyEdge = Schema.Struct({
   from: TrimmedNonEmptyString,
   to: TrimmedNonEmptyString,
-  type: Schema.Literals(["import", "reference", "dependency"]),
+  type: Schema.Literals(["import", "reference", "dependency", "call", "external"]),
 });
 export type DependencyEdge = typeof DependencyEdge.Type;
 
@@ -103,6 +103,20 @@ export const DependencyGraph = Schema.Struct({
   lastUpdated: Schema.String, // ISO timestamp
 });
 export type DependencyGraph = typeof DependencyGraph.Type;
+
+/** 工具事件环形缓冲中的单条记录（`atMs` 为 epoch 毫秒）。 */
+export const ContextToolTimingEntry = Schema.Struct({
+  atMs: Schema.Number,
+  phase: Schema.Literals(["started", "completed", "updated"]),
+  summary: Schema.String,
+  threadId: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type ContextToolTimingEntry = typeof ContextToolTimingEntry.Type;
+
+export const ContextToolTimingPool = Schema.Struct({
+  entries: Schema.Array(ContextToolTimingEntry),
+});
+export type ContextToolTimingPool = typeof ContextToolTimingPool.Type;
 
 export const ImpactLevel = Schema.Literals(["critical", "high", "medium", "low", "none"]);
 export type ImpactLevel = typeof ImpactLevel.Type;

@@ -57,6 +57,7 @@ import { liveExecutionVisualizer as ExecutionVisualizerLive } from "./observabil
 import { MultiAgentOrchestratorLive } from "./orchestration/Layers/MultiAgentOrchestrator.ts";
 import { ContextAnalyzerLive } from "./contextAwareness/Layers/ContextAnalyzer.ts";
 import { CodeQualityGuardLive } from "./provider/Layers/CodeQualityGuard.ts";
+import { CodeQualityProjectPreferencesLive } from "./codeQuality/Layers/CodeQualityProjectPreferences.ts";
 import { TestOrchestratorLive } from "./testing/Layers/TestOrchestrator.ts";
 import { EnvironmentManagerLive } from "./environmentManagement/Layers/EnvironmentManager.ts";
 import {
@@ -253,6 +254,7 @@ const RuntimeDependenciesLive = Layer.empty
     Layer.provideMerge(ExecutionVisualizerLive),
     Layer.provideMerge(MultiAgentOrchestratorLive),
     Layer.provideMerge(ContextAnalyzerLive),
+    Layer.provideMerge(CodeQualityProjectPreferencesLive),
     Layer.provideMerge(CodeQualityGuardLive),
     Layer.provideMerge(TestOrchestratorLive),
     Layer.provideMerge(EnvironmentManagerLive),

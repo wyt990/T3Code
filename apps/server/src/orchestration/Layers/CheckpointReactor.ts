@@ -23,6 +23,7 @@ import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { CheckpointReactor, type CheckpointReactorShape } from "../Services/CheckpointReactor.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { RuntimeReceiptBus } from "../Services/RuntimeReceiptBus.ts";
+import { CodeQualityProjectPreferences } from "../../codeQuality/Services/CodeQualityProjectPreferences.ts";
 import { CodeQualityGuard } from "../../provider/Services/CodeQualityGuard.ts";
 import type { CheckpointStoreError } from "../../checkpointing/Errors.ts";
 import type { OrchestrationDispatchError } from "../Errors.ts";
@@ -85,6 +86,7 @@ const make = Effect.gen(function* () {
   const workspaceEntries = yield* WorkspaceEntries;
   const gitStatusBroadcaster = yield* GitStatusBroadcaster;
   const codeQualityGuard = yield* CodeQualityGuard;
+  const codeQualityProjectPreferences = yield* CodeQualityProjectPreferences;
   const fileSystem = yield* FileSystem.FileSystem;
   const contextAnalyzer = yield* ContextAnalyzer;
 
@@ -123,7 +125,8 @@ const make = Effect.gen(function* () {
         ".html",
         ".htm",
       ]);
-      const minScore = 70;
+      const prefs = yield* codeQualityProjectPreferences.getForProject(input.projectId);
+      const minScore = prefs.minScorePerSnippet;
       const maxFiles = 6;
       const maxBytes = 150_000;
       const profile = yield* codeQualityGuard.resolveStyleProfile(input.projectId);
@@ -917,7 +920,11 @@ const make = Effect.gen(function* () {
 
   const processInput = (
     input: ReactorInput,
-  ): Effect.Effect<void, CheckpointStoreError | OrchestrationDispatchError, never> =>
+  ): Effect.Effect<
+    void,
+    CheckpointStoreError | OrchestrationDispatchError,
+    CodeQualityProjectPreferences
+  > =>
     input.source === "domain" ? processDomainEvent(input.event) : processRuntimeEvent(input.event);
 
   const processInputSafely = (input: ReactorInput) =>

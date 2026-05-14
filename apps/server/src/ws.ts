@@ -95,6 +95,7 @@ import { respondToAuthError } from "./auth/http.ts";
 import { runProcess } from "./processRunner.ts";
 import { ExecutionVisualizer } from "./observability/Services/ExecutionVisualizer.ts";
 import { CodeQualityGuard } from "./provider/Services/CodeQualityGuard.ts";
+import { CodeQualityProjectPreferences } from "./codeQuality/Services/CodeQualityProjectPreferences.ts";
 import { TestOrchestrator } from "./testing/Services/TestOrchestrator.ts";
 import { EnvironmentManager } from "./environmentManagement/Services/EnvironmentManager.ts";
 import { runDependencyAuditInWorkspace } from "./environmentManagement/runDependencyAudit.ts";
@@ -106,6 +107,7 @@ import {
 } from "./orchestration/multiAgentRoleTemplatesFile.ts";
 import { buildMultiAgentTurnPrompt } from "./orchestration/multiAgentTurnPrompt.ts";
 import { ContextAnalyzer } from "./contextAwareness/Services/ContextAnalyzer.ts";
+import { snapshotToolTimingPool } from "./contextAwareness/toolTimingRingBuffer.ts";
 
 // Claude Code install commands by platform
 // Note: For Windows, we build the command dynamically to include proxy settings
@@ -332,6 +334,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
       const codeQualityGuard = yield* CodeQualityGuard;
+      const codeQualityProjectPreferences = yield* CodeQualityProjectPreferences;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment;
@@ -735,6 +738,20 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
             ORCHESTRATION_WS_METHODS.dispatchCommand,
             Effect.gen(function* () {
               const normalizedCommand = yield* normalizeDispatchCommand(command);
+              if (
+                normalizedCommand.type === "thread.turn.start" &&
+                normalizedCommand.codeQualityGate !== undefined
+              ) {
+                const threadShellForPrefs = yield* projectionSnapshotQuery
+                  .getThreadShellById(normalizedCommand.threadId)
+                  .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+                if (Option.isSome(threadShellForPrefs)) {
+                  yield* codeQualityProjectPreferences.mergeFromTurnStartGate(
+                    threadShellForPrefs.value.projectId,
+                    normalizedCommand.codeQualityGate,
+                  );
+                }
+              }
               let codeQualityTurnGate:
                 | import("@t3tools/contracts").CodeQualityTurnGateDispatchSummary
                 | undefined;
@@ -1440,6 +1457,12 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
             }),
             { "rpc.aggregate": "context" },
           ) as any,
+        [WS_METHODS.contextGetToolTimingPool]: (payload) =>
+          observeRpcEffect(
+            WS_METHODS.contextGetToolTimingPool,
+            Effect.sync(() => snapshotToolTimingPool(payload.limit)),
+            { "rpc.aggregate": "context" },
+          ) as any,
 
         // Visualization methods
         [WS_METHODS.visualizationGetSessionData]: ({ threadId }) =>
@@ -1549,6 +1572,25 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
             }),
             { "rpc.aggregate": "codequality" },
           ),
+        [WS_METHODS.codeQualityGetProjectPreferences]: ({ projectId }) =>
+          observeRpcEffect(
+            WS_METHODS.codeQualityGetProjectPreferences,
+            Effect.gen(function* () {
+              const prefs = yield* CodeQualityProjectPreferences;
+              return yield* prefs.getForProject(projectId);
+            }),
+            { "rpc.aggregate": "codequality" },
+          ),
+        [WS_METHODS.codeQualitySetProjectPreferences]: ({ projectId, preferences }) =>
+          observeRpcEffect(
+            WS_METHODS.codeQualitySetProjectPreferences,
+            Effect.gen(function* () {
+              const prefs = yield* CodeQualityProjectPreferences;
+              yield* prefs.setForProject(projectId, preferences);
+              return { success: true as const };
+            }),
+            { "rpc.aggregate": "codequality" },
+          ),
 
         // Testing methods
         [WS_METHODS.testingCreateTestSuite]: (params) =>
@@ -1559,9 +1601,29 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
               const suite = yield* orchestrator.createTestSuite({
                 name: params.name,
                 projectId: params.projectId,
-                testCases: params.testCases.map((tc) => ({ ...tc })),
+                testCases: [...params.testCases],
               });
               return { suite };
+            }),
+            { "rpc.aggregate": "testing" },
+          ) as any,
+        [WS_METHODS.testingListTestSuites]: ({ projectId }) =>
+          observeRpcEffect(
+            WS_METHODS.testingListTestSuites,
+            Effect.gen(function* () {
+              const orchestrator = yield* TestOrchestrator;
+              const suites = yield* orchestrator.listTestSuites(projectId);
+              return { suites: [...suites] };
+            }),
+            { "rpc.aggregate": "testing" },
+          ) as any,
+        [WS_METHODS.testingDeleteTestSuite]: ({ projectId, suiteId }) =>
+          observeRpcEffect(
+            WS_METHODS.testingDeleteTestSuite,
+            Effect.gen(function* () {
+              const orchestrator = yield* TestOrchestrator;
+              yield* orchestrator.deleteTestSuite({ projectId, suiteId });
+              return { success: true as const };
             }),
             { "rpc.aggregate": "testing" },
           ) as any,

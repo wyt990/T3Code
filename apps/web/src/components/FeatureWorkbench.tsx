@@ -161,6 +161,7 @@ export function FeatureWorkbenchSheet(props: {
           <WorkbenchTabButton
             active={tab === "layout"}
             label="布局"
+            dataT3OnboardingTarget="workbench-layout-tab"
             onClick={() => setTab("layout")}
           />
         </div>
@@ -225,11 +226,13 @@ function WorkbenchTabButton(props: {
   readonly active: boolean;
   readonly label: string;
   readonly onClick: () => void;
+  readonly dataT3OnboardingTarget?: string;
 }) {
   return (
     <button
       type="button"
       onClick={props.onClick}
+      data-t3-onboarding-target={props.dataT3OnboardingTarget}
       className={cn(
         "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
         props.active

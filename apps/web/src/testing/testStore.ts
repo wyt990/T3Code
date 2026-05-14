@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type {
   TestCase as TestCaseType,
+  TestCaseCreateInput,
   TestSuite,
   CoverageReport as CoverageReportType,
   TestGenerationResult,
@@ -11,6 +12,19 @@ import type {
 } from "@t3tools/contracts";
 
 import { readPrimaryWsRpcClient } from "../rpc/wsClientHelpers";
+
+export function testCaseToCreateInput(tc: TestCaseType): TestCaseCreateInput {
+  return {
+    name: tc.name,
+    ...(tc.description !== undefined ? { description: tc.description } : {}),
+    type: tc.type,
+    ...(tc.targetFunction !== undefined ? { targetFunction: tc.targetFunction } : {}),
+    ...(tc.targetFile !== undefined ? { targetFile: tc.targetFile } : {}),
+    code: tc.code,
+    status: tc.status,
+    ...(tc.coverage !== undefined ? { coverage: tc.coverage } : {}),
+  };
+}
 
 interface TestState {
   // Test Suites
@@ -49,6 +63,13 @@ interface TestState {
       readonly weakAreaMaxLinesPercent?: number;
     },
   ) => Promise<void>;
+  refreshSuitesFromServer: (projectId: ProjectId) => Promise<void>;
+  createTestSuiteOnServer: (
+    projectId: ProjectId,
+    name: string,
+    testCases: readonly TestCaseCreateInput[],
+  ) => Promise<void>;
+  deleteTestSuiteOnServer: (projectId: ProjectId, suiteId: string) => Promise<void>;
 }
 
 export const useTestStore = create<TestState>((set, get) => ({
@@ -160,10 +181,54 @@ export const useTestStore = create<TestState>((set, get) => ({
       console.error("Failed to fetch coverage report:", error);
     }
   },
+
+  refreshSuitesFromServer: async (projectId) => {
+    const client = readPrimaryWsRpcClient();
+    try {
+      if (!client) {
+        throw new Error("WebSocket 客户端未就绪");
+      }
+      const { suites } = await client.testing.listTestSuites({ projectId });
+      set({ suites: [...suites] });
+    } catch (error) {
+      console.error("Failed to list test suites:", error);
+    }
+  },
+
+  createTestSuiteOnServer: async (projectId, name, testCases) => {
+    const client = readPrimaryWsRpcClient();
+    try {
+      if (!client) {
+        throw new Error("WebSocket 客户端未就绪");
+      }
+      await client.testing.createTestSuite({
+        projectId,
+        name,
+        testCases: [...testCases],
+      });
+      await get().refreshSuitesFromServer(projectId);
+    } catch (error) {
+      console.error("Failed to create test suite:", error);
+    }
+  },
+
+  deleteTestSuiteOnServer: async (projectId, suiteId) => {
+    const client = readPrimaryWsRpcClient();
+    try {
+      if (!client) {
+        throw new Error("WebSocket 客户端未就绪");
+      }
+      await client.testing.deleteTestSuite({ projectId, suiteId });
+      await get().refreshSuitesFromServer(projectId);
+    } catch (error) {
+      console.error("Failed to delete test suite:", error);
+    }
+  },
 }));
 
 // Export TestCase type for use in other files
 export type TestCase = TestCaseType;
+export type { TestCaseCreateInput } from "@t3tools/contracts";
 
 // Re-export CoverageReport directly from contracts
 export type { CoverageReport as CoverageReportType } from "@t3tools/contracts";

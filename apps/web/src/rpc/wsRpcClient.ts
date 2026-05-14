@@ -169,6 +169,7 @@ export interface WsRpcClient {
     readonly buildDependencyGraph: RpcUnaryMethod<typeof WS_METHODS.contextBuildDependencyGraph>;
     readonly analyzeChangeImpact: RpcUnaryMethod<typeof WS_METHODS.contextAnalyzeChangeImpact>;
     readonly getSmartSuggestions: RpcUnaryMethod<typeof WS_METHODS.contextGetSmartSuggestions>;
+    readonly getToolTimingPool: RpcUnaryMethod<typeof WS_METHODS.contextGetToolTimingPool>;
   };
   readonly visualization: {
     readonly getSessionData: RpcUnaryMethod<typeof WS_METHODS.visualizationGetSessionData>;
@@ -184,9 +185,17 @@ export interface WsRpcClient {
     readonly validateBestPractices: RpcUnaryMethod<
       typeof WS_METHODS.codeQualityValidateBestPractices
     >;
+    readonly getProjectPreferences: RpcUnaryMethod<
+      typeof WS_METHODS.codeQualityGetProjectPreferences
+    >;
+    readonly setProjectPreferences: RpcUnaryMethod<
+      typeof WS_METHODS.codeQualitySetProjectPreferences
+    >;
   };
   readonly testing: {
     readonly createTestSuite: RpcUnaryMethod<typeof WS_METHODS.testingCreateTestSuite>;
+    readonly listTestSuites: RpcUnaryMethod<typeof WS_METHODS.testingListTestSuites>;
+    readonly deleteTestSuite: RpcUnaryMethod<typeof WS_METHODS.testingDeleteTestSuite>;
     readonly generateTests: RpcUnaryMethod<typeof WS_METHODS.testingGenerateTests>;
     readonly selectRegressionTests: RpcUnaryMethod<typeof WS_METHODS.testingSelectRegressionTests>;
     readonly runTests: RpcUnaryMethod<typeof WS_METHODS.testingRunTests>;
@@ -402,6 +411,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.contextAnalyzeChangeImpact](input)),
       getSmartSuggestions: (input) =>
         transport.request((client) => client[WS_METHODS.contextGetSmartSuggestions](input)),
+      getToolTimingPool: (input) =>
+        transport.request((client) => client[WS_METHODS.contextGetToolTimingPool](input)),
     },
     visualization: {
       getSessionData: (input) =>
@@ -424,10 +435,18 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.codeQualityDetectTechDebt](input)),
       validateBestPractices: (input) =>
         transport.request((client) => client[WS_METHODS.codeQualityValidateBestPractices](input)),
+      getProjectPreferences: (input) =>
+        transport.request((client) => client[WS_METHODS.codeQualityGetProjectPreferences](input)),
+      setProjectPreferences: (input) =>
+        transport.request((client) => client[WS_METHODS.codeQualitySetProjectPreferences](input)),
     },
     testing: {
       createTestSuite: (input) =>
         transport.request((client) => client[WS_METHODS.testingCreateTestSuite](input)),
+      listTestSuites: (input) =>
+        transport.request((client) => client[WS_METHODS.testingListTestSuites](input)),
+      deleteTestSuite: (input) =>
+        transport.request((client) => client[WS_METHODS.testingDeleteTestSuite](input)),
       generateTests: (input) =>
         transport.request((client) => client[WS_METHODS.testingGenerateTests](input)),
       selectRegressionTests: (input) =>

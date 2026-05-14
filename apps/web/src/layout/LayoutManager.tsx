@@ -1,4 +1,16 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVerticalIcon } from "lucide-react";
 import {
   useLayoutStore,
   useLayoutTemplates,
@@ -25,15 +37,24 @@ const MODE_LABELS: Record<LayoutMode, string> = {
   custom: "自定义",
 };
 
+const VISUAL_POSITIONS = ["left", "right", "bottom"] as const;
+type VisualDockPosition = (typeof VISUAL_POSITIONS)[number];
+
+const POSITION_SECTION_LABEL: Record<VisualDockPosition, string> = {
+  left: "左侧栏",
+  right: "右侧栏",
+  bottom: "底部栏",
+};
+
 export function LayoutManager({ className = "" }: LayoutManagerProps) {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [visualEditorEnabled, setVisualEditorEnabled] = useState(false);
   const [layoutName, setLayoutName] = useState("");
   const [layoutDescription, setLayoutDescription] = useState("");
 
   const currentLayout = useCurrentLayout();
   const templates = useLayoutTemplates();
   const customLayouts = useLayoutStore((s) => s.customLayouts);
-  const setCurrentMode = useLayoutStore((s) => s.setCurrentMode);
   const applyTemplate = useLayoutStore((s) => s.applyTemplate);
   const saveCustomLayout = useLayoutStore((s) => s.saveCustomLayout);
   const deleteCustomLayout = useLayoutStore((s) => s.deleteCustomLayout);
@@ -109,6 +130,40 @@ export function LayoutManager({ className = "" }: LayoutManagerProps) {
             </div>
           </div>
         )}
+
+        <div>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400">可视化编排</h4>
+            <label className="flex cursor-pointer items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+              <input
+                type="checkbox"
+                checked={visualEditorEnabled}
+                onChange={() => setVisualEditorEnabled((v) => !v)}
+                className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600"
+              />
+              启用拖拽与尺寸
+            </label>
+          </div>
+          {visualEditorEnabled ? (
+            <div className="space-y-5">
+              {VISUAL_POSITIONS.map((position) => (
+                <div key={position}>
+                  <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    {POSITION_SECTION_LABEL[position]}
+                  </p>
+                  <PositionPanelSortList position={position} />
+                </div>
+              ))}
+              <p className="text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
+                在同一栏内拖拽把手调整顺序；滑块调节该栏内宽度或高度百分比（持久化到布局偏好）。
+              </p>
+            </div>
+          ) : (
+            <p className="text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
+              开启后可按左 / 右 / 底分组拖拽面板顺序，并用滑块微调占比。
+            </p>
+          )}
+        </div>
 
         {/* Panel Visibility */}
         <div>
@@ -274,6 +329,122 @@ function PanelVisibilityItem({ panel, onToggle }: { panel: PanelConfig; onToggle
       </div>
       <span className="text-[10px] text-gray-400 dark:text-gray-500">{panel.position}</span>
     </div>
+  );
+}
+
+function SortablePanelRow({
+  panel,
+  positionKind,
+}: {
+  panel: PanelConfig;
+  positionKind: VisualDockPosition;
+}) {
+  const resizePanel = useLayoutStore((s) => s.resizePanel);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: panel.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const isBottom = positionKind === "bottom";
+  const dimValue = Math.round(isBottom ? panel.height : panel.width);
+  const onDimChange = (next: number) => {
+    if (isBottom) {
+      resizePanel(panel.id, panel.width, next);
+    } else {
+      resizePanel(panel.id, next, panel.height);
+    }
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 rounded-md border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800/80 ${
+        isDragging ? "z-10 opacity-80 shadow-md" : ""
+      }`}
+    >
+      <button
+        type="button"
+        className="touch-none rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+        aria-label="拖拽排序"
+        {...listeners}
+        {...attributes}
+      >
+        <GripVerticalIcon className="size-4" />
+      </button>
+      <span className="min-w-0 flex-1 truncate text-xs text-gray-900 dark:text-gray-100">
+        {panel.title}
+      </span>
+      <label className="flex shrink-0 items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+        <span className="whitespace-nowrap">{isBottom ? "高度" : "宽度"}</span>
+        <input
+          type="range"
+          min={10}
+          max={95}
+          value={dimValue}
+          onChange={(e) => onDimChange(Number(e.target.value))}
+          className="w-20 accent-blue-600 sm:w-24"
+        />
+        <span className="w-6 tabular-nums">{dimValue}%</span>
+      </label>
+    </div>
+  );
+}
+
+function PositionPanelSortList({ position }: { position: VisualDockPosition }) {
+  const panels = useLayoutStore((s) => s.panels);
+  const reorderPanelsAtPosition = useLayoutStore((s) => s.reorderPanelsAtPosition);
+  const sorted = useMemo(
+    () => [...panels].filter((p) => p.position === position).toSorted((a, b) => a.order - b.order),
+    [panels, position],
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  );
+
+  const onDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (over === null || active.id === over.id) {
+        return;
+      }
+      const oldIndex = sorted.findIndex((p) => p.id === active.id);
+      const newIndex = sorted.findIndex((p) => p.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) {
+        return;
+      }
+      reorderPanelsAtPosition(position, oldIndex, newIndex);
+    },
+    [sorted, position, reorderPanelsAtPosition],
+  );
+
+  if (sorted.length === 0) {
+    return (
+      <p className="text-[10px] text-gray-400 dark:text-gray-500">当前预设下该栏无停靠面板。</p>
+    );
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext items={sorted.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-1.5">
+          {sorted.map((panel) => (
+            <SortablePanelRow key={panel.id} panel={panel} positionKind={position} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }
 

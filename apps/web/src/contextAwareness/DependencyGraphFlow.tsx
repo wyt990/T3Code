@@ -96,12 +96,19 @@ function buildSubgraph(
     if (!pathOk.has(e.from) || !pathOk.has(e.to)) {
       continue;
     }
-    edges.push({
+    const baseEdge = {
       id: `e-${ei++}`,
       source: e.from,
       target: e.to,
       animated: e.type === "import",
-    });
+    };
+    edges.push(
+      e.type === "call"
+        ? { ...baseEdge, style: { stroke: "#a855f7", strokeDasharray: "5 3" } }
+        : e.type === "external"
+          ? { ...baseEdge, style: { stroke: "#64748b", strokeDasharray: "2 4" } }
+          : baseEdge,
+    );
   }
 
   const nodeWidth = 168;
@@ -130,12 +137,19 @@ function buildGlobalModuleGraph(
 ): { nodes: Node[]; edges: Edge[] } {
   const { nodes: lay, links } = layoutGlobalModuleDependencyGraph(graph, pathFilter, maxNodes);
   const nodeWidth = 172;
-  const edges: Edge[] = links.map((l, i) => ({
-    id: `e-${i}`,
-    source: l.source,
-    target: l.target,
-    animated: l.importLike,
-  }));
+  const edges: Edge[] = links.map((l, i) => {
+    const base = {
+      id: `e-${i}`,
+      source: l.source,
+      target: l.target,
+      animated: l.importLike,
+    };
+    return l.edgeType === "call"
+      ? { ...base, style: { stroke: "#a855f7", strokeDasharray: "5 3" } }
+      : l.edgeType === "external"
+        ? { ...base, style: { stroke: "#64748b", strokeDasharray: "2 4" } }
+        : base;
+  });
   const nodes: Node[] = lay.map((n) => ({
     id: n.id,
     position: { x: n.x, y: n.y },

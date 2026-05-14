@@ -41,11 +41,15 @@ import { ProviderAdapterRegistry } from "../src/provider/Services/ProviderAdapte
 import { ProviderSessionDirectoryLive } from "../src/provider/Layers/ProviderSessionDirectory.ts";
 import { ServerSettingsService } from "../src/serverSettings.ts";
 import { makeProviderServiceLive } from "../src/provider/Layers/ProviderService.ts";
+import { CodeQualityGuard } from "../src/provider/Services/CodeQualityGuard.ts";
 import { makeCodexAdapterLive } from "../src/provider/Layers/CodexAdapter.ts";
 import { CodexAdapter } from "../src/provider/Services/CodexAdapter.ts";
 import { ProviderService } from "../src/provider/Services/ProviderService.ts";
 import { AnalyticsService } from "../src/telemetry/Services/AnalyticsService.ts";
+import { ExecutionVisualizer } from "../src/observability/Services/ExecutionVisualizer.ts";
 import { CheckpointReactorLive } from "../src/orchestration/Layers/CheckpointReactor.ts";
+import { CodeQualityProjectPreferences } from "../src/codeQuality/Services/CodeQualityProjectPreferences.ts";
+import { ContextAnalyzer } from "../src/contextAwareness/Services/ContextAnalyzer.ts";
 import { RepositoryIdentityResolverLive } from "../src/project/Layers/RepositoryIdentityResolver.ts";
 import { OrchestrationEngineLive } from "../src/orchestration/Layers/OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "../src/orchestration/Layers/ProjectionPipeline.ts";
@@ -308,6 +312,28 @@ export const makeOrchestrationIntegrationHarness = (
     const runtimeIngestionLayer = ProviderRuntimeIngestionLive.pipe(
       Layer.provideMerge(runtimeServicesLayer),
       Layer.provideMerge(serverSettingsLayer),
+      Layer.provideMerge(
+        Layer.succeed(ExecutionVisualizer, {
+          recordEvent: () => Effect.void,
+          getTimelineEvents: () => Effect.succeed([]),
+          recordDecisionPoint: () => Effect.void,
+          getDecisionPoints: () => Effect.succeed([]),
+          calculateHotspots: () => Effect.succeed([]),
+          getOperationStats: () => Effect.succeed([]),
+          analyzeDependencies: () => Effect.succeed({ nodes: [], edges: [] }),
+          analyzeChangeImpact: () =>
+            Effect.succeed({
+              changedFiles: [],
+              affectedModules: [],
+              directImpacts: [],
+              transitiveImpacts: [],
+              riskLevel: "low",
+              summary: "mock",
+            }),
+          getSessionData: () => Effect.succeed(null),
+          clearSession: () => Effect.void,
+        }),
+      ),
     );
     const gitCoreLayer = Layer.succeed(GitCore, {
       renameBranch: (input: Parameters<GitCoreShape["renameBranch"]>[0]) =>
@@ -349,6 +375,79 @@ export const makeOrchestrationIntegrationHarness = (
         ),
       ),
       Layer.provideMerge(WorkspacePathsLive),
+      Layer.provideMerge(
+        Layer.succeed(CodeQualityGuard, {
+          learnProjectStyle: (_projectId, _files) =>
+            Effect.succeed({
+              id: "mock-profile",
+              projectId: _projectId,
+              patterns: [],
+              rules: [],
+              learnedAt: new Date().toISOString(),
+              lastUpdated: new Date().toISOString(),
+              fileExtensions: [],
+            }),
+          resolveStyleProfile: (projectId) =>
+            Effect.succeed({
+              id: "mock-profile",
+              projectId,
+              patterns: [],
+              rules: [],
+              learnedAt: new Date().toISOString(),
+              lastUpdated: new Date().toISOString(),
+              fileExtensions: [],
+            }),
+          checkCodeQuality: () =>
+            Effect.succeed({
+              filePath: "mock.ts",
+              issues: [],
+              score: 100,
+              checkedAt: new Date().toISOString(),
+            }),
+          detectTechDebt: () => Effect.succeed([]),
+          validateBestPractices: () => Effect.succeed({ passed: true, violations: [] }),
+          enhanceGeneration: () =>
+            Effect.succeed({
+              success: true,
+              issues: [],
+              appliedPatterns: [],
+              qualityScore: 100,
+            }),
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(CodeQualityProjectPreferences, {
+          getForProject: () =>
+            Effect.succeed({
+              turnStartGateMode: "off" as const,
+              minScorePerSnippet: 70,
+              checklist: null,
+            }),
+          setForProject: () => Effect.void,
+          mergeFromTurnStartGate: () => Effect.void,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(ContextAnalyzer, {
+          analyzeContext: () => Effect.succeed({} as never),
+          getContextPool: () => Effect.succeed({} as never),
+          updateContextPool: () => Effect.void,
+          buildDependencyGraph: () =>
+            Effect.succeed({ nodes: [], edges: [], lastUpdated: new Date().toISOString() }),
+          analyzeChangeImpact: () =>
+            Effect.succeed({
+              changedFile: "mock.ts",
+              affectedFiles: [],
+              transitiveImporters: [],
+              impactHopDepth: 2,
+              impactLevel: "low" as const,
+              riskReasons: [],
+            }),
+          getSmartSuggestions: () => Effect.succeed([]),
+          refreshContextPool: () => Effect.succeed({} as never),
+          mergeTurnDiffContextEntries: () => Effect.void,
+        }),
+      ),
     );
     const orchestrationReactorLayer = OrchestrationReactorLive.pipe(
       Layer.provideMerge(runtimeIngestionLayer),

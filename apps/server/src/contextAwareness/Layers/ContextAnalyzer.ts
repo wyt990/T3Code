@@ -1,7 +1,7 @@
 import { Effect, Layer, Ref } from "effect";
 import type { Dirent } from "node:fs";
 import * as FS from "node:fs/promises";
-import { dirname, join, normalize, relative } from "node:path";
+import { join, relative } from "node:path";
 
 import {
   ContextAnalyzer,
@@ -9,10 +9,13 @@ import {
   ContextPoolNotFoundError,
 } from "../Services/ContextAnalyzer.ts";
 import {
-  loadWorkspacePackageIndex,
-  resolveBareSpecifierToWorkspaceRel,
-  type WorkspacePackageIndex,
-} from "../workspacePackageResolve.ts";
+  buildSpecifierResolutionMap,
+  extractApproximateCallEdges,
+  extractImportBindingTargets,
+  extractResolvedImportLikeTargets,
+  extractResolvedReexportTargetsUnified,
+} from "../dependencyGraphResolve.ts";
+import { loadWorkspacePackageIndex } from "../workspacePackageResolve.ts";
 import { runProcess } from "../../processRunner.ts";
 import type {
   ContextAnalysisRequest,
@@ -197,102 +200,6 @@ async function collectSourceFiles(workspaceRoot: string, maxFiles: number): Prom
   return out.slice(0, maxFiles);
 }
 
-function resolveWorkspaceRelativeImport(
-  fileAbs: string,
-  workspaceRoot: string,
-  spec: string,
-): string | null {
-  if (!spec.startsWith(".")) {
-    return null;
-  }
-  try {
-    const resolved = normalize(join(dirname(fileAbs), spec));
-    const rel = relative(workspaceRoot, resolved).replace(/\\/g, "/");
-    if (!rel.startsWith("..")) {
-      return rel;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-async function extractResolvedImportTargets(
-  fileAbs: string,
-  workspaceRoot: string,
-  source: string,
-  index: WorkspacePackageIndex,
-  existenceCache: Map<string, boolean>,
-): Promise<string[]> {
-  const imports: string[] = [];
-  const fromImport = /\bfrom\s+["']([^"']+)["']/g;
-  const dynImport = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
-  for (const re of [fromImport, dynImport]) {
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(source)) !== null) {
-      const spec = m[1];
-      if (!spec) continue;
-      if (spec.startsWith(".")) {
-        const rel = resolveWorkspaceRelativeImport(fileAbs, workspaceRoot, spec);
-        if (rel) {
-          imports.push(rel);
-        }
-      } else {
-        const rel = await resolveBareSpecifierToWorkspaceRel(
-          spec,
-          workspaceRoot,
-          index,
-          existenceCache,
-        );
-        if (rel) {
-          imports.push(rel);
-        }
-      }
-    }
-  }
-  return [...new Set(imports)];
-}
-
-/** `export * from './x'` / `export { a } from 'pkg'` 等 re-export 目标（含工作区包名） */
-async function extractResolvedReexportTargets(
-  fileAbs: string,
-  workspaceRoot: string,
-  source: string,
-  index: WorkspacePackageIndex,
-  existenceCache: Map<string, boolean>,
-): Promise<string[]> {
-  const targets: string[] = [];
-  const patterns = [
-    /export\s+\*\s+from\s+["']([^"']+)["']/g,
-    /export\s+\{[^}]+\}\s+from\s+["']([^"']+)["']/g,
-    /export\s+\*\s+as\s+\w+\s+from\s+["']([^"']+)["']/g,
-  ];
-  for (const re of patterns) {
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(source)) !== null) {
-      const spec = m[1];
-      if (!spec) continue;
-      if (spec.startsWith(".")) {
-        const rel = resolveWorkspaceRelativeImport(fileAbs, workspaceRoot, spec);
-        if (rel) {
-          targets.push(rel);
-        }
-      } else {
-        const rel = await resolveBareSpecifierToWorkspaceRel(
-          spec,
-          workspaceRoot,
-          index,
-          existenceCache,
-        );
-        if (rel) {
-          targets.push(rel);
-        }
-      }
-    }
-  }
-  return [...new Set(targets)];
-}
-
 async function buildImportDependencyGraph(
   workspaceRoot: string,
   maxFiles: number,
@@ -303,6 +210,18 @@ async function buildImportDependencyGraph(
   const files = await collectSourceFiles(workspaceRoot, cap);
   const pkgIndex = await loadWorkspacePackageIndex(workspaceRoot);
   const existenceCache = new Map<string, boolean>();
+  const externalNodeIds = new Set<string>();
+  const maxExternalNodes = 120;
+  const seenEdges = new Set<string>();
+
+  const pushEdge = (e: DependencyEdge): void => {
+    const k = `${e.from}\t${e.to}\t${e.type}`;
+    if (seenEdges.has(k)) {
+      return;
+    }
+    seenEdges.add(k);
+    edges.push(e);
+  };
 
   for (const abs of files) {
     let text: string;
@@ -312,38 +231,76 @@ async function buildImportDependencyGraph(
       continue;
     }
     const rel = relative(workspaceRoot, abs).replace(/\\/g, "/");
-    const imps = await extractResolvedImportTargets(
+    const { rels: imps, externalIds: importExternals } = await extractResolvedImportLikeTargets(
       abs,
       workspaceRoot,
       text,
       pkgIndex,
       existenceCache,
     );
-    const reExports = await extractResolvedReexportTargets(
-      abs,
-      workspaceRoot,
-      text,
-      pkgIndex,
-      existenceCache,
-    );
+    const { rels: reExportRels, externalIds: reExportExternals } =
+      await extractResolvedReexportTargetsUnified(
+        abs,
+        workspaceRoot,
+        text,
+        pkgIndex,
+        existenceCache,
+      );
     const impsSet = new Set(imps);
+    const importList = [...imps, ...reExportRels.filter((t: string) => !impsSet.has(t))];
+    const resMap = await buildSpecifierResolutionMap(
+      abs,
+      workspaceRoot,
+      text,
+      pkgIndex,
+      existenceCache,
+    );
+    const bindingTargets = extractImportBindingTargets(text, resMap);
+    const callEdges = extractApproximateCallEdges(rel, text, bindingTargets);
+
     nodes.push({
       id: rel,
       path: rel,
       type: "file",
-      imports: [...imps, ...reExports.filter((t) => !impsSet.has(t))],
-      exports: reExports,
+      imports: importList,
+      exports: reExportRels,
     });
     for (const to of imps) {
-      edges.push({ from: rel, to, type: "import" });
+      pushEdge({ from: rel, to, type: "import" });
     }
-    for (const to of reExports) {
-      edges.push({
-        from: rel,
-        to,
-        type: impsSet.has(to) ? "import" : "reference",
-      });
+    for (const ext of importExternals) {
+      pushEdge({ from: rel, to: ext, type: "external" });
+      if (externalNodeIds.size < maxExternalNodes) {
+        externalNodeIds.add(ext);
+      }
     }
+    for (const to of reExportRels) {
+      const t: DependencyEdge["type"] = impsSet.has(to)
+        ? "import"
+        : to.startsWith("nm:")
+          ? "external"
+          : "reference";
+      pushEdge({ from: rel, to, type: t });
+    }
+    for (const ext of reExportExternals) {
+      pushEdge({ from: rel, to: ext, type: "external" });
+      if (externalNodeIds.size < maxExternalNodes) {
+        externalNodeIds.add(ext);
+      }
+    }
+    for (const ce of callEdges) {
+      pushEdge({ from: ce.from, to: ce.to, type: "call" });
+    }
+  }
+
+  for (const id of externalNodeIds) {
+    nodes.push({
+      id,
+      path: id,
+      type: "module",
+      imports: [],
+      exports: [],
+    });
   }
 
   return {

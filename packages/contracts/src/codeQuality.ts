@@ -146,3 +146,12 @@ export const CodeQualityTurnGateDispatchSummary = Schema.Struct({
   messages: Schema.Array(Schema.String),
 });
 export type CodeQualityTurnGateDispatchSummary = typeof CodeQualityTurnGateDispatchSummary.Type;
+
+/** 按项目持久化的代码质量偏好（闸门阈值 + 可选最佳实践清单）。 */
+export const CodeQualityProjectPreferencesValue = Schema.Struct({
+  turnStartGateMode: CodeQualityTurnGateMode,
+  minScorePerSnippet: Schema.Number,
+  /** `null` 表示尚未在服务器保存过清单；客户端可展示默认模板直至用户保存。 */
+  checklist: Schema.NullOr(BestPracticeChecklist),
+});
+export type CodeQualityProjectPreferencesValue = typeof CodeQualityProjectPreferencesValue.Type;

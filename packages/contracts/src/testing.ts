@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 // =============================================================================
@@ -26,6 +26,19 @@ export const TestCase = Schema.Struct({
   updatedAt: TrimmedNonEmptyString,
 });
 export type TestCase = typeof TestCase.Type;
+
+/** 创建套件时的用例输入（服务端补齐 id / 时间戳） */
+export const TestCaseCreateInput = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  description: Schema.optionalKey(Schema.String),
+  type: Schema.Literals(["unit", "integration", "e2e"]),
+  targetFunction: Schema.optionalKey(TrimmedNonEmptyString),
+  targetFile: Schema.optionalKey(TrimmedNonEmptyString),
+  code: TrimmedNonEmptyString,
+  status: Schema.Literals(["draft", "generated", "verified", "failed"]),
+  coverage: Schema.optionalKey(TestCoverage),
+});
+export type TestCaseCreateInput = typeof TestCaseCreateInput.Type;
 
 export const TestSuite = Schema.Struct({
   id: TrimmedNonEmptyString,
@@ -128,6 +141,18 @@ export const TestRunConfig = Schema.Struct({
   coverageThreshold: Schema.Number,
   /** 若提供，则 `runTests` 可在该目录下执行 `vitest run`（需本机已安装依赖） */
   workspaceRoot: Schema.optionalKey(Schema.String),
+  /**
+   * 相对 `workspaceRoot` 的 Vitest 配置文件路径（如 `apps/server/vitest.config.ts`），
+   * 传给 `vitest run --config`，避免根目录默认 5s 超时等配置缺失。
+   */
+  vitestConfigPath: Schema.optionalKey(Schema.String),
+  /**
+   * 为 true 时在 `workspaceRoot` 执行 `bun turbo run test`（与根 `package.json` 的 `test` 脚本一致），
+   * 用于 CI/单仓编排；忽略 `testFiles`。可选 `turboFilter` → `--filter=`。
+   */
+  turboRunTest: Schema.optionalKey(Schema.Boolean),
+  /** 传给 `turbo run test --filter=`，例如 `@t3tools/server` */
+  turboFilter: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type TestRunConfig = typeof TestRunConfig.Type;
 
