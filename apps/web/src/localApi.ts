@@ -108,6 +108,23 @@ export function createLocalApi(rpcClient: WsRpcClient): LocalApi {
         }
         removeBrowserSavedEnvironmentSecret(environmentId);
       },
+      getSshSecret: async (connectionId, kind) => {
+        if (window.desktopBridge) {
+          return window.desktopBridge.getSshSecret(connectionId, kind);
+        }
+        return null;
+      },
+      setSshSecret: async (connectionId, kind, value) => {
+        if (window.desktopBridge) {
+          return window.desktopBridge.setSshSecret(connectionId, kind, value);
+        }
+        return false;
+      },
+      removeSshSecrets: async (connectionId) => {
+        if (window.desktopBridge) {
+          return window.desktopBridge.removeSshSecrets(connectionId);
+        }
+      },
     },
     server: {
       getConfig: rpcClient.server.getConfig,

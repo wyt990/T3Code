@@ -697,6 +697,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     environmentId: localEnvironmentId,
     name: "Project",
     cwd: "/tmp/project",
+    transport: { type: "local" },
     defaultModelSelection: {
       provider: "codex",
       model: "gpt-5.4",

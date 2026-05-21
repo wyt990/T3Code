@@ -63,6 +63,7 @@ export interface ServerConfigShape extends ServerDerivedPaths {
   readonly noBrowser: boolean;
   readonly startupPresentation: StartupPresentation;
   readonly desktopBootstrapToken: string | undefined;
+  readonly sshCredentialPort: number | undefined;
   readonly autoBootstrapProjectFromCwd: boolean;
   readonly logWebSocketEvents: boolean;
 }
@@ -161,6 +162,7 @@ export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShap
           port: 0,
           host: undefined,
           desktopBootstrapToken: undefined,
+          sshCredentialPort: undefined,
           staticDir: undefined,
           devUrl,
           noBrowser: false,

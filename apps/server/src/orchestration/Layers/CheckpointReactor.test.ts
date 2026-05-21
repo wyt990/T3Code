@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CheckpointStoreLive } from "../../checkpointing/Layers/CheckpointStore.ts";
 import { CheckpointStore } from "../../checkpointing/Services/CheckpointStore.ts";
 import { GitCoreLive } from "../../git/Layers/GitCore.ts";
+import { GitCoreCollaboratorsTestLive } from "../../git/Layers/GitCoreTestSupport.ts";
 import { GitStatusBroadcaster } from "../../git/Services/GitStatusBroadcaster.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { RepositoryIdentityResolverLive } from "../../project/Layers/RepositoryIdentityResolver.ts";
@@ -297,7 +298,12 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(CheckpointStoreLive),
       Layer.provideMerge(WorkspaceEntriesLive.pipe(Layer.provide(WorkspacePathsLive))),
       Layer.provideMerge(WorkspacePathsLive),
-      Layer.provideMerge(GitCoreLive.pipe(Layer.provide(ServerSettingsService.layerTest()))),
+      Layer.provideMerge(
+        GitCoreLive.pipe(
+          Layer.provide(ServerSettingsService.layerTest()),
+          Layer.provideMerge(GitCoreCollaboratorsTestLive),
+        ),
+      ),
       Layer.provideMerge(ServerConfigLayer),
       Layer.provideMerge(NodeServices.layer),
       Layer.provideMerge(

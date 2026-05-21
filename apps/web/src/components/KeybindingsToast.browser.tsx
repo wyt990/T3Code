@@ -120,6 +120,7 @@ function createMinimalSnapshot(): OrchestrationReadModel {
         id: PROJECT_ID,
         title: "Project",
         workspaceRoot: "/repo/project",
+        transport: { type: "local" },
         defaultModelSelection: {
           provider: "codex",
           model: "gpt-5",

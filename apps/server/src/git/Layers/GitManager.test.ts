@@ -22,6 +22,7 @@ import {
 } from "../Services/GitHubCli.ts";
 import { type TextGenerationShape, TextGeneration } from "../Services/TextGeneration.ts";
 import { GitCoreLive } from "./GitCore.ts";
+import { GitCoreCollaboratorsTestLive } from "./GitCoreTestSupport.ts";
 import { GitCore } from "../Services/GitCore.ts";
 import { makeGitManager } from "./GitManager.ts";
 import { ServerConfig } from "../../config.ts";
@@ -643,6 +644,7 @@ function makeManager(input?: {
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(ServerConfigLayer),
     Layer.provideMerge(serverSettingsLayer),
+    Layer.provideMerge(GitCoreCollaboratorsTestLive),
   );
 
   const managerLayer = Layer.mergeAll(
@@ -673,6 +675,7 @@ const GitManagerTestLayer = Layer.mergeAll(
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-git-manager-test-" })),
     Layer.provideMerge(NodeServices.layer),
     Layer.provide(gitManagerTestServerSettingsLayer),
+    Layer.provideMerge(GitCoreCollaboratorsTestLive),
   ),
   gitManagerTestServerSettingsLayer,
 );

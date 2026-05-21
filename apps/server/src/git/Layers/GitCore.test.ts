@@ -3,7 +3,7 @@ import path from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import { Effect, FileSystem, Layer, PlatformError, Scope } from "effect";
+import { Effect, FileSystem, Layer, Option, PlatformError, Scope } from "effect";
 import { describe, expect, vi } from "vitest";
 
 import { GitCoreLive, makeGitCore } from "./GitCore.ts";
@@ -12,14 +12,17 @@ import { GitCommandError } from "@t3tools/contracts";
 import { type ProcessRunResult, runProcess } from "../../processRunner.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { GitCoreCollaboratorsTestLive } from "./GitCoreTestSupport.ts";
 
 // ── Helpers ──
 
 const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), { prefix: "t3-git-core-test-" });
+
 const TestLayer = GitCoreLive.pipe(
   Layer.provide(ServerConfigLayer),
   Layer.provideMerge(NodeServices.layer),
   Layer.provide(ServerSettingsService.layerTest()),
+  Layer.provideMerge(GitCoreCollaboratorsTestLive),
 );
 
 function makeTmpDir(
@@ -127,6 +130,7 @@ const makeIsolatedGitCore = (executeOverride: GitCoreShape["execute"]) =>
         Layer.provideMerge(ServerConfigLayer),
         Layer.provideMerge(NodeServices.layer),
         Layer.provideMerge(ServerSettingsService.layerTest()),
+        Layer.provideMerge(GitCoreCollaboratorsTestLive),
       ),
     ),
   );

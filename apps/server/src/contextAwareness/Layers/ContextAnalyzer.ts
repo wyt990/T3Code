@@ -1,13 +1,20 @@
-import { Effect, Layer, Ref } from "effect";
-import type { Dirent } from "node:fs";
-import * as FS from "node:fs/promises";
-import { join, relative } from "node:path";
+import { Effect, Layer, Option, Ref } from "effect";
 
+import {
+  type ContextWorkspaceAccess,
+  createLocalContextWorkspaceAccess,
+  createSshContextWorkspaceAccess,
+} from "../contextWorkspaceAccess.ts";
 import {
   ContextAnalyzer,
   type ContextAnalyzerShape,
+  ContextAnalysisError,
   ContextPoolNotFoundError,
+  DependencyGraphBuildError,
 } from "../Services/ContextAnalyzer.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { WorkspaceExecutionResolver } from "../../workspace/Services/WorkspaceExecution.ts";
+import { resolveWorkspaceExecutionForProject } from "../../workspace/resolveWorkspaceExecutionByCwd.ts";
 import {
   buildSpecifierResolutionMap,
   extractApproximateCallEdges,
@@ -16,7 +23,6 @@ import {
   extractResolvedReexportTargetsUnified,
 } from "../dependencyGraphResolve.ts";
 import { loadWorkspacePackageIndex } from "../workspacePackageResolve.ts";
-import { runProcess } from "../../processRunner.ts";
 import type {
   ContextAnalysisRequest,
   ContextPool,
@@ -37,15 +43,13 @@ import type {
 // Context Extraction Helpers
 // -----------------------------------------------------------------------------
 
-async function findGitModifiedFiles(workspaceRoot: string): Promise<string[]> {
+async function findGitModifiedFiles(access: ContextWorkspaceAccess): Promise<string[]> {
   try {
-    const gitDir = join(workspaceRoot, ".git");
-    const stat = await FS.stat(gitDir).catch(() => null);
-    if (!stat?.isDirectory()) {
+    const gitDir = access.joinPath(access.workspaceRoot, ".git");
+    if (!(await access.pathExistsDirectory(gitDir))) {
       return [];
     }
-    const result = await runProcess("git", ["status", "--porcelain"], {
-      cwd: workspaceRoot,
+    const result = await access.runGit(["status", "--porcelain"], {
       timeoutMs: 30_000,
       allowNonZeroExit: true,
     });
@@ -70,7 +74,7 @@ async function findGitModifiedFiles(workspaceRoot: string): Promise<string[]> {
 }
 
 async function findTodoComments(
-  workspaceRoot: string,
+  access: ContextWorkspaceAccess,
 ): Promise<Array<{ path: string; line: number; content: string; kind: "todo" | "fixme" }>> {
   const results: Array<{ path: string; line: number; content: string; kind: "todo" | "fixme" }> =
     [];
@@ -78,23 +82,26 @@ async function findTodoComments(
 
   async function walk(dir: string, depth: number): Promise<void> {
     if (depth > 6 || results.length >= 200) return;
-    let entries: Dirent[];
+    let entries: ReadonlyArray<{ name: string; isDirectory: boolean }>;
     try {
-      entries = (await FS.readdir(dir, { withFileTypes: true })) as Dirent[];
+      entries = await access.readdirEntries(dir);
     } catch {
       return;
     }
     for (const ent of entries) {
-      const base = String(ent.name);
+      const base = ent.name;
       if (skip.has(base)) continue;
-      const full = join(dir, base);
-      if (ent.isDirectory()) {
+      const full = access.joinPath(dir, base);
+      if (ent.isDirectory) {
         await walk(full, depth + 1);
       } else if (/\.(ts|tsx|js|jsx|mjs|cjs|vue|css|md)$/i.test(base)) {
         try {
-          const text = await FS.readFile(full, "utf-8");
+          const text = await access.readUtf8(full);
           const lines = text.split("\n");
-          const rel = relative(workspaceRoot, full).replace(/\\/g, "/");
+          const rel = access.relativeFromRoot(full);
+          if (rel === null) {
+            continue;
+          }
           lines.forEach((lineText, i) => {
             const isFixme = /\bFIXME\b/i.test(lineText);
             const isTodo = /\bTODO\b/i.test(lineText);
@@ -114,19 +121,17 @@ async function findTodoComments(
     }
   }
 
-  await walk(workspaceRoot, 0);
+  await walk(access.workspaceRoot, 0);
   return results;
 }
 
-async function findBranchUpstreamDeltaFiles(workspaceRoot: string): Promise<string[]> {
+async function findBranchUpstreamDeltaFiles(access: ContextWorkspaceAccess): Promise<string[]> {
   try {
-    const gitDir = join(workspaceRoot, ".git");
-    const stat = await FS.stat(gitDir).catch(() => null);
-    if (!stat?.isDirectory()) {
+    const gitDir = access.joinPath(access.workspaceRoot, ".git");
+    if (!(await access.pathExistsDirectory(gitDir))) {
       return [];
     }
-    const upstreamRef = await runProcess("git", ["rev-parse", "--abbrev-ref", "@{u}"], {
-      cwd: workspaceRoot,
+    const upstreamRef = await access.runGit(["rev-parse", "--abbrev-ref", "@{u}"], {
       timeoutMs: 12_000,
       allowNonZeroExit: true,
     });
@@ -134,8 +139,7 @@ async function findBranchUpstreamDeltaFiles(workspaceRoot: string): Promise<stri
       return [];
     }
     const upstream = upstreamRef.stdout.trim();
-    const diff = await runProcess("git", ["diff", "--name-only", `${upstream}...HEAD`], {
-      cwd: workspaceRoot,
+    const diff = await access.runGit(["diff", "--name-only", `${upstream}...HEAD`], {
       timeoutMs: 45_000,
       allowNonZeroExit: true,
     });
@@ -155,40 +159,38 @@ async function findBranchUpstreamDeltaFiles(workspaceRoot: string): Promise<stri
   }
 }
 
-async function identifyCoreModules(workspaceRoot: string): Promise<string[]> {
+async function identifyCoreModules(access: ContextWorkspaceAccess): Promise<string[]> {
   const corePatterns = ["src/", "lib/", "apps/", "packages/"];
   const modules: string[] = [];
   for (const pattern of corePatterns) {
-    const dir = join(workspaceRoot, pattern);
-    try {
-      const stat = await FS.stat(dir);
-      if (stat.isDirectory()) {
-        modules.push(pattern);
-      }
-    } catch {
-      // Directory doesn't exist
+    const dir = access.joinPath(access.workspaceRoot, pattern);
+    if (await access.pathExistsDirectory(dir)) {
+      modules.push(pattern);
     }
   }
   return modules;
 }
 
-async function collectSourceFiles(workspaceRoot: string, maxFiles: number): Promise<string[]> {
+async function collectSourceFiles(
+  access: ContextWorkspaceAccess,
+  maxFiles: number,
+): Promise<string[]> {
   const out: string[] = [];
   const skip = new Set(["node_modules", ".git", "dist", "build", ".turbo", "coverage", ".next"]);
 
   async function walk(dir: string, depth: number): Promise<void> {
     if (out.length >= maxFiles || depth > 8) return;
-    let entries: Dirent[];
+    let entries: ReadonlyArray<{ name: string; isDirectory: boolean }>;
     try {
-      entries = (await FS.readdir(dir, { withFileTypes: true })) as Dirent[];
+      entries = await access.readdirEntries(dir);
     } catch {
       return;
     }
     for (const ent of entries) {
-      const base = String(ent.name);
+      const base = ent.name;
       if (skip.has(base)) continue;
-      const full = join(dir, base);
-      if (ent.isDirectory()) {
+      const full = access.joinPath(dir, base);
+      if (ent.isDirectory) {
         await walk(full, depth + 1);
       } else if (/\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(base)) {
         out.push(full);
@@ -196,19 +198,19 @@ async function collectSourceFiles(workspaceRoot: string, maxFiles: number): Prom
     }
   }
 
-  await walk(workspaceRoot, 0);
+  await walk(access.workspaceRoot, 0);
   return out.slice(0, maxFiles);
 }
 
 async function buildImportDependencyGraph(
-  workspaceRoot: string,
+  access: ContextWorkspaceAccess,
   maxFiles: number,
 ): Promise<DependencyGraph> {
   const nodes: DependencyNode[] = [];
   const edges: DependencyEdge[] = [];
   const cap = Math.min(Math.max(maxFiles, 20), 400);
-  const files = await collectSourceFiles(workspaceRoot, cap);
-  const pkgIndex = await loadWorkspacePackageIndex(workspaceRoot);
+  const files = await collectSourceFiles(access, cap);
+  const pkgIndex = await loadWorkspacePackageIndex(access.workspaceRoot, access);
   const existenceCache = new Map<string, boolean>();
   const externalNodeIds = new Set<string>();
   const maxExternalNodes = 120;
@@ -226,34 +228,40 @@ async function buildImportDependencyGraph(
   for (const abs of files) {
     let text: string;
     try {
-      text = await FS.readFile(abs, "utf-8");
+      text = await access.readUtf8(abs);
     } catch {
       continue;
     }
-    const rel = relative(workspaceRoot, abs).replace(/\\/g, "/");
+    const rel = access.relativeFromRoot(abs);
+    if (rel === null) {
+      continue;
+    }
     const { rels: imps, externalIds: importExternals } = await extractResolvedImportLikeTargets(
       abs,
-      workspaceRoot,
+      access.workspaceRoot,
       text,
       pkgIndex,
       existenceCache,
+      access,
     );
     const { rels: reExportRels, externalIds: reExportExternals } =
       await extractResolvedReexportTargetsUnified(
         abs,
-        workspaceRoot,
+        access.workspaceRoot,
         text,
         pkgIndex,
         existenceCache,
+        access,
       );
     const impsSet = new Set(imps);
     const importList = [...imps, ...reExportRels.filter((t: string) => !impsSet.has(t))];
     const resMap = await buildSpecifierResolutionMap(
       abs,
-      workspaceRoot,
+      access.workspaceRoot,
       text,
       pkgIndex,
       existenceCache,
+      access,
     );
     const bindingTargets = extractImportBindingTargets(text, resMap);
     const callEdges = extractApproximateCallEdges(rel, text, bindingTargets);
@@ -316,14 +324,49 @@ async function buildImportDependencyGraph(
 
 export const makeContextAnalyzer = Effect.gen(function* () {
   const contextPoolCache = yield* Ref.make<Map<string, ContextPool>>(new Map());
+  const resolveAccess = (workspaceRoot: string) =>
+    Effect.gen(function* () {
+      const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+      const workspaceExecutionResolver = yield* WorkspaceExecutionResolver;
+      const projectOption =
+        yield* projectionSnapshotQuery.getActiveProjectByWorkspaceRoot(workspaceRoot);
+      const executionOption = yield* resolveWorkspaceExecutionForProject(
+        projectOption,
+        workspaceExecutionResolver,
+      );
+      if (Option.isSome(executionOption)) {
+        return createSshContextWorkspaceAccess(workspaceRoot, executionOption.value);
+      }
+      return createLocalContextWorkspaceAccess(workspaceRoot);
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ContextAnalysisError({
+            message: `Failed to resolve workspace access for ${workspaceRoot}`,
+            cause: String(cause),
+          }),
+      ),
+    );
+
+  const resolveAccessForGraph = (workspaceRoot: string) =>
+    resolveAccess(workspaceRoot).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DependencyGraphBuildError({
+            workspaceRoot,
+            message: String(cause),
+          }),
+      ),
+    );
 
   const analyzeContext: ContextAnalyzerShape["analyzeContext"] = Effect.fn(
     "ContextAnalyzer.analyzeContext",
   )(function* (request: ContextAnalysisRequest) {
+    const access = yield* resolveAccess(request.workspaceRoot);
     const entries: ContextEntry[] = [];
 
     if (request.options?.includeCoreModules ?? true) {
-      const coreModules = yield* Effect.promise(() => identifyCoreModules(request.workspaceRoot));
+      const coreModules = yield* Effect.promise(() => identifyCoreModules(access));
       for (const module of coreModules) {
         entries.push({
           id: `core-${module}`,
@@ -339,9 +382,7 @@ export const makeContextAnalyzer = Effect.gen(function* () {
     }
 
     if (request.options?.includeGitDiff ?? true) {
-      const modifiedFiles = yield* Effect.promise(() =>
-        findGitModifiedFiles(request.workspaceRoot),
-      );
+      const modifiedFiles = yield* Effect.promise(() => findGitModifiedFiles(access));
       for (const file of modifiedFiles) {
         entries.push({
           id: `git-${file}`,
@@ -357,7 +398,7 @@ export const makeContextAnalyzer = Effect.gen(function* () {
     }
 
     if (request.options?.includeTodoComments ?? true) {
-      const todos = yield* Effect.promise(() => findTodoComments(request.workspaceRoot));
+      const todos = yield* Effect.promise(() => findTodoComments(access));
       for (const todo of todos) {
         const isFixme = todo.kind === "fixme";
         entries.push({
@@ -376,9 +417,7 @@ export const makeContextAnalyzer = Effect.gen(function* () {
 
     if (request.options?.includeBranchDelta !== false) {
       const seenPaths = new Set(entries.map((e) => e.source.path));
-      const upstreamFiles = yield* Effect.promise(() =>
-        findBranchUpstreamDeltaFiles(request.workspaceRoot),
-      );
+      const upstreamFiles = yield* Effect.promise(() => findBranchUpstreamDeltaFiles(access));
       for (const file of upstreamFiles) {
         if (seenPaths.has(file)) {
           continue;
@@ -404,7 +443,7 @@ export const makeContextAnalyzer = Effect.gen(function* () {
         : 160;
     const dependencyGraph =
       (request.options?.includeCoreModules ?? true)
-        ? yield* Effect.promise(() => buildImportDependencyGraph(request.workspaceRoot, maxDep))
+        ? yield* Effect.promise(() => buildImportDependencyGraph(access, maxDep))
         : undefined;
 
     const suggestions: SmartSuggestion[] = [];
@@ -505,7 +544,8 @@ export const makeContextAnalyzer = Effect.gen(function* () {
   const buildDependencyGraph: ContextAnalyzerShape["buildDependencyGraph"] = Effect.fn(
     "ContextAnalyzer.buildDependencyGraph",
   )(function* (workspaceRoot: string) {
-    return yield* Effect.promise(() => buildImportDependencyGraph(workspaceRoot, 160));
+    const access = yield* resolveAccessForGraph(workspaceRoot);
+    return yield* Effect.promise(() => buildImportDependencyGraph(access, 160));
   });
 
   const analyzeChangeImpact: ContextAnalyzerShape["analyzeChangeImpact"] = Effect.fn(

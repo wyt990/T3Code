@@ -294,9 +294,18 @@ const make = Effect.gen(function* () {
     }
     const preferredProvider: ProviderKind = threadProvider;
     const desiredModelSelection = requestedModelSelection ?? thread.modelSelection;
+    const project = readModel.projects.find((entry) => entry.id === thread.projectId);
     const effectiveCwd = resolveThreadWorkspaceCwd({
       thread,
       projects: readModel.projects,
+    });
+
+    yield* Effect.annotateCurrentSpan({
+      "project.transport": project?.transport.type ?? "local",
+      ...(project?.transport.type === "ssh"
+        ? { "project.ssh_connection_id": project.transport.sshConnectionId }
+        : {}),
+      "provider.cwd.effective": effectiveCwd ?? "",
     });
 
     const resolveActiveSession = (threadId: ThreadId) =>

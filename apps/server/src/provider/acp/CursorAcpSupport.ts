@@ -12,6 +12,7 @@ import {
   AcpSessionRuntime,
   type AcpSessionRuntimeOptions,
   type AcpSessionRuntimeShape,
+  type AcpSpawnConfig,
   type AcpSpawnInput,
 } from "./AcpSessionRuntime.ts";
 
@@ -23,6 +24,7 @@ export interface CursorAcpRuntimeInput extends Omit<
 > {
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly cursorSettings: CursorAcpRuntimeCursorSettings | null | undefined;
+  readonly spawnConfig?: AcpSpawnConfig;
 }
 
 export interface CursorAcpModelSelectionErrorContext {
@@ -31,16 +33,20 @@ export interface CursorAcpModelSelectionErrorContext {
   readonly configId?: string;
 }
 
+export const buildCursorAcpAgentArgs = (
+  apiEndpoint: string | null | undefined,
+): readonly string[] => [
+  ...(apiEndpoint?.trim() ? (["-e", apiEndpoint.trim()] as const) : []),
+  "acp",
+];
+
 export function buildCursorAcpSpawnInput(
   cursorSettings: CursorAcpRuntimeCursorSettings | null | undefined,
   cwd: string,
 ): AcpSpawnInput {
   return {
     command: cursorSettings?.binaryPath || "agent",
-    args: [
-      ...(cursorSettings?.apiEndpoint ? (["-e", cursorSettings.apiEndpoint] as const) : []),
-      "acp",
-    ],
+    args: [...buildCursorAcpAgentArgs(cursorSettings?.apiEndpoint)],
     cwd,
   };
 }
@@ -53,6 +59,7 @@ export const makeCursorAcpRuntime = (
       AcpSessionRuntime.layer({
         ...input,
         spawn: buildCursorAcpSpawnInput(input.cursorSettings, input.cwd),
+        ...(input.spawnConfig ? { spawnConfig: input.spawnConfig } : {}),
         authMethodId: "cursor_login",
         clientCapabilities: CURSOR_PARAMETERIZED_MODEL_PICKER_CAPABILITIES,
       }).pipe(

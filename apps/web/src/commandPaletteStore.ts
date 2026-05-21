@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 interface CommandPaletteOpenIntent {
-  kind: "add-project";
+  kind: "add-project" | "add-project-ssh";
   requestId: number;
 }
 
@@ -48,6 +48,7 @@ interface CommandPaletteStore {
   setOpen: (open: boolean) => void;
   toggleOpen: () => void;
   openAddProject: () => void;
+  openAddProjectSsh: () => void;
   clearOpenIntent: () => void;
   setQuery: (query: string) => void;
   setSelectedIndex: (index: number) => void;
@@ -159,6 +160,14 @@ export const useCommandPaletteStore = create<CommandPaletteStore>()(
           open: true,
           openIntent: {
             kind: "add-project",
+            requestId: (state.openIntent?.requestId ?? 0) + 1,
+          },
+        })),
+      openAddProjectSsh: () =>
+        set((state) => ({
+          open: true,
+          openIntent: {
+            kind: "add-project-ssh",
             requestId: (state.openIntent?.requestId ?? 0) + 1,
           },
         })),

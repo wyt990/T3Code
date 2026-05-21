@@ -203,6 +203,18 @@ function createMockEnvironmentApi(input: {
     filesystem: {
       browse: input.browse,
     },
+    ssh: {
+      listConnections: async () => [],
+      listDirectory: async () => ({ parentPath: "/", entries: [] }),
+      upsertConnection: async () => {
+        throw new Error("Not implemented in browser test.");
+      },
+      deleteConnection: async () => undefined,
+      testConnection: async () => ({ ok: true }),
+      confirmHostKey: async () => undefined,
+      listProviderProbes: async () => ({ connectionId: "", probes: [] }),
+      getConnectionProviders: async () => ({ providers: [] }),
+    },
     git: {} as EnvironmentApi["git"],
     orchestration: {
       dispatchCommand: input.dispatchCommand,
@@ -322,6 +334,7 @@ function createSnapshotForTargetUser(options: {
         id: PROJECT_ID,
         title: "Project",
         workspaceRoot: "/repo/project",
+        transport: { type: "local" },
         defaultModelSelection: {
           provider: "codex",
           model: "gpt-5",
@@ -807,6 +820,7 @@ function createSnapshotWithSecondaryProject(options?: {
         id: SECOND_PROJECT_ID,
         title: "Docs Portal",
         workspaceRoot: "/repo/clients/docs-portal",
+        transport: { type: "local" },
         defaultModelSelection: { provider: "codex", model: "gpt-5" },
         scripts: [],
         createdAt: NOW_ISO,

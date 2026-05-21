@@ -14,6 +14,7 @@ import {
   OrchestrationProposedPlan,
   OrchestrationSession,
   ProjectCreateCommand,
+  ProjectTransport,
   ThreadMetaUpdatedPayload,
   ThreadTurnStartCommand,
   ThreadCreatedPayload,
@@ -110,6 +111,24 @@ it.effect("trims branded ids and command string fields at decode boundaries", ()
   }),
 );
 
+it.effect("decodes project.create with ssh transport", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeProjectCreateCommand({
+      type: "project.create",
+      commandId: "cmd-1",
+      projectId: "project-1",
+      title: "Remote Project",
+      workspaceRoot: "/home/user/repo",
+      transport: { type: "ssh", sshConnectionId: "conn-1" },
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.deepStrictEqual(parsed.transport, {
+      type: "ssh",
+      sshConnectionId: "conn-1",
+    } satisfies ProjectTransport);
+  }),
+);
+
 it.effect("decodes project.create with createWorkspaceRootIfMissing enabled", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeProjectCreateCommand({
@@ -141,6 +160,7 @@ it.effect("decodes historical project.created payloads with a default provider",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     assert.strictEqual(parsed.defaultModelSelection?.provider, "codex");
+    assert.deepStrictEqual(parsed.transport, { type: "local" });
   }),
 );
 

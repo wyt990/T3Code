@@ -22,7 +22,15 @@ import {
   SynchronizedRef,
 } from "effect";
 
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ServerConfig } from "../../config.ts";
+import { resolveWorkspaceExecutionByCwd } from "../../workspace/resolveWorkspaceExecutionByCwd.ts";
+import {
+  WorkspaceExecutionError,
+  WorkspaceExecutionResolver,
+  type WorkspaceExecution,
+} from "../../workspace/Services/WorkspaceExecution.ts";
+import { createSshTerminalPtyProcess } from "../sshTerminalProcess.ts";
 import {
   increment,
   terminalRestartsTotal,
@@ -695,10 +703,26 @@ function normalizedRuntimeEnv(
   return Object.fromEntries(entries.toSorted(([left], [right]) => left.localeCompare(right)));
 }
 
+const terminalCwdReasonFromWorkspaceError = (
+  error: WorkspaceExecutionError,
+): "notFound" | "statFailed" => {
+  const detail = error.detail.toLowerCase();
+  if (
+    detail.includes("not found") ||
+    detail.includes("no such file") ||
+    detail.includes("enoent")
+  ) {
+    return "notFound";
+  }
+  return "statFailed";
+};
+
 interface TerminalManagerOptions {
   logsDir: string;
   historyLineLimit?: number;
   ptyAdapter: PtyAdapterShape;
+  projectionSnapshotQuery: ProjectionSnapshotQuery["Service"];
+  workspaceExecutionResolver: WorkspaceExecutionResolver["Service"];
   shellResolver?: () => string;
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
@@ -711,9 +735,13 @@ interface TerminalManagerOptions {
 const makeTerminalManager = Effect.fn("makeTerminalManager")(function* () {
   const { terminalLogsDir } = yield* ServerConfig;
   const ptyAdapter = yield* PtyAdapter;
+  const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+  const workspaceExecutionResolver = yield* WorkspaceExecutionResolver;
   return yield* makeTerminalManagerWithOptions({
     logsDir: terminalLogsDir,
     ptyAdapter,
+    projectionSnapshotQuery,
+    workspaceExecutionResolver,
   });
 });
 
@@ -1077,7 +1105,37 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
       );
     });
 
+    const resolveSshExecutionForCwd = (cwd: string) =>
+      resolveWorkspaceExecutionByCwd(cwd).pipe(
+        Effect.provideService(ProjectionSnapshotQuery, options.projectionSnapshotQuery),
+        Effect.provideService(WorkspaceExecutionResolver, options.workspaceExecutionResolver),
+      );
+
     const assertValidCwd = Effect.fn("terminal.assertValidCwd")(function* (cwd: string) {
+      const sshExecution = yield* resolveSshExecutionForCwd(cwd).pipe(
+        Effect.catch(() => Effect.succeed(Option.none<WorkspaceExecution>())),
+      );
+
+      if (Option.isSome(sshExecution)) {
+        const remoteStat = yield* sshExecution.value.fileSystem.stat(cwd).pipe(
+          Effect.mapError(
+            (cause) =>
+              new TerminalCwdError({
+                cwd,
+                reason: terminalCwdReasonFromWorkspaceError(cause),
+                cause,
+              }),
+          ),
+        );
+        if (!remoteStat.isDirectory) {
+          return yield* new TerminalCwdError({
+            cwd,
+            reason: "notDirectory",
+          });
+        }
+        return;
+      }
+
       const stats = yield* fileSystem.stat(cwd).pipe(
         Effect.mapError(
           (cause) =>
@@ -1390,9 +1448,30 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
         increment(terminalSessionsTotal, { lifecycle: eventType }).pipe(
           Effect.andThen(
             Effect.gen(function* () {
-              const shellCandidates = resolveShellCandidates(shellResolver, platform, baseEnv);
               const terminalEnv = createTerminalSpawnEnv(baseEnv, session.runtimeEnv);
-              const spawnResult = yield* trySpawn(shellCandidates, terminalEnv, session);
+              const sshExecution = yield* resolveSshExecutionForCwd(input.cwd).pipe(
+                Effect.catch(() => Effect.succeed(Option.none<WorkspaceExecution>())),
+              );
+
+              const spawnResult =
+                Option.isSome(sshExecution) && sshExecution.value.kind === "ssh"
+                  ? yield* Effect.gen(function* () {
+                      const sshSession = yield* sshExecution.value.terminal.open({
+                        cwd: input.cwd,
+                        cols: input.cols,
+                        rows: input.rows,
+                      });
+                      return {
+                        process: createSshTerminalPtyProcess(sshSession),
+                        shellLabel: "ssh",
+                      };
+                    })
+                  : yield* trySpawn(
+                      resolveShellCandidates(shellResolver, platform, baseEnv),
+                      terminalEnv,
+                      session,
+                    );
+
               ptyProcess = spawnResult.process;
               startedShell = spawnResult.shellLabel;
 

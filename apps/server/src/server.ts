@@ -47,7 +47,10 @@ import { ProviderInstallerLive } from "./provider/ProviderInstallerLive.ts";
 import { ServerSettingsLive } from "./serverSettings.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
+import { RemoteProviderProbeLive } from "./provider/remoteProviderProbe.ts";
+import { SshInfrastructureLive } from "./ssh/Layers/index.ts";
 import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
+import { WorkspaceExecutionResolverLive } from "./workspace/Layers/WorkspaceExecutionResolver.ts";
 import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem.ts";
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
 import { ProjectSetupScriptRunnerLive } from "./project/Layers/ProjectSetupScriptRunner.ts";
@@ -228,44 +231,47 @@ const AuthLayerLive = ServerAuthLive.pipe(
 );
 
 const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
-  Layer.provideMerge(ProviderLayerLive),
   Layer.provideMerge(OrchestrationLayerLive),
+  Layer.provideMerge(ProviderLayerLive),
 );
 
-/** Split `provideMerge` chains: TS caps `Layer.pipe` arity; Effect LS `unnecessaryPipeChain` is off in tsconfig. */
-const RuntimeDependenciesLive = Layer.empty
-  .pipe(
-    Layer.provideMerge(ReactorLayerLive),
-    Layer.provideMerge(CheckpointingLayerLive),
-    Layer.provideMerge(GitLayerLive),
-    Layer.provideMerge(ProviderRuntimeLayerLive),
-    Layer.provideMerge(TerminalLayerLive),
-    Layer.provideMerge(PersistenceLayerLive),
-    Layer.provideMerge(KeybindingsLive),
-    Layer.provideMerge(ProviderRegistryLive),
-    Layer.provideMerge(ProviderInstallerLive),
-    Layer.provideMerge(WorkspaceLayerLive),
-    Layer.provideMerge(ProjectFaviconResolverLive),
-    Layer.provideMerge(RepositoryIdentityResolverLive),
-    Layer.provideMerge(ServerEnvironmentLive),
-    Layer.provideMerge(AuthLayerLive),
-  )
-  .pipe(
-    Layer.provideMerge(ExecutionVisualizerLive),
-    Layer.provideMerge(MultiAgentOrchestratorLive),
-    Layer.provideMerge(ContextAnalyzerLive),
-    Layer.provideMerge(CodeQualityProjectPreferencesLive),
-    Layer.provideMerge(CodeQualityGuardLive),
-    Layer.provideMerge(TestOrchestratorLive),
-    Layer.provideMerge(EnvironmentManagerLive),
-  )
-  .pipe(
-    Layer.provideMerge(AnalyticsServiceLayerLive),
-    Layer.provideMerge(OpenLive),
-    Layer.provideMerge(ServerLifecycleEventsLive),
-    Layer.provide(NetService.layer),
-  )
-  .pipe(Layer.provideMerge(ServerSettingsLive));
+/** SSH-backed services must see SshInfrastructureLive when their Layer.effect runs. */
+const SshDependentLayersLive = Layer.mergeAll(
+  RemoteProviderProbeLive,
+  WorkspaceExecutionResolverLive,
+).pipe(Layer.provideMerge(SshInfrastructureLive));
+
+const RuntimeDependenciesLive = Layer.empty.pipe(
+  Layer.provideMerge(ReactorLayerLive),
+  Layer.provideMerge(CheckpointingLayerLive),
+  Layer.provideMerge(ProviderRuntimeLayerLive),
+  Layer.provideMerge(GitLayerLive),
+  Layer.provideMerge(TerminalLayerLive),
+  Layer.provideMerge(PersistenceLayerLive),
+  Layer.provideMerge(SshInfrastructureLive),
+  Layer.provideMerge(SshDependentLayersLive),
+  Layer.provideMerge(PtyAdapterLive),
+  Layer.provideMerge(KeybindingsLive),
+  Layer.provideMerge(ProviderRegistryLive),
+  Layer.provideMerge(ProviderInstallerLive),
+  Layer.provideMerge(WorkspaceLayerLive),
+  Layer.provideMerge(ProjectFaviconResolverLive),
+  Layer.provideMerge(RepositoryIdentityResolverLive),
+  Layer.provideMerge(ServerEnvironmentLive),
+  Layer.provideMerge(AuthLayerLive),
+  Layer.provideMerge(ExecutionVisualizerLive),
+  Layer.provideMerge(MultiAgentOrchestratorLive),
+  Layer.provideMerge(ContextAnalyzerLive),
+  Layer.provideMerge(CodeQualityProjectPreferencesLive),
+  Layer.provideMerge(CodeQualityGuardLive),
+  Layer.provideMerge(TestOrchestratorLive),
+  Layer.provideMerge(EnvironmentManagerLive),
+  Layer.provideMerge(AnalyticsServiceLayerLive),
+  Layer.provideMerge(OpenLive),
+  Layer.provideMerge(ServerLifecycleEventsLive),
+  Layer.provide(NetService.layer),
+  Layer.provideMerge(ServerSettingsLive),
+);
 
 const RuntimeServicesLive = ServerRuntimeStartupLive.pipe(
   Layer.provideMerge(RuntimeDependenciesLive),

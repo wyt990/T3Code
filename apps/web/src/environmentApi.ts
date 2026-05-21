@@ -23,6 +23,16 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
     filesystem: {
       browse: rpcClient.filesystem.browse,
     },
+    ssh: {
+      listConnections: rpcClient.ssh.listConnections,
+      listDirectory: rpcClient.ssh.listDirectory,
+      upsertConnection: rpcClient.ssh.upsertConnection,
+      deleteConnection: rpcClient.ssh.deleteConnection,
+      testConnection: rpcClient.ssh.testConnection,
+      listProviderProbes: rpcClient.ssh.listProviderProbes,
+      confirmHostKey: rpcClient.ssh.confirmHostKey,
+      getConnectionProviders: rpcClient.server.getConnectionProviders,
+    },
     git: {
       pull: rpcClient.git.pull,
       refreshStatus: rpcClient.git.refreshStatus,

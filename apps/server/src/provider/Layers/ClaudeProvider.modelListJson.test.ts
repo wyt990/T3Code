@@ -3,7 +3,7 @@ import { Result } from "effect";
 
 import { decodeJsonResult } from "@t3tools/shared/schemaJson";
 
-import { ClaudeCliModelListJsonSchema } from "./ClaudeProvider.ts";
+import { ClaudeCliModelListJsonSchema } from "../claudeModelList.ts";
 
 const decode = decodeJsonResult(ClaudeCliModelListJsonSchema);
 

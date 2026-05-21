@@ -26,6 +26,7 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import { ClaudeAdapter } from "../Services/ClaudeAdapter.ts";
+import { ProviderCollaboratorsTestLive } from "../ProviderCollaboratorsTestLive.ts";
 import { makeClaudeAdapterLive, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
 
 class FakeClaudeQuery implements AsyncIterable<SDKMessage> {
@@ -172,6 +173,7 @@ function makeHarness(config?: {
         ),
       ),
       Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(ProviderCollaboratorsTestLive),
       Layer.provideMerge(NodeServices.layer),
     ),
     query,
@@ -1133,7 +1135,7 @@ describe("ClaudeAdapterLive", () => {
       assert.equal(toolStarted?.type, "item.started");
       if (toolStarted?.type === "item.started") {
         assert.equal(toolStarted.payload.itemType, "collab_agent_tool_call");
-        assert.equal(toolStarted.payload.title, "Subagent task");
+        assert.equal(toolStarted.payload.title, "子代理任务");
       }
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -1279,6 +1281,7 @@ describe("ClaudeAdapterLive", () => {
     }).pipe(
       Layer.provideMerge(ServerConfig.layerTest("/tmp/claude-adapter-test", "/tmp")),
       Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(ProviderCollaboratorsTestLive),
       Layer.provideMerge(NodeServices.layer),
     );
 
@@ -1364,6 +1367,7 @@ describe("ClaudeAdapterLive", () => {
     }).pipe(
       Layer.provideMerge(ServerConfig.layerTest("/tmp/claude-adapter-test", "/tmp")),
       Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(ProviderCollaboratorsTestLive),
       Layer.provideMerge(NodeServices.layer),
     );
 

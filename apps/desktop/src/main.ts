@@ -31,6 +31,9 @@ import type {
   DesktopUpdateCheckResult,
   DesktopUpdateState,
 } from "@t3tools/contracts";
+import { SshSecretKind as SshSecretKindSchema, type SshSecretKind } from "@t3tools/contracts";
+import { Predicate } from "effect";
+import * as Schema from "effect/Schema";
 import { autoUpdater } from "electron-updater";
 
 import type { ContextMenuItem } from "@t3tools/contracts";
@@ -53,6 +56,13 @@ import {
   writeSavedEnvironmentRegistry,
   writeSavedEnvironmentSecret,
 } from "./clientPersistence.ts";
+import {
+  deleteSshConnection as deletePersistedSshConnection,
+  listSshConnections as listPersistedSshConnections,
+  upsertSshConnection as upsertPersistedSshConnection,
+} from "./sshConnectionsPersistence.ts";
+import { readSshSecret, removeSshSecrets, writeSshSecret } from "./sshPersistence.ts";
+import { startSshCredentialServer, type SshCredentialServerHandle } from "./sshCredentialServer.ts";
 import { isBackendReadinessAborted, waitForHttpReady } from "./backendReadiness.ts";
 import { showDesktopConfirmDialog } from "./confirmDialog.ts";
 import { resolveDesktopServerExposure } from "./serverExposure.ts";
@@ -102,6 +112,12 @@ const SET_SAVED_ENVIRONMENT_REGISTRY_CHANNEL = "desktop:set-saved-environment-re
 const GET_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:get-saved-environment-secret";
 const SET_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:set-saved-environment-secret";
 const REMOVE_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:remove-saved-environment-secret";
+const GET_SSH_SECRET_CHANNEL = "desktop:get-ssh-secret";
+const SET_SSH_SECRET_CHANNEL = "desktop:set-ssh-secret";
+const REMOVE_SSH_SECRETS_CHANNEL = "desktop:remove-ssh-secrets";
+const LIST_SSH_CONNECTIONS_CHANNEL = "desktop:list-ssh-connections";
+const UPSERT_SSH_CONNECTION_CHANNEL = "desktop:upsert-ssh-connection";
+const DELETE_SSH_CONNECTION_CHANNEL = "desktop:delete-ssh-connection";
 const GET_SERVER_EXPOSURE_STATE_CHANNEL = "desktop:get-server-exposure-state";
 const SET_SERVER_EXPOSURE_MODE_CHANNEL = "desktop:set-server-exposure-mode";
 const BASE_DIR = process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), ".t3");
@@ -109,6 +125,8 @@ const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_SETTINGS_PATH = Path.join(STATE_DIR, "desktop-settings.json");
 const CLIENT_SETTINGS_PATH = Path.join(STATE_DIR, "client-settings.json");
 const SAVED_ENVIRONMENT_REGISTRY_PATH = Path.join(STATE_DIR, "saved-environments.json");
+const SSH_SECRETS_PATH = Path.join(STATE_DIR, "ssh-secrets.json");
+const SSH_CONNECTIONS_PATH = Path.join(STATE_DIR, "ssh-connections.json");
 const DESKTOP_SCHEME = "t3";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -208,6 +226,7 @@ let backendProcess: ChildProcess.ChildProcess | null = null;
 let backendPort = 0;
 let backendBindHost = DESKTOP_LOOPBACK_HOST;
 let backendBootstrapToken = "";
+let sshCredentialServer: SshCredentialServerHandle | null = null;
 let backendHttpUrl = "";
 let backendWsUrl = "";
 let backendEndpointUrl: string | null = null;
@@ -323,6 +342,35 @@ function getDesktopSecretStorage() {
     encryptString: (value: string) => safeStorage.encryptString(value),
     decryptString: (value: Buffer) => safeStorage.decryptString(value),
   } as const;
+}
+
+function parseSshSecretKind(rawKind: unknown): SshSecretKind | null {
+  try {
+    return Schema.decodeUnknownSync(SshSecretKindSchema)(rawKind);
+  } catch {
+    return null;
+  }
+}
+
+async function ensureSshCredentialServer(): Promise<void> {
+  if (sshCredentialServer !== null) {
+    return;
+  }
+
+  sshCredentialServer = await startSshCredentialServer({
+    secretsPath: SSH_SECRETS_PATH,
+    bootstrapToken: backendBootstrapToken,
+    secretStorage: getDesktopSecretStorage(),
+  });
+}
+
+async function stopSshCredentialServer(): Promise<void> {
+  const handle = sshCredentialServer;
+  sshCredentialServer = null;
+  if (handle === null) {
+    return;
+  }
+  await handle.close();
 }
 
 function resolveAdvertisedHostOverride(): string | undefined {
@@ -1424,6 +1472,7 @@ function startBackend(): void {
         t3Home: BASE_DIR,
         host: backendBindHost,
         desktopBootstrapToken: backendBootstrapToken,
+        ...(sshCredentialServer !== null ? { sshCredentialPort: sshCredentialServer.port } : {}),
         ...(backendObservabilitySettings.otlpTracesUrl
           ? { otlpTracesUrl: backendObservabilitySettings.otlpTracesUrl }
           : {}),
@@ -1529,7 +1578,10 @@ async function stopBackendAndWaitForExit(timeoutMs = 5_000): Promise<void> {
 
   const child = backendProcess;
   backendProcess = null;
-  if (!child) return;
+  if (!child) {
+    await stopSshCredentialServer();
+    return;
+  }
   const backendChild = child;
   if (backendChild.exitCode !== null || backendChild.signalCode !== null) return;
   expectedBackendExitChildren.add(backendChild);
@@ -1571,6 +1623,8 @@ async function stopBackendAndWaitForExit(timeoutMs = 5_000): Promise<void> {
     }, timeoutMs);
     exitTimeoutTimer.unref();
   });
+
+  await stopSshCredentialServer();
 }
 
 function registerIpcHandlers(): void {
@@ -1668,6 +1722,115 @@ function registerIpcHandlers(): void {
       });
     },
   );
+
+  ipcMain.removeHandler(GET_SSH_SECRET_CHANNEL);
+  ipcMain.handle(
+    GET_SSH_SECRET_CHANNEL,
+    async (_event, rawConnectionId: unknown, rawKind: unknown) => {
+      if (typeof rawConnectionId !== "string" || rawConnectionId.trim().length === 0) {
+        return null;
+      }
+      const kind = parseSshSecretKind(rawKind);
+      if (kind === null) {
+        return null;
+      }
+
+      return readSshSecret({
+        secretsPath: SSH_SECRETS_PATH,
+        connectionId: rawConnectionId,
+        kind,
+        secretStorage: getDesktopSecretStorage(),
+      });
+    },
+  );
+
+  ipcMain.removeHandler(SET_SSH_SECRET_CHANNEL);
+  ipcMain.handle(
+    SET_SSH_SECRET_CHANNEL,
+    async (_event, rawConnectionId: unknown, rawKind: unknown, rawValue: unknown) => {
+      if (typeof rawConnectionId !== "string" || rawConnectionId.trim().length === 0) {
+        throw new Error("Invalid SSH connection id.");
+      }
+      const kind = parseSshSecretKind(rawKind);
+      if (kind === null) {
+        throw new Error("Invalid SSH secret kind.");
+      }
+      if (typeof rawValue !== "string" || rawValue.length === 0) {
+        throw new Error("Invalid SSH secret value.");
+      }
+
+      return writeSshSecret({
+        secretsPath: SSH_SECRETS_PATH,
+        connectionId: rawConnectionId,
+        kind,
+        value: rawValue,
+        secretStorage: getDesktopSecretStorage(),
+      });
+    },
+  );
+
+  ipcMain.removeHandler(REMOVE_SSH_SECRETS_CHANNEL);
+  ipcMain.handle(REMOVE_SSH_SECRETS_CHANNEL, async (_event, rawConnectionId: unknown) => {
+    if (typeof rawConnectionId !== "string" || rawConnectionId.trim().length === 0) {
+      return;
+    }
+
+    removeSshSecrets({
+      secretsPath: SSH_SECRETS_PATH,
+      connectionId: rawConnectionId,
+    });
+  });
+
+  ipcMain.removeHandler(LIST_SSH_CONNECTIONS_CHANNEL);
+  ipcMain.handle(LIST_SSH_CONNECTIONS_CHANNEL, async () =>
+    listPersistedSshConnections(SSH_CONNECTIONS_PATH),
+  );
+
+  ipcMain.removeHandler(UPSERT_SSH_CONNECTION_CHANNEL);
+  ipcMain.handle(UPSERT_SSH_CONNECTION_CHANNEL, async (_event, rawInput: unknown) => {
+    if (!Predicate.isObject(rawInput)) {
+      throw new Error("Invalid SSH connection input.");
+    }
+    const host = typeof rawInput.host === "string" ? rawInput.host.trim() : "";
+    const username = typeof rawInput.username === "string" ? rawInput.username.trim() : "";
+    const label = typeof rawInput.label === "string" ? rawInput.label.trim() : "";
+    const authType = rawInput.authType;
+    if (
+      host.length === 0 ||
+      username.length === 0 ||
+      label.length === 0 ||
+      (authType !== "password" && authType !== "privateKey" && authType !== "agent")
+    ) {
+      throw new Error("Invalid SSH connection input.");
+    }
+
+    return upsertPersistedSshConnection(SSH_CONNECTIONS_PATH, {
+      ...(typeof rawInput.id === "string" ? { id: rawInput.id } : {}),
+      host,
+      ...(typeof rawInput.port === "number" ? { port: rawInput.port } : {}),
+      username,
+      authType,
+      label,
+      ...(typeof rawInput.privateKeyPath === "string"
+        ? { privateKeyPath: rawInput.privateKeyPath }
+        : {}),
+    });
+  });
+
+  ipcMain.removeHandler(DELETE_SSH_CONNECTION_CHANNEL);
+  ipcMain.handle(DELETE_SSH_CONNECTION_CHANNEL, async (_event, rawInput: unknown) => {
+    const connectionId =
+      Predicate.isObject(rawInput) && typeof rawInput.id === "string" ? rawInput.id : null;
+    if (connectionId === null || connectionId.trim().length === 0) {
+      throw new Error("Invalid SSH connection id.");
+    }
+
+    deletePersistedSshConnection(SSH_CONNECTIONS_PATH, connectionId);
+    removeSshSecrets({
+      secretsPath: SSH_SECRETS_PATH,
+      connectionId,
+    });
+  });
 
   ipcMain.removeHandler(GET_SERVER_EXPOSURE_STATE_CHANNEL);
   ipcMain.handle(GET_SERVER_EXPOSURE_STATE_CHANNEL, async () => getDesktopServerExposureState());
@@ -2088,6 +2251,10 @@ async function bootstrap(): Promise<void> {
       : `using configured backend port port=${backendPort}`,
   );
   backendBootstrapToken = Crypto.randomBytes(24).toString("hex");
+  await ensureSshCredentialServer();
+  writeDesktopLogHeader(
+    `bootstrap ssh credential server listening port=${sshCredentialServer?.port ?? "unknown"}`,
+  );
   if (desktopSettings.serverExposureMode !== DEFAULT_DESKTOP_SETTINGS.serverExposureMode) {
     writeDesktopLogHeader(
       `bootstrap restoring persisted server exposure mode mode=${desktopSettings.serverExposureMode}`,

@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { ArchiveIcon, ArrowLeftIcon, Link2Icon, Settings2Icon } from "lucide-react";
+import { ArchiveIcon, ArrowLeftIcon, Link2Icon, ServerIcon, Settings2Icon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
 import {
@@ -15,6 +15,7 @@ import {
 export type SettingsSectionPath =
   | "/settings/general"
   | "/settings/connections"
+  | "/settings/ssh"
   | "/settings/archived";
 
 export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
@@ -24,6 +25,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
 }> = [
   { label: "通用", to: "/settings/general", icon: Settings2Icon },
   { label: "连接", to: "/settings/connections", icon: Link2Icon },
+  { label: "SSH 连接", to: "/settings/ssh", icon: ServerIcon },
   { label: "归档", to: "/settings/archived", icon: ArchiveIcon },
 ];
 

@@ -1,5 +1,4 @@
-import * as FS from "node:fs/promises";
-import { dirname, join, normalize, relative } from "node:path";
+import { type ContextWorkspaceAccess, contextAccessOrLocal } from "./contextWorkspaceAccess.ts";
 
 /** 自 `tsconfig.json` 所在目录解析出的 paths + baseUrl（绝对路径）。 */
 export interface TsconfigPathsContext {
@@ -21,13 +20,8 @@ function stripJsonComments(input: string): string {
     .replace(/\s+\/\/.*$/g, "");
 }
 
-async function pathExistsFile(abs: string): Promise<boolean> {
-  try {
-    const st = await FS.stat(abs);
-    return st.isFile();
-  } catch {
-    return false;
-  }
+async function pathExistsFile(abs: string, access: ContextWorkspaceAccess): Promise<boolean> {
+  return access.pathExistsFile(abs);
 }
 
 function matchSingleStarPattern(importSpec: string, pattern: string): string | null {
@@ -51,7 +45,7 @@ function matchSingleStarPattern(importSpec: string, pattern: string): string | n
 }
 
 async function resolveTargetToWorkspaceRel(
-  workspaceRoot: string,
+  access: ContextWorkspaceAccess,
   baseUrlAbs: string,
   targetTemplate: string,
   captured: string,
@@ -60,7 +54,7 @@ async function resolveTargetToWorkspaceRel(
   const replaced = targetTemplate.includes("*")
     ? targetTemplate.replace(/\*/g, captured)
     : targetTemplate;
-  const absBase = normalize(join(baseUrlAbs, replaced.replace(/^\.\//, "")));
+  const absBase = access.normalizePath(access.joinPath(baseUrlAbs, replaced.replace(/^\.\//, "")));
   const candidates: string[] = [
     absBase,
     `${absBase}.ts`,
@@ -73,13 +67,13 @@ async function resolveTargetToWorkspaceRel(
     `${absBase}/index.js`,
   ];
   for (const abs of candidates) {
-    const rel = relative(workspaceRoot, abs).replace(/\\/g, "/");
-    if (rel.startsWith("..") || rel.length === 0) {
+    const rel = access.relativeFromRoot(abs);
+    if (rel === null || rel.length === 0) {
       continue;
     }
     let ok = existenceCache.get(rel);
     if (ok === undefined) {
-      ok = await pathExistsFile(abs);
+      ok = await pathExistsFile(abs, access);
       existenceCache.set(rel, ok);
     }
     if (ok) {
@@ -91,15 +85,16 @@ async function resolveTargetToWorkspaceRel(
 
 async function readTsconfigPathsContext(
   configDirAbs: string,
+  access: ContextWorkspaceAccess,
 ): Promise<TsconfigPathsContext | null> {
   const cached = pathsCache.get(configDirAbs);
   if (cached !== undefined) {
     return cached;
   }
-  const tcPath = join(configDirAbs, "tsconfig.json");
+  const tcPath = access.joinPath(configDirAbs, "tsconfig.json");
   let raw: string;
   try {
-    raw = await FS.readFile(tcPath, "utf-8");
+    raw = await access.readUtf8(tcPath);
   } catch {
     pathsCache.set(configDirAbs, null);
     return null;
@@ -125,7 +120,7 @@ async function readTsconfigPathsContext(
     typeof (co as { baseUrl?: unknown }).baseUrl === "string"
       ? ((co as { baseUrl: string }).baseUrl as string)
       : ".";
-  const baseUrlAbs = normalize(join(configDirAbs, baseUrlRel));
+  const baseUrlAbs = access.normalizePath(access.joinPath(configDirAbs, baseUrlRel));
   if (!pathsField || typeof pathsField !== "object" || Array.isArray(pathsField)) {
     const ctx: TsconfigPathsContext = {
       configDirAbs,
@@ -162,24 +157,26 @@ async function readTsconfigPathsContext(
 export async function loadNearestTsconfigPaths(
   sourceFileAbs: string,
   workspaceRoot: string,
+  access?: ContextWorkspaceAccess,
 ): Promise<TsconfigPathsContext | null> {
-  const root = normalize(workspaceRoot);
-  let dir = normalize(dirname(sourceFileAbs));
+  const fs = contextAccessOrLocal(workspaceRoot, access);
+  const root = fs.normalizePath(fs.workspaceRoot);
+  let dir = fs.normalizePath(fs.dirnamePath(sourceFileAbs));
   for (;;) {
-    const ctx = await readTsconfigPathsContext(dir);
+    const ctx = await readTsconfigPathsContext(dir, fs);
     if (ctx !== null && ctx.pathMappings.length > 0) {
       return ctx;
     }
     if (dir === root) {
       break;
     }
-    const parent = dirname(dir);
+    const parent = fs.dirnamePath(dir);
     if (parent === dir) {
       break;
     }
     dir = parent;
   }
-  return await readTsconfigPathsContext(root);
+  return await readTsconfigPathsContext(root, fs);
 }
 
 /**
@@ -190,8 +187,10 @@ export async function resolveTsconfigPathsImport(
   sourceFileAbs: string,
   workspaceRoot: string,
   existenceCache: Map<string, boolean>,
+  access?: ContextWorkspaceAccess,
 ): Promise<string | null> {
-  const ctx = await loadNearestTsconfigPaths(sourceFileAbs, workspaceRoot);
+  const fs = contextAccessOrLocal(workspaceRoot, access);
+  const ctx = await loadNearestTsconfigPaths(sourceFileAbs, workspaceRoot, fs);
   if (ctx === null || ctx.pathMappings.length === 0) {
     return null;
   }
@@ -201,13 +200,7 @@ export async function resolveTsconfigPathsImport(
       continue;
     }
     for (const t of targets) {
-      const hit = await resolveTargetToWorkspaceRel(
-        workspaceRoot,
-        ctx.baseUrlAbs,
-        t,
-        cap,
-        existenceCache,
-      );
+      const hit = await resolveTargetToWorkspaceRel(fs, ctx.baseUrlAbs, t, cap, existenceCache);
       if (hit) {
         return hit;
       }

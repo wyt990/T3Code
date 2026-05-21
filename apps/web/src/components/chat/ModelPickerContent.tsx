@@ -46,6 +46,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   readonly terminalOpen: boolean;
   readonly onRequestClose?: () => void;
   readonly onProviderModelChange: (provider: ProviderKind, model: string) => void;
+  readonly onRefreshModels?: () => Promise<void>;
 }) {
   const { keybindings: providedKeybindings, modelOptionsByProvider, onProviderModelChange } = props;
   const [searchQuery, setSearchQuery] = useState("");
@@ -80,16 +81,23 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     modelListRefreshBusyRef.current = true;
     setModelListRefreshBusy(true);
     try {
+      if (props.onRefreshModels) {
+        await props.onRefreshModels();
+        return;
+      }
       const result = await runClaudeAgentModelListRefresh();
       if (!result.ok) {
         setModelListRefreshErrorText(result.error);
         setModelListRefreshErrorOpen(true);
       }
+    } catch (error: unknown) {
+      setModelListRefreshErrorText(error instanceof Error ? error.message : String(error));
+      setModelListRefreshErrorOpen(true);
     } finally {
       modelListRefreshBusyRef.current = false;
       setModelListRefreshBusy(false);
     }
-  }, []);
+  }, [props.onRefreshModels]);
 
   const handleSelectProvider = useCallback(
     (provider: ProviderKind | "favorites") => {
@@ -137,7 +145,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   // Flatten models into a searchable array
   const flatModels = useMemo(() => {
     return Object.entries(props.modelOptionsByProvider).flatMap(([providerKind, models]) => {
-      if (enabledProviderSet && !enabledProviderSet.has(providerKind as ProviderKind)) {
+      // SSH 远程探测可能暂时把 provider 标为 disabled，但仍应展示已缓存/内置模型供选择。
+      if (
+        enabledProviderSet &&
+        !enabledProviderSet.has(providerKind as ProviderKind) &&
+        models.length === 0
+      ) {
         return [];
       }
       return models.map((m) => ({

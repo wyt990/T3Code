@@ -5,6 +5,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useCallback, useRef } from "react";
 
 import { getFallbackThreadIdAfterDelete } from "../components/Sidebar.logic";
+import { useUiStateStore } from "../uiStateStore";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { ensureEnvironmentApi, readEnvironmentApi } from "../environmentApi";
@@ -175,6 +176,12 @@ export function useThreadActions() {
         commandId: newCommandId(),
         threadId: threadRef.threadId,
       });
+      useUiStateStore
+        .getState()
+        .closeTabsByThreadIds(
+          threadRef.environmentId,
+          deletedIds && deletedIds.size > 0 ? [...deletedIds] : [threadRef.threadId],
+        );
       clearComposerDraftForThread(threadRef);
       clearProjectDraftThreadById(
         scopeProjectRef(threadRef.environmentId, thread.projectId),

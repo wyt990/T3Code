@@ -32,6 +32,7 @@ import {
   type CodexSessionRuntimeShape,
   type CodexThreadSnapshot,
 } from "./CodexSessionRuntime.ts";
+import { ProviderCollaboratorsTestLive } from "../ProviderCollaboratorsTestLive.ts";
 import { makeCodexAdapterLive } from "./CodexAdapter.ts";
 
 const asThreadId = (value: string): ThreadId => ThreadId.make(value);
@@ -208,6 +209,7 @@ const validationLayer = it.layer(
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
     Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(ProviderCollaboratorsTestLive),
   ),
 );
 
@@ -256,6 +258,7 @@ validationLayer("CodexAdapterLive validation", (it) => {
         serviceTier: "fast",
         threadId: asThreadId("thread-1"),
         runtimeMode: "full-access",
+        spawn: { kind: "local" },
       });
     }),
   );
@@ -268,6 +271,7 @@ const sessionErrorLayer = it.layer(
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
     Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(ProviderCollaboratorsTestLive),
   ),
 );
 
@@ -331,6 +335,7 @@ const lifecycleLayer = it.layer(
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
     Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(ProviderCollaboratorsTestLive),
   ),
 );
 
@@ -902,6 +907,7 @@ const scopedLifecycleLayer = it.layer(
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
     Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(ProviderCollaboratorsTestLive),
   ),
 );
 
@@ -938,6 +944,7 @@ const scopedFailureLayer = it.layer(
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
     Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(ProviderCollaboratorsTestLive),
   ),
 );
 
@@ -982,6 +989,7 @@ it.effect("flushes managed native logs when the adapter layer shuts down", () =>
         Layer.provideMerge(ServerSettingsService.layerTest()),
         Layer.provideMerge(providerSessionDirectoryTestLayer),
         Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(ProviderCollaboratorsTestLive),
       );
       const context = yield* Layer.buildWithScope(layer, scope);
       const adapter = yield* Effect.service(CodexAdapter).pipe(Effect.provide(context));

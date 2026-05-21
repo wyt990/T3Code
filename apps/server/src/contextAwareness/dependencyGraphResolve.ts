@@ -1,7 +1,6 @@
-import * as FS from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, join, normalize, relative } from "node:path";
 
+import { type ContextWorkspaceAccess, contextAccessOrLocal } from "./contextWorkspaceAccess.ts";
 import { resolveTsconfigPathsImport } from "./tsconfigPathsResolve.ts";
 import {
   parseBareModuleSpecifier,
@@ -15,21 +14,16 @@ function escapeRegExp(s: string): string {
 
 async function pathExistsFile(
   abs: string,
-  workspaceRoot: string,
+  access: ContextWorkspaceAccess,
   existenceCache: Map<string, boolean>,
 ): Promise<boolean> {
-  const rel = relative(workspaceRoot, abs).replace(/\\/g, "/");
-  if (rel.startsWith("..") || rel.length === 0) {
+  const rel = access.relativeFromRoot(abs);
+  if (rel === null || rel.length === 0) {
     return false;
   }
   let ok = existenceCache.get(rel);
   if (ok === undefined) {
-    try {
-      const st = await FS.stat(abs);
-      ok = st.isFile();
-    } catch {
-      ok = false;
-    }
+    ok = await access.pathExistsFile(abs);
     existenceCache.set(rel, ok);
   }
   return ok;
@@ -38,15 +32,17 @@ async function pathExistsFile(
 async function resolveRelativeSpecifier(
   spec: string,
   sourceAbs: string,
-  workspaceRoot: string,
+  access: ContextWorkspaceAccess,
   existenceCache: Map<string, boolean>,
 ): Promise<string | null> {
   if (!spec.startsWith(".") && !spec.startsWith("/")) {
     return null;
   }
-  const baseDir = dirname(sourceAbs);
-  const joined = normalize(
-    spec.startsWith("/") ? join(workspaceRoot, spec.slice(1)) : join(baseDir, spec),
+  const baseDir = access.dirnamePath(sourceAbs);
+  const joined = access.normalizePath(
+    spec.startsWith("/")
+      ? access.joinPath(access.workspaceRoot, spec.slice(1))
+      : access.joinPath(baseDir, spec),
   );
   const candidates: string[] = [
     joined,
@@ -56,14 +52,14 @@ async function resolveRelativeSpecifier(
     `${joined}.jsx`,
     `${joined}.mjs`,
     `${joined}.cjs`,
-    join(joined, "index.ts"),
-    join(joined, "index.tsx"),
-    join(joined, "index.js"),
+    access.joinPath(joined, "index.ts"),
+    access.joinPath(joined, "index.tsx"),
+    access.joinPath(joined, "index.js"),
   ];
   for (const abs of candidates) {
-    if (await pathExistsFile(abs, workspaceRoot, existenceCache)) {
-      const rel = relative(workspaceRoot, abs).replace(/\\/g, "/");
-      if (!rel.startsWith("..") && rel.length > 0) {
+    if (await pathExistsFile(abs, access, existenceCache)) {
+      const rel = access.relativeFromRoot(abs);
+      if (rel !== null && rel.length > 0) {
         return rel;
       }
     }
@@ -99,7 +95,7 @@ function tryResolveExternalWithRequire(spec: string, sourceAbs: string): string 
 async function resolveImportSpecifierUnified(
   spec: string,
   sourceAbs: string,
-  workspaceRoot: string,
+  access: ContextWorkspaceAccess,
   pkgIndex: WorkspacePackageIndex,
   existenceCache: Map<string, boolean>,
 ): Promise<string | null> {
@@ -108,21 +104,28 @@ async function resolveImportSpecifierUnified(
     return null;
   }
 
-  const relHit = await resolveRelativeSpecifier(trimmed, sourceAbs, workspaceRoot, existenceCache);
+  const relHit = await resolveRelativeSpecifier(trimmed, sourceAbs, access, existenceCache);
   if (relHit) {
     return relHit;
   }
 
-  const tsHit = await resolveTsconfigPathsImport(trimmed, sourceAbs, workspaceRoot, existenceCache);
+  const tsHit = await resolveTsconfigPathsImport(
+    trimmed,
+    sourceAbs,
+    access.workspaceRoot,
+    existenceCache,
+    access,
+  );
   if (tsHit) {
     return tsHit;
   }
 
   const ws = await resolveBareSpecifierToWorkspaceRel(
     trimmed,
-    workspaceRoot,
+    access.workspaceRoot,
     pkgIndex,
     existenceCache,
+    access,
   );
   if (ws) {
     return ws;
@@ -164,17 +167,13 @@ export async function extractResolvedImportLikeTargets(
   text: string,
   pkgIndex: WorkspacePackageIndex,
   existenceCache: Map<string, boolean>,
+  access?: ContextWorkspaceAccess,
 ): Promise<{ rels: string[]; externalIds: string[] }> {
+  const fs = contextAccessOrLocal(workspaceRoot, access);
   const rels = new Set<string>();
   const externalIds = new Set<string>();
   for (const spec of collectImportLikeSpecifiers(text)) {
-    const hit = await resolveImportSpecifierUnified(
-      spec,
-      sourceAbs,
-      workspaceRoot,
-      pkgIndex,
-      existenceCache,
-    );
+    const hit = await resolveImportSpecifierUnified(spec, sourceAbs, fs, pkgIndex, existenceCache);
     if (!hit) {
       continue;
     }
@@ -193,17 +192,13 @@ export async function extractResolvedReexportTargetsUnified(
   text: string,
   pkgIndex: WorkspacePackageIndex,
   existenceCache: Map<string, boolean>,
+  access?: ContextWorkspaceAccess,
 ): Promise<{ rels: string[]; externalIds: string[] }> {
+  const fs = contextAccessOrLocal(workspaceRoot, access);
   const rels = new Set<string>();
   const externalIds = new Set<string>();
   for (const spec of collectReexportSpecifiers(text)) {
-    const hit = await resolveImportSpecifierUnified(
-      spec,
-      sourceAbs,
-      workspaceRoot,
-      pkgIndex,
-      existenceCache,
-    );
+    const hit = await resolveImportSpecifierUnified(spec, sourceAbs, fs, pkgIndex, existenceCache);
     if (!hit) {
       continue;
     }
@@ -222,20 +217,16 @@ export async function buildSpecifierResolutionMap(
   text: string,
   pkgIndex: WorkspacePackageIndex,
   existenceCache: Map<string, boolean>,
+  access?: ContextWorkspaceAccess,
 ): Promise<Map<string, string>> {
+  const fs = contextAccessOrLocal(workspaceRoot, access);
   const map = new Map<string, string>();
   const specs = new Set<string>([
     ...collectImportLikeSpecifiers(text),
     ...collectReexportSpecifiers(text),
   ]);
   for (const spec of specs) {
-    const hit = await resolveImportSpecifierUnified(
-      spec,
-      sourceAbs,
-      workspaceRoot,
-      pkgIndex,
-      existenceCache,
-    );
+    const hit = await resolveImportSpecifierUnified(spec, sourceAbs, fs, pkgIndex, existenceCache);
     if (hit) {
       map.set(spec, hit);
     }

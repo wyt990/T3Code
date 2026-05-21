@@ -128,4 +128,21 @@ it.layer(TestLayer)("WorkspacePathsLive", (it) => {
       }),
     );
   });
+
+  describe("resolveRelativePathWithinPosixRoot", () => {
+    it.effect("resolves posix paths for remote workspace roots", () =>
+      Effect.gen(function* () {
+        const workspacePaths = yield* WorkspacePaths;
+        const resolved = yield* workspacePaths.resolveRelativePathWithinPosixRoot({
+          workspaceRoot: "/home/user/repo",
+          relativePath: "src/index.ts",
+        });
+
+        expect(resolved).toEqual({
+          absolutePath: "/home/user/repo/src/index.ts",
+          relativePath: "src/index.ts",
+        });
+      }),
+    );
+  });
 });

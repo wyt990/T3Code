@@ -54,6 +54,15 @@ const rpcClientMock = {
   filesystem: {
     browse: vi.fn(),
   },
+  ssh: {
+    listConnections: vi.fn(),
+    listDirectory: vi.fn(),
+    upsertConnection: vi.fn(),
+    deleteConnection: vi.fn(),
+    testConnection: vi.fn(),
+    confirmHostKey: vi.fn(),
+    listProviderProbes: vi.fn(),
+  },
   shell: {
     openInEditor: vi.fn(),
   },
@@ -75,6 +84,7 @@ const rpcClientMock = {
   },
   server: {
     getConfig: vi.fn(),
+    getConnectionProviders: vi.fn(),
     refreshProviders: vi.fn(),
     refreshClaudeAgentModels: vi.fn(),
     upsertKeybinding: vi.fn(),
@@ -180,6 +190,14 @@ function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridg
     getSavedEnvironmentSecret: async () => null,
     setSavedEnvironmentSecret: async () => true,
     removeSavedEnvironmentSecret: async () => undefined,
+    getSshSecret: async () => null,
+    setSshSecret: async () => false,
+    removeSshSecrets: async () => undefined,
+    listSshConnections: async () => [],
+    upsertSshConnection: async () => {
+      throw new Error("Not implemented in test.");
+    },
+    deleteSshConnection: async () => undefined,
     getServerExposureState: async () => ({
       mode: "local-only",
       endpointUrl: null,
@@ -339,6 +357,7 @@ describe("wsApi", () => {
         id: ProjectId.make("project-1"),
         title: "Project",
         workspaceRoot: "/tmp/workspace",
+        transport: { type: "local" },
         defaultModelSelection: {
           provider: "codex",
           model: "gpt-5-codex",

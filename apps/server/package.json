@@ -1,6 +1,6 @@
 {
   "name": "t3",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -34,7 +34,8 @@
     "effect": "catalog:",
     "iconv-lite": "^0.7.2",
     "node-pty": "^1.1.0",
-    "open": "^10.1.0"
+    "open": "^10.1.0",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
     "@effect/language-service": "catalog:",
@@ -44,6 +45,7 @@
     "@t3tools/web": "workspace:*",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
+    "@types/ssh2": "^1.15.5",
     "effect-acp": "workspace:*",
     "effect-codex-app-server": "workspace:*",
     "tsdown": "catalog:",

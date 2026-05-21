@@ -47,7 +47,10 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
       return true;
     }
     const liveProvider = getProviderSnapshot(props.providers, option.value);
-    return liveProvider?.enabled === true;
+    return (
+      liveProvider?.enabled === true ||
+      (liveProvider?.models !== undefined && liveProvider.models.length > 0)
+    );
   });
 
   const handleProviderClick = (provider: ProviderKind | "favorites") => {

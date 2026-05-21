@@ -9,6 +9,7 @@ import type {
   ProjectScript as ContractProjectScript,
   ThreadId,
   ProjectId,
+  ProjectTransport,
   TurnId,
   MessageId,
   ProviderKind,
@@ -85,6 +86,7 @@ export interface Project {
   environmentId: EnvironmentId;
   name: string;
   cwd: string;
+  transport: ProjectTransport;
   repositoryIdentity?: RepositoryIdentity | null;
   defaultModelSelection: ModelSelection | null;
   createdAt?: string | undefined;

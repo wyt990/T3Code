@@ -1,6 +1,4 @@
-import type { Dirent } from "node:fs";
-import * as FS from "node:fs/promises";
-import { join, normalize, relative } from "node:path";
+import { type ContextWorkspaceAccess, contextAccessOrLocal } from "./contextWorkspaceAccess.ts";
 
 /** 工作区内 `package.json` 的 name → 包根目录（相对 workspaceRoot，POSIX） */
 export type WorkspacePackageIndex = ReadonlyMap<
@@ -8,12 +6,8 @@ export type WorkspacePackageIndex = ReadonlyMap<
   Readonly<{ rootRel: string; pkg: Readonly<Record<string, unknown>> }>
 >;
 
-function toPosixRel(workspaceRoot: string, absPath: string): string | null {
-  const rel = relative(workspaceRoot, absPath).replace(/\\/g, "/");
-  if (rel.startsWith("..") || rel.length === 0) {
-    return null;
-  }
-  return rel;
+function toPosixRel(access: ContextWorkspaceAccess, absPath: string): string | null {
+  return access.relativeFromRoot(absPath);
 }
 
 /** 解析裸模块说明符为包名 + 子路径（不含包名内的 scope） */
@@ -57,37 +51,28 @@ function exportSubpathKey(subpath: string): string {
   return subpath.length > 0 ? `./${subpath}` : ".";
 }
 
-async function pathExists(abs: string): Promise<boolean> {
-  try {
-    const st = await FS.stat(abs);
-    return st.isFile();
-  } catch {
-    return false;
-  }
-}
-
 /** 将 exports / types 指向的路径解析为 workspace 相对路径（文件须存在） */
 async function resolvePackageEntryFile(
-  workspaceRoot: string,
+  access: ContextWorkspaceAccess,
   rootRel: string,
   pkg: Readonly<Record<string, unknown>>,
   subpath: string,
   existenceCache: Map<string, boolean>,
 ): Promise<string | null> {
-  const pkgRootAbs = normalize(join(workspaceRoot, rootRel));
+  const pkgRootAbs = access.normalizePath(access.joinPath(access.workspaceRoot, rootRel));
   const subKey = exportSubpathKey(subpath);
   const exportsField = pkg.exports;
 
   const tryRel = async (relFromPkgRoot: string): Promise<string | null> => {
     const cleaned = relFromPkgRoot.replace(/^\.\//, "");
-    const abs = normalize(join(pkgRootAbs, cleaned));
-    const rel = toPosixRel(workspaceRoot, abs);
+    const abs = access.normalizePath(access.joinPath(pkgRootAbs, cleaned));
+    const rel = toPosixRel(access, abs);
     if (!rel) {
       return null;
     }
     let ok = existenceCache.get(rel);
     if (ok === undefined) {
-      ok = await pathExists(abs);
+      ok = await access.pathExistsFile(abs);
       existenceCache.set(rel, ok);
     }
     return ok ? rel : null;
@@ -154,41 +139,40 @@ async function resolvePackageEntryFile(
  */
 export async function loadWorkspacePackageIndex(
   workspaceRoot: string,
+  access?: ContextWorkspaceAccess,
 ): Promise<WorkspacePackageIndex> {
+  const fs = contextAccessOrLocal(workspaceRoot, access);
   const map = new Map<string, { rootRel: string; pkg: Readonly<Record<string, unknown>> }>();
   const rootsToScan: string[] = [];
 
   async function pushChildDirs(baseRel: string): Promise<void> {
-    const abs = join(workspaceRoot, baseRel);
-    let entries: Dirent[];
+    const abs = fs.joinPath(fs.workspaceRoot, baseRel);
+    let entries: ReadonlyArray<{ name: string; isDirectory: boolean }>;
     try {
-      entries = (await FS.readdir(abs, { withFileTypes: true })) as Dirent[];
+      entries = await fs.readdirEntries(abs);
     } catch {
       return;
     }
     for (const ent of entries) {
-      if (!ent.isDirectory()) {
+      if (!ent.isDirectory) {
         continue;
       }
-      rootsToScan.push(`${baseRel}/${String(ent.name)}`.replace(/\\/g, "/"));
+      rootsToScan.push(`${baseRel}/${ent.name}`.replace(/\\/g, "/"));
     }
   }
 
   await pushChildDirs("apps");
   await pushChildDirs("packages");
-  const scriptsPkg = join(workspaceRoot, "scripts", "package.json");
-  try {
-    await FS.access(scriptsPkg);
+  const scriptsPkg = fs.joinPath(fs.workspaceRoot, "scripts", "package.json");
+  if (await fs.pathExistsFile(scriptsPkg)) {
     rootsToScan.push("scripts");
-  } catch {
-    // no scripts package
   }
 
   for (const rootRel of rootsToScan) {
-    const pkgPath = join(workspaceRoot, rootRel, "package.json");
+    const pkgPath = fs.joinPath(fs.workspaceRoot, rootRel, "package.json");
     let raw: string;
     try {
-      raw = await FS.readFile(pkgPath, "utf-8");
+      raw = await fs.readUtf8(pkgPath);
     } catch {
       continue;
     }
@@ -218,6 +202,7 @@ export async function resolveBareSpecifierToWorkspaceRel(
   workspaceRoot: string,
   index: WorkspacePackageIndex,
   existenceCache: Map<string, boolean>,
+  access?: ContextWorkspaceAccess,
 ): Promise<string | null> {
   const parsed = parseBareModuleSpecifier(spec);
   if (!parsed) {
@@ -228,7 +213,7 @@ export async function resolveBareSpecifierToWorkspaceRel(
     return null;
   }
   return resolvePackageEntryFile(
-    workspaceRoot,
+    contextAccessOrLocal(workspaceRoot, access),
     entry.rootRel,
     entry.pkg,
     parsed.subpath,

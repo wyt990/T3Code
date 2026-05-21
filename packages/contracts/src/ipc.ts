@@ -26,8 +26,22 @@ import type {
   ProjectWriteFileResult,
 } from "./project.ts";
 import type {
+  SshConfirmHostKeyInput,
+  SshConnectionSummary,
+  SshDeleteConnectionInput,
+  SshListDirectoryInput,
+  SshListDirectoryResult,
+  SshListProviderProbesInput,
+  SshListProviderProbesResult,
+  SshTestConnectionInput,
+  SshTestConnectionResult,
+  SshUpsertConnectionInput,
+} from "./ssh.ts";
+import type {
   ServerConfig,
+  ServerProvider,
   ServerProviderUpdatedPayload,
+  ServerGetConnectionProvidersInput,
   ServerRefreshClaudeAgentModelsResult,
   ServerUpsertKeybindingResult,
 } from "./server.ts";
@@ -62,6 +76,7 @@ import type {
   OrchestrationThreadStreamItem,
 } from "./orchestration.ts";
 import type { EnvironmentId } from "./baseSchemas.ts";
+import type { SshSecretKind } from "./ssh.ts";
 import { EditorId } from "./editor.ts";
 import { ServerSettings, type ClientSettings, type ServerSettingsPatch } from "./settings.ts";
 
@@ -168,6 +183,12 @@ export interface DesktopBridge {
   getSavedEnvironmentSecret: (environmentId: EnvironmentId) => Promise<string | null>;
   setSavedEnvironmentSecret: (environmentId: EnvironmentId, secret: string) => Promise<boolean>;
   removeSavedEnvironmentSecret: (environmentId: EnvironmentId) => Promise<void>;
+  getSshSecret: (connectionId: string, kind: SshSecretKind) => Promise<string | null>;
+  setSshSecret: (connectionId: string, kind: SshSecretKind, value: string) => Promise<boolean>;
+  removeSshSecrets: (connectionId: string) => Promise<void>;
+  listSshConnections: () => Promise<ReadonlyArray<SshConnectionSummary>>;
+  upsertSshConnection: (input: SshUpsertConnectionInput) => Promise<SshConnectionSummary>;
+  deleteSshConnection: (input: SshDeleteConnectionInput) => Promise<void>;
   getServerExposureState: () => Promise<DesktopServerExposureState>;
   setServerExposureMode: (mode: DesktopServerExposureMode) => Promise<DesktopServerExposureState>;
   pickFolder: (options?: PickFolderOptions) => Promise<string | null>;
@@ -224,6 +245,9 @@ export interface LocalApi {
     getSavedEnvironmentSecret: (environmentId: EnvironmentId) => Promise<string | null>;
     setSavedEnvironmentSecret: (environmentId: EnvironmentId, secret: string) => Promise<boolean>;
     removeSavedEnvironmentSecret: (environmentId: EnvironmentId) => Promise<void>;
+    getSshSecret: (connectionId: string, kind: SshSecretKind) => Promise<string | null>;
+    setSshSecret: (connectionId: string, kind: SshSecretKind, value: string) => Promise<boolean>;
+    removeSshSecrets: (connectionId: string) => Promise<void>;
   };
   server: {
     getConfig: () => Promise<ServerConfig>;
@@ -276,6 +300,18 @@ export interface EnvironmentApi {
   };
   filesystem: {
     browse: (input: FilesystemBrowseInput) => Promise<FilesystemBrowseResult>;
+  };
+  ssh: {
+    listConnections: () => Promise<ReadonlyArray<SshConnectionSummary>>;
+    listDirectory: (input: SshListDirectoryInput) => Promise<SshListDirectoryResult>;
+    upsertConnection: (input: SshUpsertConnectionInput) => Promise<SshConnectionSummary>;
+    deleteConnection: (input: SshDeleteConnectionInput) => Promise<void>;
+    testConnection: (input: SshTestConnectionInput) => Promise<SshTestConnectionResult>;
+    confirmHostKey: (input: SshConfirmHostKeyInput) => Promise<void>;
+    listProviderProbes: (input: SshListProviderProbesInput) => Promise<SshListProviderProbesResult>;
+    getConnectionProviders: (
+      input: ServerGetConnectionProvidersInput,
+    ) => Promise<{ providers: ReadonlyArray<ServerProvider> }>;
   };
   git: {
     listBranches: (input: GitListBranchesInput) => Promise<GitListBranchesResult>;

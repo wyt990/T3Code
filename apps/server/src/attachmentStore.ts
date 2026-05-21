@@ -53,6 +53,18 @@ export function parseThreadSegmentFromAttachmentId(attachmentId: string): string
   return match[1]?.toLowerCase() ?? null;
 }
 
+export function normalizeWorkspaceAttachmentRelativePath(raw: string): string | null {
+  const normalized = raw.trim().replace(/\\/g, "/");
+  if (normalized.length === 0 || normalized.startsWith("/") || normalized.includes("\0")) {
+    return null;
+  }
+  const segments = normalized.split("/").filter((segment) => segment.length > 0);
+  if (segments.some((segment) => segment === "..")) {
+    return null;
+  }
+  return segments.join("/");
+}
+
 export function attachmentRelativePath(attachment: ChatAttachment): string {
   switch (attachment.type) {
     case "image": {

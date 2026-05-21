@@ -8,6 +8,7 @@ import { beforeEach } from "vitest";
 import { ThreadId } from "@t3tools/contracts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { ProviderCollaboratorsTestLive } from "../ProviderCollaboratorsTestLive.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import { OpenCodeAdapter } from "../Services/OpenCodeAdapter.ts";
 import {
@@ -167,6 +168,7 @@ const providerSessionDirectoryTestLayer = Layer.succeed(ProviderSessionDirectory
 
 const OpenCodeAdapterTestLayer = makeOpenCodeAdapterLive().pipe(
   Layer.provideMerge(Layer.succeed(OpenCodeRuntime, OpenCodeRuntimeTestDouble)),
+  Layer.provideMerge(ProviderCollaboratorsTestLive),
   Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
   Layer.provideMerge(
     ServerSettingsService.layerTest({

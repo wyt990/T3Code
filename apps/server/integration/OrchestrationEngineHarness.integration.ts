@@ -25,6 +25,7 @@ import {
 import { CheckpointStoreLive } from "../src/checkpointing/Layers/CheckpointStore.ts";
 import { CheckpointStore } from "../src/checkpointing/Services/CheckpointStore.ts";
 import { GitCoreLive } from "../src/git/Layers/GitCore.ts";
+import { GitCoreCollaboratorsTestLive } from "../src/git/Layers/GitCoreTestSupport.ts";
 import { GitCore, type GitCoreShape } from "../src/git/Services/GitCore.ts";
 import { GitStatusBroadcaster } from "../src/git/Services/GitStatusBroadcaster.ts";
 import { TextGeneration, type TextGenerationShape } from "../src/git/Services/TextGeneration.ts";
@@ -296,18 +297,22 @@ export const makeOrchestrationIntegrationHarness = (
         );
 
     const checkpointStoreLayer = CheckpointStoreLive.pipe(
-      Layer.provide(GitCoreLive.pipe(Layer.provide(ServerSettingsService.layerTest()))),
+      Layer.provide(
+        GitCoreLive.pipe(
+          Layer.provide(ServerSettingsService.layerTest()),
+          Layer.provideMerge(GitCoreCollaboratorsTestLive),
+        ),
+      ),
     );
     const projectionSnapshotQueryLayer = OrchestrationProjectionSnapshotQueryLive;
     const runtimeServicesLayer = Layer.mergeAll(
-      projectionSnapshotQueryLayer,
-      orchestrationLayer.pipe(Layer.provide(projectionSnapshotQueryLayer)),
+      orchestrationLayer,
       ProjectionCheckpointRepositoryLive,
       ProjectionPendingApprovalRepositoryLive,
       checkpointStoreLayer,
       providerLayer,
       RuntimeReceiptBusTest,
-    );
+    ).pipe(Layer.provideMerge(projectionSnapshotQueryLayer));
     const serverSettingsLayer = ServerSettingsService.layerTest();
     const runtimeIngestionLayer = ProviderRuntimeIngestionLive.pipe(
       Layer.provideMerge(runtimeServicesLayer),

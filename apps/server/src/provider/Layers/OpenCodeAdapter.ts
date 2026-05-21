@@ -18,6 +18,9 @@ import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { WorkspaceExecutionResolver } from "../../workspace/Services/WorkspaceExecution.ts";
+import { resolveOpenCodeSpawnForThread } from "../resolveOpenCodeSpawn.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import {
   ProviderAdapterProcessError,
@@ -1009,6 +1012,16 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
           );
           const binaryPath = settings.providers.opencode.binaryPath;
           const serverUrl = settings.providers.opencode.serverUrl;
+          const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+          const workspaceExecutionResolver = yield* WorkspaceExecutionResolver;
+          const openCodeSpawn = yield* resolveOpenCodeSpawnForThread(
+            input.threadId,
+            binaryPath,
+          ).pipe(
+            Effect.provideService(ProjectionSnapshotQuery, projectionSnapshotQuery),
+            Effect.provideService(WorkspaceExecutionResolver, workspaceExecutionResolver),
+            Effect.orElseSucceed(() => ({ kind: "local" as const })),
+          );
           const serverPassword = settings.providers.opencode.serverPassword;
           const directory = input.cwd ?? serverConfig.cwd;
           const existing = sessions.get(input.threadId);
@@ -1027,6 +1040,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
                 const server = yield* openCodeRuntime.connectToOpenCodeServer({
                   binaryPath,
                   serverUrl,
+                  spawn: openCodeSpawn,
                 });
                 const client = openCodeRuntime.createOpenCodeSdkClient({
                   baseUrl: server.url,

@@ -85,6 +85,11 @@ import {
 } from "../Errors.ts";
 import { ClaudeAdapter, type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import { resolveClaudeSpawnForThread } from "../resolveClaudeSpawn.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { WorkspaceExecutionResolver } from "../../workspace/Services/WorkspaceExecution.ts";
+import { formatSshUserMessage } from "../../ssh/formatSshUserMessage.ts";
+import { spawnClaudeCodeProcessOverSsh } from "../../ssh/Services/SshSpawner.ts";
 
 const PROVIDER = "claudeAgent" as const;
 type ClaudeTextStreamKind = Extract<RuntimeContentStreamKind, "assistant_text" | "reasoning_text">;
@@ -2836,6 +2841,37 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ),
       );
       const claudeBinaryPath = resolveClaudeBinaryPath(claudeSettings.binaryPath);
+      const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+      const workspaceExecutionResolver = yield* WorkspaceExecutionResolver;
+      const claudeSpawn = yield* resolveClaudeSpawnForThread(
+        input.threadId,
+        claudeSettings.binaryPath,
+        input.cwd,
+      ).pipe(
+        Effect.provideService(ProjectionSnapshotQuery, projectionSnapshotQuery),
+        Effect.provideService(WorkspaceExecutionResolver, workspaceExecutionResolver),
+        Effect.mapError(
+          (cause) =>
+            new ProviderAdapterProcessError({
+              provider: PROVIDER,
+              threadId,
+              detail:
+                input.cwd !== undefined && input.cwd.startsWith("/")
+                  ? `SSH 远程项目无法启动 Claude：${formatSshUserMessage(cause) || toMessage(cause, "远程 claudecode 探测失败")}。不会在失败时回退到本机 claudecode。`
+                  : `Failed to resolve Claude spawn: ${formatSshUserMessage(cause) || toMessage(cause, "Claude spawn resolution failed")}.`,
+              cause,
+            }),
+        ),
+        Effect.tap((spawn) =>
+          Effect.logInfo("[ClaudeAdapter] Claude spawn resolved", {
+            threadId,
+            kind: spawn.kind,
+            ...(spawn.kind === "ssh"
+              ? { remoteBinaryPath: spawn.binaryPath, workspaceRoot: spawn.execution.workspaceRoot }
+              : { localBinaryPath: claudeBinaryPath }),
+          }),
+        ),
+      );
       const extraArgs = parseCliArgs(claudeSettings.launchArgs).flags;
       const modelSelection =
         input.modelSelection?.provider === "claudeAgent" ? input.modelSelection : undefined;
@@ -2867,11 +2903,34 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(fastMode ? { fastMode: true } : {}),
       };
 
+      // SDK always requires `pathToClaudeCodeExecutable` (constructor resolves bundled cli.js when
+      // omitted). Custom `spawnClaudeCodeProcess` only replaces how the process is started.
+      const claudeExecutablePath =
+        claudeSpawn.kind === "ssh" ? claudeSpawn.binaryPath : claudeBinaryPath;
+
       // Runtime supports `additionalInstructions` (see Claude Code docs); SDK `Options` types may lag.
       const queryOptions = {
         ...(input.cwd ? { cwd: input.cwd } : {}),
         ...(apiModelId ? { model: apiModelId } : {}),
-        pathToClaudeCodeExecutable: claudeBinaryPath,
+        pathToClaudeCodeExecutable: claudeExecutablePath,
+        ...(claudeSpawn.kind === "ssh"
+          ? {
+              spawnClaudeCodeProcess: (opts: {
+                command: string;
+                args: string[];
+                cwd?: string;
+                env: Record<string, string | undefined>;
+                signal: AbortSignal;
+              }) => {
+                const remoteEnv = Object.fromEntries(
+                  Object.entries(opts.env).filter(
+                    (entry): entry is [string, string] => entry[1] !== undefined,
+                  ),
+                );
+                return spawnClaudeCodeProcessOverSsh(claudeSpawn.execution, remoteEnv, opts);
+              },
+            }
+          : {}),
         settingSources: [...CLAUDE_SETTING_SOURCES],
         additionalInstructions: T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT,
         // The SDK type lags the CLI here: Opus 4.7 accepts `xhigh` even though
@@ -2907,7 +2966,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         })(),
         ...(input.cwd ? { additionalDirectories: [input.cwd] } : {}),
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
-      } as ClaudeQueryOptions;
+      } as unknown as ClaudeQueryOptions;
 
       yield* Effect.annotateCurrentSpan({
         "provider.kind": PROVIDER,
@@ -2931,7 +2990,8 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         "claude.query.setting_sources": [...CLAUDE_SETTING_SOURCES],
         "claude.query.settings_json": JSON.stringify(settings),
         "claude.query.extra_args_json": JSON.stringify(extraArgs),
-        "claude.query.path_to_executable": claudeBinaryPath,
+        "claude.query.path_to_executable": claudeExecutablePath,
+        "claude.query.spawn_kind": claudeSpawn.kind,
       });
 
       const queryRuntime = yield* Effect.try({

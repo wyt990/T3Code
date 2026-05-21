@@ -450,6 +450,7 @@ export interface ChatComposerProps {
   ) => void;
 
   onProviderModelSelect: (provider: ProviderKind, model: string) => void;
+  onRefreshConnectionProviders?: () => Promise<void>;
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
@@ -523,6 +524,7 @@ export const ChatComposer = memo(
       onPreviousActivePendingUserInputQuestion,
       onChangeActivePendingUserInputCustomAnswer,
       onProviderModelSelect,
+      onRefreshConnectionProviders,
       toggleInteractionMode,
       handleRuntimeModeChange,
       handleInteractionModeChange,
@@ -1894,6 +1896,7 @@ export const ChatComposer = memo(
                     modelOptionsByProvider={modelOptionsByProvider}
                     terminalOpen={terminalOpen}
                     open={isComposerModelPickerOpen}
+                    {...(onRefreshConnectionProviders ? { onRefreshConnectionProviders } : {})}
                     {...(composerProviderState.modelPickerIconClassName
                       ? {
                           activeProviderIconClassName:

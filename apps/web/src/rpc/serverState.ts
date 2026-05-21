@@ -2,6 +2,8 @@ import { useAtomSubscribe, useAtomValue } from "@effect/atom-react";
 import {
   DEFAULT_SERVER_SETTINGS,
   type EditorId,
+  type EnvironmentId,
+  type ProjectId,
   type ServerConfig,
   type ServerConfigStreamEvent,
   type ServerConfigUpdatedPayload,
@@ -11,7 +13,9 @@ import {
   type ServerSettings,
 } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { readEnvironmentApi } from "../environmentApi.ts";
 
 import type { WsRpcClient } from "./wsRpcClient";
 import { appAtomRegistry, resetAppAtomRegistryForTests } from "./atomRegistry";
@@ -296,4 +300,84 @@ export function useServerConfigUpdatedSubscription(
   listener: (notification: ServerConfigUpdatedNotification) => void,
 ): void {
   useLatestAtomSubscription(serverConfigUpdatedAtom, listener);
+}
+
+export type ConnectionAwareProvidersState = {
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly loading: boolean;
+  readonly error: string | null;
+  readonly refresh: (options?: { readonly invalidate?: boolean }) => Promise<void>;
+};
+
+/**
+ * Providers for chat: local projects use global server config; SSH projects load
+ * remote claudeAgent + opencode via `getConnectionProviders` (no local fallback).
+ */
+export function useConnectionAwareProviders(
+  environmentId: EnvironmentId | null | undefined,
+  sshConnectionId: string | null | undefined,
+  projectId: ProjectId | null | undefined,
+): ConnectionAwareProvidersState {
+  const globalProviders = useServerProviders();
+  const [connectionProviders, setConnectionProviders] =
+    useState<ReadonlyArray<ServerProvider> | null>(null);
+  const lastGoodConnectionProvidersRef = useRef<ReadonlyArray<ServerProvider>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(
+    async (options?: { readonly invalidate?: boolean }) => {
+      if (!sshConnectionId || !environmentId || !projectId) {
+        setConnectionProviders(null);
+        lastGoodConnectionProvidersRef.current = [];
+        setError(null);
+        setLoading(false);
+        return;
+      }
+
+      const api = readEnvironmentApi(environmentId);
+      if (!api) {
+        setConnectionProviders(null);
+        setError("环境 API 不可用。");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await api.ssh.getConnectionProviders({
+          connectionId: sshConnectionId,
+          projectId,
+          ...(options?.invalidate === true ? { invalidate: true } : {}),
+        });
+        setConnectionProviders(result.providers);
+        if (result.providers.length > 0) {
+          lastGoodConnectionProvidersRef.current = result.providers;
+        }
+      } catch (loadError: unknown) {
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [environmentId, projectId, sshConnectionId],
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const isSshProject = Boolean(sshConnectionId && projectId);
+  const resolvedConnectionProviders =
+    connectionProviders !== null && connectionProviders.length > 0
+      ? connectionProviders
+      : lastGoodConnectionProvidersRef.current;
+
+  return {
+    providers: isSshProject ? resolvedConnectionProviders : globalProviders,
+    loading: isSshProject ? loading : false,
+    error: isSshProject ? error : null,
+    refresh: load,
+  };
 }

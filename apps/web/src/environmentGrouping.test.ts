@@ -48,6 +48,7 @@ function makeProject(
 ): Project {
   return {
     cwd: `/tmp/${overrides.name}`,
+    transport: { type: "local" },
     defaultModelSelection: { provider: "codex" as const, model: "gpt-5-codex" },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",

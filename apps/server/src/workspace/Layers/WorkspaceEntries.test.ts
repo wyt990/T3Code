@@ -6,16 +6,24 @@ import { Effect, FileSystem, Layer, Path, PlatformError } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import { GitCoreLive } from "../../git/Layers/GitCore.ts";
+import { GitCoreCollaboratorsTestLive } from "../../git/Layers/GitCoreTestSupport.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { GitCore } from "../../git/Services/GitCore.ts";
 import { WorkspaceEntries } from "../Services/WorkspaceEntries.ts";
+import { WorkspaceCollaboratorsTestLive } from "../WorkspaceCollaboratorsTestLive.ts";
 import { WorkspaceEntriesLive } from "./WorkspaceEntries.ts";
 import { WorkspacePathsLive } from "./WorkspacePaths.ts";
 
 const TestLayer = Layer.empty.pipe(
   Layer.provideMerge(WorkspaceEntriesLive.pipe(Layer.provide(WorkspacePathsLive))),
   Layer.provideMerge(WorkspacePathsLive),
-  Layer.provideMerge(GitCoreLive.pipe(Layer.provide(ServerSettingsService.layerTest()))),
+  Layer.provideMerge(WorkspaceCollaboratorsTestLive),
+  Layer.provideMerge(
+    GitCoreLive.pipe(
+      Layer.provide(ServerSettingsService.layerTest()),
+      Layer.provideMerge(GitCoreCollaboratorsTestLive),
+    ),
+  ),
   Layer.provide(
     ServerConfig.layerTest(process.cwd(), {
       prefix: "t3-workspace-entries-test-",

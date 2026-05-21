@@ -21,8 +21,14 @@ import {
   ProviderRegistryLive,
 } from "./ProviderRegistry.ts";
 import { ServerConfig } from "../../config.ts";
+import { makeSshPortForwardTestLayer } from "../../ssh/Layers/SshPortForward.ts";
 import { ServerSettingsService, type ServerSettingsShape } from "../../serverSettings.ts";
 import { ProviderRegistry } from "../Services/ProviderRegistry.ts";
+
+const sshPortForwardRegistryTestLayer = makeSshPortForwardTestLayer({
+  acquireForward: () =>
+    Effect.die(new Error("SshPortForward.acquireForward should not run in ProviderRegistry tests")),
+});
 
 process.env.T3CODE_CURSOR_ENABLED = "1";
 
@@ -462,6 +468,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
                 throw new Error(`Unexpected args: ${command} ${joined}`);
               }),
             ),
+            Layer.provideMerge(sshPortForwardRegistryTestLayer),
           );
           const runtimeServices = yield* Layer.build(providerRegistryLayer).pipe(
             Scope.provide(scope),
@@ -534,6 +541,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
                   throw new Error(`Unexpected args: ${command} ${joined}`);
                 }),
               ),
+              Layer.provideMerge(sshPortForwardRegistryTestLayer),
             );
             const runtimeServices = yield* Layer.build(
               Layer.mergeAll(

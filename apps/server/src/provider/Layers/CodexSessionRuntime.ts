@@ -32,8 +32,51 @@ import {
 } from "../CodexDeveloperInstructions.ts";
 import { T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT } from "../T3AgentSidebarLocaleInstructions.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
+import {
+  makeWorkspaceInteractiveStdio,
+  makeWorkspaceInteractiveTerminationError,
+} from "../codexWorkspaceStdio.ts";
+import type {
+  WorkspaceExecution,
+  WorkspaceInteractiveProcess,
+} from "../../workspace/Services/WorkspaceExecution.ts";
 
 const PROVIDER = "codex" as const;
+
+export type CodexSpawnConfig =
+  | { readonly kind: "local" }
+  | {
+      readonly kind: "ssh";
+      readonly execution: WorkspaceExecution;
+      readonly binaryPath: string;
+    };
+
+type CodexAppServerBinding =
+  | {
+      readonly kind: "local";
+      readonly child: ChildProcessSpawner.ChildProcessHandle;
+    }
+  | {
+      readonly kind: "ssh";
+      readonly process: WorkspaceInteractiveProcess;
+    };
+
+const buildCodexSpawnEnv = (
+  homePath: string | undefined,
+  spawnKind: CodexSpawnConfig["kind"] | "local",
+): Record<string, string> | undefined => {
+  if (homePath === undefined || homePath.trim().length === 0) {
+    return undefined;
+  }
+  if (spawnKind === "ssh") {
+    const trimmed = homePath.trim();
+    if (trimmed.startsWith("/") || trimmed.startsWith("~")) {
+      return { CODEX_HOME: trimmed };
+    }
+    return undefined;
+  }
+  return { CODEX_HOME: expandHomePath(homePath) };
+};
 
 const ANSI_ESCAPE_CHAR = String.fromCharCode(27);
 const ANSI_ESCAPE_REGEX = new RegExp(`${ANSI_ESCAPE_CHAR}\\[[0-9;]*m`, "g");
@@ -84,6 +127,8 @@ export interface CodexSessionRuntimeOptions {
   readonly model?: string;
   readonly serviceTier?: EffectCodexSchema.V2ThreadStartParams__ServiceTier | undefined;
   readonly resumeCursor?: CodexResumeCursor;
+  /** When omitted, spawns Codex on the local machine (default). */
+  readonly spawn?: CodexSpawnConfig;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
@@ -683,28 +728,67 @@ export const makeCodexSessionRuntime = (
     const collabReceiverTurnsRef = yield* Ref.make(new Map<string, TurnId>());
     const closedRef = yield* Ref.make(false);
 
-    const child = yield* spawner
-      .spawn(
-        ChildProcess.make(options.binaryPath, ["app-server"], {
-          cwd: options.cwd,
-          ...(options.homePath
-            ? { env: { ...process.env, CODEX_HOME: expandHomePath(options.homePath) } }
-            : {}),
-          shell: process.platform === "win32",
-        }),
-      )
-      .pipe(
-        Effect.provideService(Scope.Scope, runtimeScope),
-        Effect.mapError(
-          (cause) =>
-            new CodexErrors.CodexAppServerSpawnError({
-              command: `${options.binaryPath} app-server`,
-              cause,
-            }),
-        ),
-      );
+    const spawnConfig = options.spawn ?? { kind: "local" as const };
+    const spawnEnv = buildCodexSpawnEnv(options.homePath, spawnConfig.kind);
+    const binding: CodexAppServerBinding =
+      spawnConfig.kind === "ssh"
+        ? {
+            kind: "ssh",
+            process: yield* Effect.acquireRelease(
+              spawnConfig.execution
+                .spawnInteractive({
+                  command: spawnConfig.binaryPath,
+                  args: ["app-server"],
+                  cwd: options.cwd,
+                  ...(spawnEnv === undefined ? {} : { env: spawnEnv }),
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new CodexErrors.CodexAppServerSpawnError({
+                        command: `${spawnConfig.binaryPath} app-server`,
+                        cause,
+                      }),
+                  ),
+                ),
+              (interactive) => interactive.kill().pipe(Effect.ignore),
+            ),
+          }
+        : {
+            kind: "local",
+            child: yield* spawner
+              .spawn(
+                ChildProcess.make(options.binaryPath, ["app-server"], {
+                  cwd: options.cwd,
+                  ...(spawnEnv === undefined ? {} : { env: { ...process.env, ...spawnEnv } }),
+                  shell: process.platform === "win32",
+                }),
+              )
+              .pipe(
+                Effect.provideService(Scope.Scope, runtimeScope),
+                Effect.mapError(
+                  (cause) =>
+                    new CodexErrors.CodexAppServerSpawnError({
+                      command: `${options.binaryPath} app-server`,
+                      cause,
+                    }),
+                ),
+              ),
+          };
 
-    const clientContext = yield* CodexClient.layerChildProcess(child).pipe(
+    const clientLayer =
+      binding.kind === "local"
+        ? CodexClient.layerChildProcess(binding.child)
+        : Layer.effect(
+            CodexClient.CodexAppServerClient,
+            CodexClient.make(
+              makeWorkspaceInteractiveStdio(binding.process),
+              {},
+              makeWorkspaceInteractiveTerminationError(binding.process),
+            ),
+          );
+
+    const clientContext = yield* clientLayer.pipe(
       Layer.build,
       Effect.provideService(Scope.Scope, runtimeScope),
     );
@@ -1079,64 +1163,77 @@ export const makeCodexSessionRuntime = (
     );
 
     const stderrRemainderRef = yield* Ref.make("");
-    yield* child.stderr.pipe(
-      Stream.decodeText(),
-      Stream.runForEach((chunk) =>
-        Ref.modify(stderrRemainderRef, (current) => {
-          const combined = current + chunk;
-          const lines = combined.split("\n");
-          const remainder = lines.pop() ?? "";
-          return [lines.map((line) => line.replace(/\r$/, "")), remainder] as const;
-        }).pipe(
-          Effect.flatMap((lines) =>
-            Effect.forEach(
-              lines,
-              (line) => {
-                const classified = classifyCodexStderrLine(line);
-                if (!classified) {
-                  return Effect.void;
-                }
-                return emitEvent({
-                  kind: "notification",
-                  threadId: options.threadId,
-                  method: "process/stderr",
-                  message: classified.message,
-                });
-              },
-              { discard: true },
-            ),
+
+    const handleStderrLine = (line: string) => {
+      const classified = classifyCodexStderrLine(line);
+      if (!classified) {
+        return Effect.void;
+      }
+      return emitEvent({
+        kind: "notification",
+        threadId: options.threadId,
+        method: "process/stderr",
+        message: classified.message,
+      });
+    };
+
+    const drainStderrChunks = <E>(chunks: Stream.Stream<string, E>) =>
+      chunks.pipe(
+        Stream.runForEach((chunk) =>
+          Ref.modify(stderrRemainderRef, (current) => {
+            const combined = current + chunk;
+            const lines = combined.split("\n");
+            const remainder = lines.pop() ?? "";
+            return [lines.map((line) => line.replace(/\r$/, "")), remainder] as const;
+          }).pipe(
+            Effect.flatMap((lines) => Effect.forEach(lines, handleStderrLine, { discard: true })),
           ),
         ),
-      ),
-      Effect.forkIn(runtimeScope),
-    );
+      );
 
-    yield* child.exitCode.pipe(
-      Effect.flatMap((exitCode) =>
-        Ref.get(closedRef).pipe(
-          Effect.flatMap((closed) => {
-            if (closed) {
-              return Effect.void;
-            }
-            const nextStatus = exitCode === 0 ? "closed" : "error";
-            return updateSession(sessionRef, {
-              status: nextStatus,
-              activeTurnId: undefined,
-            }).pipe(
-              Effect.andThen(
-                emitSessionEvent(
-                  "session/exited",
-                  exitCode === 0
-                    ? "Codex App Server exited."
-                    : `Codex App Server exited with code ${exitCode}.`,
+    if (binding.kind === "local") {
+      yield* binding.child.stderr.pipe(
+        Stream.decodeText(),
+        drainStderrChunks,
+        Effect.forkIn(runtimeScope),
+      );
+    } else {
+      yield* drainStderrChunks(binding.process.stderr).pipe(Effect.forkIn(runtimeScope));
+    }
+
+    const monitorExit = <E>(exitEffect: Effect.Effect<number, E>) =>
+      exitEffect.pipe(
+        Effect.flatMap((exitCode) =>
+          Ref.get(closedRef).pipe(
+            Effect.flatMap((closed) => {
+              if (closed) {
+                return Effect.void;
+              }
+              const nextStatus = exitCode === 0 ? "closed" : "error";
+              return updateSession(sessionRef, {
+                status: nextStatus,
+                activeTurnId: undefined,
+              }).pipe(
+                Effect.andThen(
+                  emitSessionEvent(
+                    "session/exited",
+                    exitCode === 0
+                      ? "Codex App Server exited."
+                      : `Codex App Server exited with code ${exitCode}.`,
+                  ),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
         ),
-      ),
-      Effect.forkIn(runtimeScope),
-    );
+        Effect.forkIn(runtimeScope),
+      );
+
+    if (binding.kind === "local") {
+      yield* monitorExit(binding.child.exitCode.pipe(Effect.map((exitCode) => Number(exitCode))));
+    } else {
+      yield* monitorExit(binding.process.exited);
+    }
 
     const start = Effect.fn("CodexSessionRuntime.start")(function* () {
       yield* emitSessionEvent("session/connecting", "Starting Codex App Server session.");

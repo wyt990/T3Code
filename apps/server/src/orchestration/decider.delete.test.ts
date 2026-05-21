@@ -38,6 +38,7 @@ async function seedReadModel(): Promise<OrchestrationReadModel> {
         projectId: asProjectId("project-delete"),
         title: "Project Delete",
         workspaceRoot: "/tmp/project-delete",
+        transport: { type: "local" },
         defaultModelSelection: null,
         scripts: [],
         createdAt: now,

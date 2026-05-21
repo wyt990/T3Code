@@ -9,6 +9,7 @@ import { checkpointRefForThreadTurn } from "../Utils.ts";
 import { CheckpointStoreLive } from "./CheckpointStore.ts";
 import { CheckpointStore } from "../Services/CheckpointStore.ts";
 import { GitCoreLive } from "../../git/Layers/GitCore.ts";
+import { GitCoreCollaboratorsTestLive } from "../../git/Layers/GitCoreTestSupport.ts";
 import { GitCore } from "../../git/Services/GitCore.ts";
 import { GitCommandError } from "@t3tools/contracts";
 import { ServerConfig } from "../../config.ts";
@@ -22,10 +23,12 @@ const GitCoreTestLayer = GitCoreLive.pipe(
   Layer.provide(ServerConfigLayer),
   Layer.provide(NodeServices.layer),
   Layer.provide(ServerSettingsService.layerTest()),
+  Layer.provideMerge(GitCoreCollaboratorsTestLive),
 );
 const CheckpointStoreTestLayer = CheckpointStoreLive.pipe(
   Layer.provide(GitCoreTestLayer),
   Layer.provide(NodeServices.layer),
+  Layer.provide(GitCoreCollaboratorsTestLive),
 );
 const TestLayer = Layer.mergeAll(NodeServices.layer, GitCoreTestLayer, CheckpointStoreTestLayer);
 

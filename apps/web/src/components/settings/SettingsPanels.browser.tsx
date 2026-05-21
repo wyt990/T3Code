@@ -293,6 +293,12 @@ const createDesktopBridgeStub = (overrides?: {
     getSavedEnvironmentSecret: vi.fn().mockResolvedValue(null),
     setSavedEnvironmentSecret: vi.fn().mockResolvedValue(true),
     removeSavedEnvironmentSecret: vi.fn().mockResolvedValue(undefined),
+    getSshSecret: vi.fn().mockResolvedValue(null),
+    setSshSecret: vi.fn().mockResolvedValue(true),
+    removeSshSecrets: vi.fn().mockResolvedValue(undefined),
+    listSshConnections: vi.fn().mockResolvedValue([]),
+    upsertSshConnection: vi.fn(),
+    deleteSshConnection: vi.fn().mockResolvedValue(undefined),
     getServerExposureState: vi.fn().mockResolvedValue(
       overrides?.serverExposureState ?? {
         mode: "local-only",

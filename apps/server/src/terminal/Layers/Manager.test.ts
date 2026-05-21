@@ -15,11 +15,14 @@ import {
   Exit,
   Fiber,
   FileSystem,
+  Layer,
   Option,
   PlatformError,
+  Queue,
   Ref,
   Schedule,
   Scope,
+  Stream,
 } from "effect";
 import { TestClock } from "effect/testing";
 import { expect } from "vitest";
@@ -32,7 +35,26 @@ import {
   type PtySpawnInput,
   PtySpawnError,
 } from "../Services/PTY.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { WorkspaceExecutionResolver } from "../../workspace/Services/WorkspaceExecution.ts";
 import { makeTerminalManagerWithOptions } from "./Manager.ts";
+
+const TerminalCollaboratorsTestLive = Layer.mergeAll(
+  Layer.succeed(ProjectionSnapshotQuery, {
+    getSnapshot: () => Effect.die("unused in terminal tests"),
+    getShellSnapshot: () => Effect.die("unused in terminal tests"),
+    getCounts: () => Effect.die("unused in terminal tests"),
+    getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+    getProjectShellById: () => Effect.succeed(Option.none()),
+    getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
+    getThreadCheckpointContext: () => Effect.succeed(Option.none()),
+    getThreadShellById: () => Effect.succeed(Option.none()),
+    getThreadDetailById: () => Effect.succeed(Option.none()),
+  }),
+  Layer.succeed(WorkspaceExecutionResolver, {
+    resolveByProjectId: () => Effect.die("unused in terminal tests"),
+  }),
+);
 
 class FakePtyProcess implements PtyProcess {
   readonly writes: string[] = [];
@@ -225,10 +247,15 @@ const createManager = (
       const logsDir = path.join(baseDir, "userdata", "logs", "terminals");
       const ptyAdapter = options.ptyAdapter ?? new FakePtyAdapter();
 
+      const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+      const workspaceExecutionResolver = yield* WorkspaceExecutionResolver;
+
       const manager = yield* makeTerminalManagerWithOptions({
         logsDir,
         historyLineLimit,
         ptyAdapter,
+        projectionSnapshotQuery,
+        workspaceExecutionResolver,
         ...(options.shellResolver !== undefined ? { shellResolver: options.shellResolver } : {}),
         ...(options.platform !== undefined ? { platform: options.platform } : {}),
         ...(options.env !== undefined ? { env: options.env } : {}),
@@ -262,7 +289,9 @@ const createManager = (
     }),
   );
 
-it.layer(NodeServices.layer, { excludeTestServices: true })("TerminalManager", (it) => {
+it.layer(Layer.merge(NodeServices.layer, TerminalCollaboratorsTestLive), {
+  excludeTestServices: true,
+})("TerminalManager", (it) => {
   it.effect("spawns lazily and reuses running terminal per thread", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();
@@ -298,6 +327,84 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("TerminalManager", (
     Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) =>
       fs.writeFileString(filePath, contents),
     );
+
+  it.effect("validates and opens SSH workspace cwd via remote execution", () =>
+    Effect.gen(function* () {
+      const sshCwd = "/apps/claude-code";
+      const outputQueue = Effect.runSync(Queue.unbounded<string>());
+      const exitQueue = Effect.runSync(Queue.unbounded<number>());
+      const sshProjectionSnapshotQuery = {
+        getSnapshot: () => Effect.die("unused"),
+        getShellSnapshot: () => Effect.die("unused"),
+        getCounts: () => Effect.die("unused"),
+        getActiveProjectByWorkspaceRoot: (root: string) =>
+          Effect.succeed(
+            root === sshCwd
+              ? Option.some({
+                  id: "project-ssh",
+                  title: "claude-code",
+                  workspaceRoot: sshCwd,
+                  transport: { type: "ssh" as const, sshConnectionId: "conn-ssh" },
+                  repositoryIdentity: null,
+                  defaultModelSelection: null,
+                  scripts: [],
+                  createdAt: "2026-01-01T00:00:00.000Z",
+                  updatedAt: "2026-01-01T00:00:00.000Z",
+                  deletedAt: null,
+                })
+              : Option.none(),
+          ),
+        getProjectShellById: () => Effect.succeed(Option.none()),
+        getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
+        getThreadCheckpointContext: () => Effect.succeed(Option.none()),
+        getThreadShellById: () => Effect.succeed(Option.none()),
+        getThreadDetailById: () => Effect.succeed(Option.none()),
+      };
+      const sshWorkspaceExecutionResolver = {
+        resolveByProjectId: () =>
+          Effect.succeed({
+            kind: "ssh" as const,
+            workspaceRoot: sshCwd,
+            sshConnectionId: "conn-ssh",
+            fileSystem: {
+              stat: (targetPath: string) =>
+                Effect.succeed({
+                  path: targetPath,
+                  isDirectory: true,
+                  size: 0,
+                }),
+              list: () => Effect.die("unused"),
+              readFileString: () => Effect.die("unused"),
+              readFileBytes: () => Effect.die("unused"),
+              writeFileString: () => Effect.die("unused"),
+              makeDirectory: () => Effect.die("unused"),
+            },
+            terminal: {
+              open: () =>
+                Effect.succeed({
+                  write: () => Effect.void,
+                  resize: () => Effect.void,
+                  output: Stream.fromQueue(outputQueue),
+                  exited: Queue.take(exitQueue).pipe(
+                    Effect.mapError(() => new Error("ssh terminal exited")),
+                  ),
+                  close: () => Effect.void,
+                }),
+            },
+            spawnInteractive: () => Effect.die("unused"),
+            exec: () => Effect.die("unused"),
+          }),
+      };
+
+      const { manager, ptyAdapter } = yield* createManager(5, {}).pipe(
+        Effect.provideService(ProjectionSnapshotQuery, sshProjectionSnapshotQuery),
+        Effect.provideService(WorkspaceExecutionResolver, sshWorkspaceExecutionResolver),
+      );
+      const snapshot = yield* manager.open(openInput({ cwd: sshCwd }));
+      assert.equal(snapshot.status, "running");
+      assert.equal(ptyAdapter.spawnInputs.length, 0);
+    }),
+  );
 
   it.effect("preserves non-notFound cwd stat failures", () =>
     Effect.gen(function* () {

@@ -9,22 +9,50 @@
  *
  * @module CheckpointStoreLive
  */
-import { randomUUID } from "node:crypto";
-
 import { Effect, Layer, FileSystem, Path } from "effect";
 
-import { CheckpointInvariantError } from "../Errors.ts";
+import { CheckpointInvariantError, type CheckpointStoreError } from "../Errors.ts";
+import { prepareGitCheckpointIndexEnv } from "../remoteGitIndexEnv.ts";
 import { GitCommandError } from "@t3tools/contracts";
 import { GitCore } from "../../git/Services/GitCore.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { WorkspaceExecutionResolver } from "../../workspace/Services/WorkspaceExecution.ts";
 import { CheckpointStore, type CheckpointStoreShape } from "../Services/CheckpointStore.ts";
 import { CheckpointRef } from "@t3tools/contracts";
 
 const CHECKPOINT_DIFF_MAX_OUTPUT_BYTES = 10_000_000;
 
+const mapCaptureCheckpointError =
+  (operation: string) =>
+  (error: unknown): CheckpointStoreError => {
+    if (error instanceof GitCommandError) {
+      return error;
+    }
+    if (error instanceof CheckpointInvariantError) {
+      return error;
+    }
+    return new CheckpointInvariantError({
+      operation,
+      detail: error instanceof Error ? error.message : String(error),
+      cause: error,
+    });
+  };
+
 const makeCheckpointStore = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const git = yield* GitCore;
+  const prepareIndexEnvForCwd = (cwd: string) =>
+    Effect.gen(function* () {
+      const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+      const workspaceExecutionResolver = yield* WorkspaceExecutionResolver;
+      return yield* prepareGitCheckpointIndexEnv(cwd).pipe(
+        Effect.provideService(ProjectionSnapshotQuery, projectionSnapshotQuery),
+        Effect.provideService(WorkspaceExecutionResolver, workspaceExecutionResolver),
+        Effect.provideService(FileSystem.FileSystem, fs),
+        Effect.provideService(Path.Path, path),
+      );
+    });
 
   const resolveHeadCommit = (cwd: string): Effect.Effect<string | null, GitCommandError> =>
     git
@@ -94,18 +122,8 @@ const makeCheckpointStore = Effect.gen(function* () {
     const operation = "CheckpointStore.captureCheckpoint";
 
     yield* Effect.acquireUseRelease(
-      fs.makeTempDirectory({ prefix: "t3-fs-checkpoint-" }),
-      Effect.fn("captureCheckpoint.withTempDirectory")(function* (tempDir) {
-        const tempIndexPath = path.join(tempDir, `index-${randomUUID()}`);
-        const commitEnv: NodeJS.ProcessEnv = {
-          ...process.env,
-          GIT_INDEX_FILE: tempIndexPath,
-          GIT_AUTHOR_NAME: "T3 Code",
-          GIT_AUTHOR_EMAIL: "t3code@users.noreply.github.com",
-          GIT_COMMITTER_NAME: "T3 Code",
-          GIT_COMMITTER_EMAIL: "t3code@users.noreply.github.com",
-        };
-
+      prepareIndexEnvForCwd(input.cwd),
+      Effect.fn("captureCheckpoint.withIndexEnv")(function* ({ commitEnv }) {
         const headExists = yield* hasHeadCommit(input.cwd);
         if (headExists) {
           yield* git.execute({
@@ -162,7 +180,7 @@ const makeCheckpointStore = Effect.gen(function* () {
           args: ["update-ref", input.checkpointRef, commitOid],
         });
       }),
-      (tempDir) => fs.remove(tempDir, { recursive: true }),
+      ({ release }) => release(),
     ).pipe(
       Effect.catchTags({
         PlatformError: (error) =>
@@ -174,6 +192,7 @@ const makeCheckpointStore = Effect.gen(function* () {
             }),
           ),
       }),
+      Effect.mapError(mapCaptureCheckpointError("CheckpointStore.captureCheckpoint")),
     );
   });
 

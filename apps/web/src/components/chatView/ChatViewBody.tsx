@@ -153,6 +153,7 @@ import { useThreadPlanCatalog } from "./threadPlanCatalog";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../../composerHandleContext";
 import {
+  useConnectionAwareProviders,
   useServerAvailableEditors,
   useServerConfig,
   useServerKeybindings,
@@ -607,7 +608,19 @@ export function ChatViewBody(props: ChatViewProps) {
     primaryEnvironmentId && activeThread?.environmentId === primaryEnvironmentId
       ? primaryServerConfig
       : (activeEnvRuntimeState?.serverConfig ?? primaryServerConfig);
-  const providerStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;
+  const activeSshConnectionId =
+    activeProject?.transport.type === "ssh" ? activeProject.transport.sshConnectionId : null;
+  const connectionAwareProviderState = useConnectionAwareProviders(
+    activeProject?.environmentId,
+    activeSshConnectionId,
+    activeProject?.id ?? null,
+  );
+  const isSshActiveProject = activeProject?.transport.type === "ssh";
+  const providerStatuses = isSshActiveProject
+    ? connectionAwareProviderState.providers
+    : connectionAwareProviderState.providers.length > 0
+      ? connectionAwareProviderState.providers
+      : (serverConfig?.providers ?? EMPTY_PROVIDERS);
   const unlockedSelectedProvider = resolveSelectableProvider(
     providerStatuses,
     selectedProviderByThreadId ?? threadProvider ?? "codex",
@@ -2588,6 +2601,12 @@ export function ChatViewBody(props: ChatViewProps) {
         onPreviousActivePendingUserInputQuestion,
         onChangeActivePendingUserInputCustomAnswer,
         onProviderModelSelect,
+        ...(activeSshConnectionId && activeProject?.id
+          ? {
+              onRefreshConnectionProviders: () =>
+                connectionAwareProviderState.refresh({ invalidate: true }),
+            }
+          : {}),
         toggleInteractionMode,
         handleRuntimeModeChange,
         handleInteractionModeChange,

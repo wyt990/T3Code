@@ -27,7 +27,6 @@ import { CodeQualityProjectPreferences } from "../../codeQuality/Services/CodeQu
 import { CodeQualityGuard } from "../../provider/Services/CodeQualityGuard.ts";
 import type { CheckpointStoreError } from "../../checkpointing/Errors.ts";
 import type { OrchestrationDispatchError } from "../Errors.ts";
-import { isGitRepository } from "../../git/Utils.ts";
 import { GitStatusBroadcaster } from "../../git/Services/GitStatusBroadcaster.ts";
 import { WorkspaceEntries } from "../../workspace/Services/WorkspaceEntries.ts";
 
@@ -271,8 +270,6 @@ const make = Effect.gen(function* () {
     return Option.none();
   });
 
-  const isGitWorkspace = (cwd: string) => isGitRepository(cwd);
-
   // Resolves the workspace CWD for checkpoint operations, preferring the
   // active provider session CWD and falling back to the thread/project config.
   // Returns undefined when no CWD can be determined or the workspace is not
@@ -282,7 +279,7 @@ const make = Effect.gen(function* () {
     readonly thread: { readonly projectId: ProjectId; readonly worktreePath: string | null };
     readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly workspaceRoot: string }>;
     readonly preferSessionRuntime: boolean;
-  }): Effect.fn.Return<string | undefined> {
+  }): Effect.fn.Return<string | undefined, CheckpointStoreError> {
     const fromSession = yield* resolveSessionRuntimeForThread(input.threadId);
     const fromThread = resolveThreadWorkspaceCwd({
       thread: input.thread,
@@ -303,7 +300,8 @@ const make = Effect.gen(function* () {
     if (!cwd) {
       return undefined;
     }
-    if (!isGitWorkspace(cwd)) {
+    const isGit = yield* checkpointStore.isGitRepository(cwd);
+    if (!isGit) {
       return undefined;
     }
     return cwd;
@@ -753,7 +751,10 @@ const make = Effect.gen(function* () {
       }).pipe(Effect.catch(() => Effect.void));
       return;
     }
-    if (!isGitWorkspace(sessionRuntime.value.cwd)) {
+    const isGit = yield* checkpointStore
+      .isGitRepository(sessionRuntime.value.cwd)
+      .pipe(Effect.catch(() => Effect.succeed(false)));
+    if (!isGit) {
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
         turnCount: event.payload.turnCount,

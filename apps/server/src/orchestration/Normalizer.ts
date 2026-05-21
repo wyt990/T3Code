@@ -2,6 +2,7 @@ import { Effect, FileSystem, Path } from "effect";
 import {
   type ClientOrchestrationCommand,
   type OrchestrationCommand,
+  type ProjectTransport,
   OrchestrationDispatchCommandError,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
@@ -31,35 +32,67 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
     const normalizeProjectWorkspaceRootForCreate = (
       workspaceRoot: string,
       createIfMissing: boolean | undefined,
+      transport: ProjectTransport | undefined,
     ) =>
-      workspacePaths
-        .normalizeWorkspaceRoot(workspaceRoot, {
-          createIfMissing: createIfMissing === true,
-        })
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new OrchestrationDispatchCommandError({
-                message: cause.message,
-              }),
-          ),
-        );
+      transport?.type === "ssh"
+        ? workspacePaths.normalizeRemoteWorkspaceRoot(workspaceRoot).pipe(
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationDispatchCommandError({
+                  message: cause.message,
+                }),
+            ),
+          )
+        : workspacePaths
+            .normalizeWorkspaceRoot(workspaceRoot, {
+              createIfMissing: createIfMissing === true,
+            })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationDispatchCommandError({
+                    message: cause.message,
+                  }),
+              ),
+            );
+
+    const normalizeProjectWorkspaceRootForTransport = (
+      workspaceRoot: string,
+      transport: ProjectTransport | undefined,
+    ) =>
+      transport?.type === "ssh"
+        ? workspacePaths.normalizeRemoteWorkspaceRoot(workspaceRoot).pipe(
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationDispatchCommandError({
+                  message: cause.message,
+                }),
+            ),
+          )
+        : normalizeProjectWorkspaceRoot(workspaceRoot);
 
     if (command.type === "project.create") {
+      const transport = command.transport ?? { type: "local" as const };
       return {
         ...command,
+        transport,
         workspaceRoot: yield* normalizeProjectWorkspaceRootForCreate(
           command.workspaceRoot,
           command.createWorkspaceRootIfMissing,
+          transport,
         ),
-        createWorkspaceRootIfMissing: command.createWorkspaceRootIfMissing === true,
+        createWorkspaceRootIfMissing:
+          transport.type === "local" ? command.createWorkspaceRootIfMissing === true : false,
       } satisfies OrchestrationCommand;
     }
 
     if (command.type === "project.meta.update" && command.workspaceRoot !== undefined) {
       return {
         ...command,
-        workspaceRoot: yield* normalizeProjectWorkspaceRoot(command.workspaceRoot),
+        workspaceRoot: yield* normalizeProjectWorkspaceRootForTransport(
+          command.workspaceRoot,
+          command.transport,
+        ),
       } satisfies OrchestrationCommand;
     }
 

@@ -655,9 +655,13 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
 
   if (platform === "win") {
     buildConfig.npmRebuild = false;
+    buildConfig.nsis = {
+      include: "installer.nsh",
+    };
     const winConfig: Record<string, unknown> = {
       target: [target],
       icon: "icon.ico",
+      executableName: "t3code",
     };
     if (signed) {
       winConfig.azureSignOptions = yield* AzureTrustedSigningOptionsConfig;

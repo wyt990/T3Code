@@ -25,6 +25,9 @@ describe("environment runtime catalog stores", () => {
           getSavedEnvironmentSecret: async () => null,
           setSavedEnvironmentSecret: async () => true,
           removeSavedEnvironmentSecret: async () => undefined,
+          getSshSecret: async () => null,
+          setSshSecret: async () => false,
+          removeSshSecrets: async () => undefined,
         },
       } satisfies Pick<LocalApi, "persistence">,
     });
@@ -112,6 +115,9 @@ describe("environment runtime catalog stores", () => {
           getSavedEnvironmentSecret: async () => null,
           setSavedEnvironmentSecret: async () => true,
           removeSavedEnvironmentSecret: async () => undefined,
+          getSshSecret: async () => null,
+          setSshSecret: async () => false,
+          removeSshSecrets: async () => undefined,
         },
       } satisfies Pick<LocalApi, "persistence">,
     });

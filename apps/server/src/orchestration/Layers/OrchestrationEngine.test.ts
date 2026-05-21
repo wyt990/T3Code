@@ -1,6 +1,7 @@
 import {
   CheckpointRef,
   CommandId,
+  DEFAULT_PROJECT_TRANSPORT,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   MessageId,
   ProjectId,
@@ -103,6 +104,7 @@ describe("OrchestrationEngine", () => {
           id: asProjectId("project-bootstrap"),
           title: "Bootstrap Project",
           workspaceRoot: "/tmp/project-bootstrap",
+          transport: DEFAULT_PROJECT_TRANSPORT,
           defaultModelSelection: {
             provider: "codex" as const,
             model: "gpt-5-codex",

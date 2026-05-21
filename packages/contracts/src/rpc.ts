@@ -10,6 +10,19 @@ import {
   FilesystemBrowseError,
 } from "./filesystem.ts";
 import {
+  SshConfirmHostKeyInput,
+  SshConnectionSummary,
+  SshDeleteConnectionInput,
+  SshListDirectoryInput,
+  SshListDirectoryResult,
+  SshListDirectoryError,
+  SshListProviderProbesInput,
+  SshListProviderProbesResult,
+  SshTestConnectionInput,
+  SshTestConnectionResult,
+  SshUpsertConnectionInput,
+} from "./ssh.ts";
+import {
   GitActionProgressEvent,
   GitCheckoutInput,
   GitCheckoutResult,
@@ -72,6 +85,7 @@ import {
   ServerConfig,
   ServerLifecycleStreamEvent,
   ServerProviderUpdatedPayload,
+  ServerGetConnectionProvidersInput,
   ServerRefreshClaudeAgentModelsResult,
   ServerUpsertKeybindingInput,
   ServerUpsertKeybindingResult,
@@ -79,6 +93,7 @@ import {
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import { ProviderKind } from "./orchestration.ts";
 import { EnvironmentId, ProjectId, TrimmedNonEmptyString, ThreadId } from "./baseSchemas.ts";
+import { ServerProviders } from "./server.ts";
 import * as V from "./visualization.ts";
 import * as CQ from "./codeQuality.ts";
 import * as T from "./testing.ts";
@@ -150,6 +165,15 @@ export const WS_METHODS = {
   // Filesystem methods
   filesystemBrowse: "filesystem.browse",
 
+  // SSH methods
+  sshListConnections: "ssh.listConnections",
+  sshListDirectory: "ssh.listDirectory",
+  sshUpsertConnection: "ssh.upsertConnection",
+  sshDeleteConnection: "ssh.deleteConnection",
+  sshTestConnection: "ssh.testConnection",
+  sshConfirmHostKey: "ssh.confirmHostKey",
+  sshListProviderProbes: "ssh.listProviderProbes",
+
   // Git methods
   gitPull: "git.pull",
   gitRefreshStatus: "git.refreshStatus",
@@ -173,6 +197,7 @@ export const WS_METHODS = {
 
   // Server meta
   serverGetConfig: "server.getConfig",
+  serverGetConnectionProviders: "server.getConnectionProviders",
   serverRefreshProviders: "server.refreshProviders",
   serverRefreshClaudeAgentModels: "server.refreshClaudeAgentModels",
   serverUpsertKeybinding: "server.upsertKeybinding",
@@ -325,6 +350,11 @@ export const WsServerRefreshClaudeAgentModelsRpc = Rpc.make(
   },
 );
 
+export const WsServerGetConnectionProvidersRpc = Rpc.make(WS_METHODS.serverGetConnectionProviders, {
+  payload: ServerGetConnectionProvidersInput,
+  success: Schema.Struct({ providers: ServerProviders }),
+});
+
 export const WsServerGetSettingsRpc = Rpc.make(WS_METHODS.serverGetSettings, {
   payload: Schema.Struct({}),
   success: ServerSettings,
@@ -358,6 +388,41 @@ export const WsFilesystemBrowseRpc = Rpc.make(WS_METHODS.filesystemBrowse, {
   payload: FilesystemBrowseInput,
   success: FilesystemBrowseResult,
   error: FilesystemBrowseError,
+});
+
+export const WsSshListConnectionsRpc = Rpc.make(WS_METHODS.sshListConnections, {
+  success: Schema.Array(SshConnectionSummary),
+});
+
+export const WsSshListDirectoryRpc = Rpc.make(WS_METHODS.sshListDirectory, {
+  payload: SshListDirectoryInput,
+  success: SshListDirectoryResult,
+  error: SshListDirectoryError,
+});
+
+export const WsSshUpsertConnectionRpc = Rpc.make(WS_METHODS.sshUpsertConnection, {
+  payload: SshUpsertConnectionInput,
+  success: SshConnectionSummary,
+});
+
+export const WsSshDeleteConnectionRpc = Rpc.make(WS_METHODS.sshDeleteConnection, {
+  payload: SshDeleteConnectionInput,
+  success: Schema.Void,
+});
+
+export const WsSshTestConnectionRpc = Rpc.make(WS_METHODS.sshTestConnection, {
+  payload: SshTestConnectionInput,
+  success: SshTestConnectionResult,
+});
+
+export const WsSshConfirmHostKeyRpc = Rpc.make(WS_METHODS.sshConfirmHostKey, {
+  payload: SshConfirmHostKeyInput,
+  success: Schema.Void,
+});
+
+export const WsSshListProviderProbesRpc = Rpc.make(WS_METHODS.sshListProviderProbes, {
+  payload: SshListProviderProbesInput,
+  success: SshListProviderProbesResult,
 });
 
 export const WsSubscribeGitStatusRpc = Rpc.make(WS_METHODS.subscribeGitStatus, {
@@ -877,6 +942,7 @@ export const WsContextGetToolTimingPoolRpc = Rpc.make(WS_METHODS.contextGetToolT
 
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
+  WsServerGetConnectionProvidersRpc,
   WsServerRefreshProvidersRpc,
   WsServerRefreshClaudeAgentModelsRpc,
   WsServerUpsertKeybindingRpc,
@@ -886,6 +952,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
+  WsSshListConnectionsRpc,
+  WsSshListDirectoryRpc,
+  WsSshUpsertConnectionRpc,
+  WsSshDeleteConnectionRpc,
+  WsSshTestConnectionRpc,
+  WsSshConfirmHostKeyRpc,
+  WsSshListProviderProbesRpc,
   WsSubscribeGitStatusRpc,
   WsGitPullRpc,
   WsGitRefreshStatusRpc,

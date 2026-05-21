@@ -4,9 +4,11 @@ import { Effect, FileSystem, Layer, Path } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import { GitCoreLive } from "../../git/Layers/GitCore.ts";
+import { GitCoreCollaboratorsTestLive } from "../../git/Layers/GitCoreTestSupport.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { WorkspaceEntries } from "../Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "../Services/WorkspaceFileSystem.ts";
+import { WorkspaceCollaboratorsTestLive } from "../WorkspaceCollaboratorsTestLive.ts";
 import { WorkspaceEntriesLive } from "./WorkspaceEntries.ts";
 import { WorkspaceFileSystemLive } from "./WorkspaceFileSystem.ts";
 import { WorkspacePathsLive } from "./WorkspacePaths.ts";
@@ -20,7 +22,13 @@ const TestLayer = Layer.empty.pipe(
   Layer.provideMerge(ProjectLayer),
   Layer.provideMerge(WorkspaceEntriesLive.pipe(Layer.provide(WorkspacePathsLive))),
   Layer.provideMerge(WorkspacePathsLive),
-  Layer.provideMerge(GitCoreLive.pipe(Layer.provide(ServerSettingsService.layerTest()))),
+  Layer.provideMerge(WorkspaceCollaboratorsTestLive),
+  Layer.provideMerge(
+    GitCoreLive.pipe(
+      Layer.provide(ServerSettingsService.layerTest()),
+      Layer.provideMerge(GitCoreCollaboratorsTestLive),
+    ),
+  ),
   Layer.provide(
     ServerConfig.layerTest(process.cwd(), {
       prefix: "t3-workspace-files-test-",

@@ -21,3 +21,4 @@ export * from "./rpc.ts";
 export * from "./codeQuality.ts";
 export * from "./testing.ts";
 export * from "./visualization.ts";
+export * from "./ssh.ts";

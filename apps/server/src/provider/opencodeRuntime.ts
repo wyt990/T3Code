@@ -30,7 +30,13 @@ import {
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { isWindowsCommandNotFound } from "../processRunner.ts";
+import { SshPortForward } from "../ssh/Services/SshPortForward.ts";
+import {
+  WorkspaceExecutionError,
+  type WorkspaceExecution,
+} from "../workspace/Services/WorkspaceExecution.ts";
 import { collectStreamAsString } from "./providerSnapshot.ts";
+import type { OpenCodeSpawnConfig } from "./resolveOpenCodeSpawn.ts";
 import { NetService } from "@t3tools/shared/Net";
 
 const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
@@ -121,6 +127,7 @@ export interface OpenCodeRuntimeShape {
   readonly connectToOpenCodeServer: (input: {
     readonly binaryPath: string;
     readonly serverUrl?: string | null;
+    readonly spawn?: OpenCodeSpawnConfig;
     readonly port?: number;
     readonly hostname?: string;
     readonly timeoutMs?: number;
@@ -265,9 +272,55 @@ function ensureRuntimeError(
     : new OpenCodeRuntimeError({ operation, detail, cause });
 }
 
+const REMOTE_LOOPBACK_PORT_PROBE = `python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()' 2>/dev/null || node -e "require('net').createServer().listen(0,'127.0.0.1',function(){console.log(this.address().port);this.close()})" 2>/dev/null`;
+
+const probeRemoteLoopbackPort = (execution: WorkspaceExecution) =>
+  execution
+    .exec({
+      command: REMOTE_LOOPBACK_PORT_PROBE,
+      cwd: execution.workspaceRoot,
+    })
+    .pipe(
+      Effect.flatMap((result) => {
+        const line = result.stdout
+          .split("\n")
+          .map((value) => value.trim())
+          .find((value) => value.length > 0);
+        const port = line === undefined ? Number.NaN : Number.parseInt(line, 10);
+        if (result.exitCode !== 0 || !Number.isFinite(port) || port <= 0) {
+          return Effect.fail(
+            new OpenCodeRuntimeError({
+              operation: "startOpenCodeServerProcess",
+              detail:
+                result.stderr.trim().length > 0
+                  ? `Failed to reserve remote loopback port: ${result.stderr.trim()}`
+                  : "Failed to reserve remote loopback port on the SSH host.",
+            }),
+          );
+        }
+        return Effect.succeed(port);
+      }),
+      Effect.mapError((cause) =>
+        cause instanceof WorkspaceExecutionError
+          ? new OpenCodeRuntimeError({
+              operation: "startOpenCodeServerProcess",
+              detail: cause.detail,
+              cause,
+            })
+          : ensureRuntimeError(
+              "startOpenCodeServerProcess",
+              openCodeRuntimeErrorDetail(cause),
+              cause,
+            ),
+      ),
+    );
+
 const makeOpenCodeRuntime = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const netService = yield* NetService;
+  const getSshPortForward = Effect.fn("lazy.SshPortForward")(function* () {
+    return yield* SshPortForward;
+  });
 
   const runOpenCodeCommand: OpenCodeRuntimeShape["runOpenCodeCommand"] = (input) =>
     Effect.gen(function* () {
@@ -440,6 +493,157 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       } satisfies OpenCodeServerProcess;
     });
 
+  const startOpenCodeServerOverSsh: (input: {
+    readonly execution: WorkspaceExecution;
+    readonly binaryPath: string;
+    readonly hostname?: string;
+    readonly timeoutMs?: number;
+  }) => Effect.Effect<OpenCodeServerProcess, OpenCodeRuntimeError, Scope.Scope> = (input) =>
+    Effect.gen(function* () {
+      const runtimeScope = yield* Scope.Scope;
+      const connectionId = input.execution.sshConnectionId;
+      if (connectionId === undefined) {
+        return yield* new OpenCodeRuntimeError({
+          operation: "startOpenCodeServerProcess",
+          detail: "SSH connection id is required to start OpenCode on a remote host.",
+        });
+      }
+
+      const hostname = input.hostname ?? DEFAULT_HOSTNAME;
+      const timeoutMs = input.timeoutMs ?? DEFAULT_OPENCODE_SERVER_TIMEOUT_MS;
+      const remotePort = yield* probeRemoteLoopbackPort(input.execution);
+
+      const process = yield* input.execution
+        .spawnInteractive({
+          command: input.binaryPath,
+          args: ["serve", `--hostname=${hostname}`, `--port=${remotePort}`],
+          cwd: input.execution.workspaceRoot,
+          env: {},
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new OpenCodeRuntimeError({
+                operation: "startOpenCodeServerProcess",
+                detail: `Failed to spawn remote OpenCode server: ${openCodeRuntimeErrorDetail(cause)}`,
+                cause,
+              }),
+          ),
+        );
+
+      const stdoutRef = yield* Ref.make("");
+      const stderrRef = yield* Ref.make("");
+      const readyDeferred = yield* Deferred.make<string, OpenCodeRuntimeError>();
+
+      const setReadyFromStdoutChunk = (chunk: string) =>
+        Ref.updateAndGet(stdoutRef, (stdout) => `${stdout}${chunk}`).pipe(
+          Effect.flatMap((nextStdout) => {
+            const parsed = parseServerUrlFromOutput(nextStdout);
+            return parsed
+              ? Deferred.succeed(readyDeferred, parsed).pipe(Effect.ignore)
+              : Effect.void;
+          }),
+        );
+
+      const stdoutFiber = yield* process.stdout.pipe(
+        Stream.runForEach(setReadyFromStdoutChunk),
+        Effect.ignore,
+        Effect.forkIn(runtimeScope),
+      );
+      const stderrFiber = yield* process.stderr.pipe(
+        Stream.runForEach((chunk) => Ref.update(stderrRef, (stderr) => `${stderr}${chunk}`)),
+        Effect.ignore,
+        Effect.forkIn(runtimeScope),
+      );
+
+      const exitFiber = yield* process.exited.pipe(
+        Effect.flatMap((code) =>
+          Effect.gen(function* () {
+            const stdout = yield* Ref.get(stdoutRef);
+            const stderr = yield* Ref.get(stderrRef);
+            yield* Deferred.fail(
+              readyDeferred,
+              new OpenCodeRuntimeError({
+                operation: "startOpenCodeServerProcess",
+                detail: [
+                  `Remote OpenCode server exited before startup completed (code: ${String(code)}).`,
+                  stdout.trim() ? `stdout:\n${stdout.trim()}` : null,
+                  stderr.trim() ? `stderr:\n${stderr.trim()}` : null,
+                ]
+                  .filter(Boolean)
+                  .join("\n\n"),
+                cause: { exitCode: code, stdout, stderr },
+              }),
+            ).pipe(Effect.ignore);
+          }),
+        ),
+        Effect.ignore,
+        Effect.forkIn(runtimeScope),
+      );
+
+      const readyExit = yield* Effect.exit(
+        Deferred.await(readyDeferred).pipe(Effect.timeoutOption(timeoutMs)),
+      );
+
+      yield* Fiber.interrupt(stdoutFiber).pipe(Effect.ignore);
+      yield* Fiber.interrupt(stderrFiber).pipe(Effect.ignore);
+
+      if (Exit.isFailure(readyExit)) {
+        yield* Fiber.interrupt(exitFiber).pipe(Effect.ignore);
+        yield* process.kill().pipe(Effect.ignore);
+        const squashed = Cause.squash(readyExit.cause);
+        return yield* ensureRuntimeError(
+          "startOpenCodeServerProcess",
+          `Failed while waiting for remote OpenCode server startup: ${openCodeRuntimeErrorDetail(squashed)}`,
+          squashed,
+        );
+      }
+
+      const readyOption = readyExit.value;
+      if (Option.isNone(readyOption)) {
+        yield* Fiber.interrupt(exitFiber).pipe(Effect.ignore);
+        yield* process.kill().pipe(Effect.ignore);
+        return yield* new OpenCodeRuntimeError({
+          operation: "startOpenCodeServerProcess",
+          detail: `Timed out waiting for remote OpenCode server start after ${timeoutMs}ms.`,
+        });
+      }
+
+      const sshPortForward = yield* getSshPortForward();
+      const forward = yield* sshPortForward
+        .acquireForward(connectionId, {
+          remoteHost: hostname,
+          remotePort,
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new OpenCodeRuntimeError({
+                operation: "startOpenCodeServerProcess",
+                detail: `SSH port forward failed for connection ${connectionId}: ${openCodeRuntimeErrorDetail(cause)}`,
+                cause,
+              }),
+          ),
+          Effect.tapError(() => process.kill().pipe(Effect.ignore)),
+        );
+
+      yield* Scope.addFinalizer(
+        runtimeScope,
+        Effect.gen(function* () {
+          yield* forward.release().pipe(Effect.ignore);
+          yield* process.kill().pipe(Effect.ignore);
+        }),
+      );
+
+      return {
+        url: forward.localUrl,
+        exitCode: process.exited.pipe(
+          Effect.tap(() => forward.release().pipe(Effect.ignore)),
+          Effect.orElseSucceed(() => 0),
+        ),
+      } satisfies OpenCodeServerProcess;
+    });
+
   const connectToOpenCodeServer: OpenCodeRuntimeShape["connectToOpenCodeServer"] = (input) => {
     const serverUrl = input.serverUrl?.trim();
     if (serverUrl) {
@@ -449,6 +653,21 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         exitCode: null,
         external: true,
       });
+    }
+
+    if (input.spawn?.kind === "ssh") {
+      return startOpenCodeServerOverSsh({
+        execution: input.spawn.execution,
+        binaryPath: input.spawn.binaryPath,
+        ...(input.hostname !== undefined ? { hostname: input.hostname } : {}),
+        ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+      }).pipe(
+        Effect.map((server) => ({
+          url: server.url,
+          exitCode: server.exitCode,
+          external: false,
+        })),
+      );
     }
 
     return startOpenCodeServerProcess({

@@ -362,7 +362,21 @@ export function buildRootGroups(input: {
   return groups;
 }
 
-export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): string {
+export function getCommandPaletteInputPlaceholder(
+  mode: CommandPaletteMode,
+  options?: { readonly ssh?: boolean },
+): string {
+  if (options?.ssh) {
+    switch (mode) {
+      case "root":
+      case "root-browse":
+        return "输入远程路径（如 /home/user/repo）";
+      case "submenu":
+      case "submenu-browse":
+        return "输入远程路径（如 /home/user/repo）";
+    }
+  }
+
   switch (mode) {
     case "root":
       return "搜索命令、项目和对话...";

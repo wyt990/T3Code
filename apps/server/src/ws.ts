@@ -33,6 +33,7 @@ import {
   OrchestrationReplayEventsError,
   ORCHESTRATION_WS_METHODS,
   FilesystemBrowseError,
+  SshListDirectoryError,
   ProjectId,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
@@ -76,6 +77,16 @@ import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
 import { ServerSettingsService } from "./serverSettings.ts";
 import { TerminalManager } from "./terminal/Services/Manager.ts";
+import {
+  confirmSshHostKey,
+  deleteSshConnection,
+  getConnectionProviders,
+  listSshConnections,
+  listSshDirectory,
+  listSshProviderProbes,
+  testSshConnection,
+  upsertSshConnection,
+} from "./ssh/SshRpc.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
@@ -1824,6 +1835,38 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
             ),
             { "rpc.aggregate": "workspace" },
           ),
+        [WS_METHODS.sshListConnections]: () =>
+          observeRpcEffect(WS_METHODS.sshListConnections, listSshConnections, {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshListDirectory]: (input) =>
+          observeRpcEffect(WS_METHODS.sshListDirectory, listSshDirectory(input), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshUpsertConnection]: (input) =>
+          observeRpcEffect(WS_METHODS.sshUpsertConnection, upsertSshConnection(input), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshDeleteConnection]: (input) =>
+          observeRpcEffect(WS_METHODS.sshDeleteConnection, deleteSshConnection(input), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshTestConnection]: (input) =>
+          observeRpcEffect(WS_METHODS.sshTestConnection, testSshConnection(input), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshConfirmHostKey]: (input) =>
+          observeRpcEffect(WS_METHODS.sshConfirmHostKey, confirmSshHostKey(input), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshListProviderProbes]: (input) =>
+          observeRpcEffect(WS_METHODS.sshListProviderProbes, listSshProviderProbes(input), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.serverGetConnectionProviders]: (input) =>
+          observeRpcEffect(WS_METHODS.serverGetConnectionProviders, getConnectionProviders(input), {
+            "rpc.aggregate": "ssh",
+          }),
         [WS_METHODS.subscribeGitStatus]: (input) =>
           observeRpcStream(
             WS_METHODS.subscribeGitStatus,

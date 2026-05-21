@@ -252,6 +252,7 @@ function setStoreThreads(threads: ReadonlyArray<ReturnType<typeof makeThread>>) 
         environmentId: localEnvironmentId,
         name: "Project",
         cwd: "/tmp/project",
+        transport: { type: "local" },
         defaultModelSelection: {
           provider: "codex",
           model: "gpt-5.4",

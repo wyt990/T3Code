@@ -14,6 +14,7 @@ import {
   initialTabsState,
   mergeTabs as mergeTabsReducer,
   persistTabsState,
+  pruneOrphanedServerTabs as pruneOrphanedServerTabsReducer,
   promoteDraftTab as promoteDraftTabReducer,
   reorderTabs as reorderTabsReducer,
   setCustomTitle as setCustomTitleReducer,
@@ -704,6 +705,7 @@ interface UiStateStore extends UiState {
   setTabSplitRatio: (leftTabId: string, rightTabId: string, ratio: number) => void;
   setTabDiffOpen: (tabId: string, open: boolean) => void;
   closeTabsByThreadIds: (environmentId: EnvironmentId, threadIds: readonly ThreadId[]) => void;
+  pruneOrphanedServerTabs: (validThreadKeys: ReadonlySet<string>) => void;
   promoteDraftTab: (draftId: DraftId, threadRef: ScopedThreadRef) => void;
 }
 
@@ -824,6 +826,11 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     ),
   setTabDiffOpen: (tabId, open) =>
     set((state) => updateTabs(state, (tabs) => setTabDiffOpenReducer(tabs, tabId, open))),
+  pruneOrphanedServerTabs: (validThreadKeys) =>
+    set((state) =>
+      updateTabs(state, (tabs) => pruneOrphanedServerTabsReducer(tabs, validThreadKeys)),
+    ),
+
   closeTabsByThreadIds: (environmentId, threadIds) => {
     console.log(
       "%c【标签操作】closeTabsByThreadIds 被调用",

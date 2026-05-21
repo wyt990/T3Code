@@ -20,6 +20,7 @@ import {
   GalleryHorizontalEndIcon,
   MergeIcon,
   MessageSquareIcon,
+  ServerIcon,
   SettingsIcon,
   SplitIcon,
   SquarePenIcon,
@@ -69,6 +70,14 @@ import {
   isUnsupportedWindowsProjectPath,
   resolveProjectPathForDispatch,
 } from "../lib/projectPaths";
+import {
+  appendSshBrowsePathSegment,
+  canNavigateSshUp,
+  getSshBrowseParentPath,
+  hasTrailingSshPathSeparator,
+  resolveSshProjectWorkspaceRoot,
+  SSH_BROWSE_INITIAL_PATH,
+} from "../lib/sshProjectPaths";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { getLatestThreadForProject } from "../lib/threadSort";
 import {
@@ -91,6 +100,12 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { CommandPaletteNlBootstrap } from "./CommandPaletteNlBootstrap";
+import {
+  buildSshBrowseGroups,
+  buildSshConnectionPickerItems,
+  filterSshBrowseEntries,
+  useSshDirectoryBrowse,
+} from "./SshDirectoryBrowser";
 import {
   ADDON_ICON_CLASS,
   buildBrowseGroups,
@@ -256,6 +271,10 @@ function OpenCommandPaletteDialog() {
   const [addProjectEnvironmentId, setAddProjectEnvironmentId] = useState<EnvironmentId | null>(
     null,
   );
+  const [addProjectSshConnection, setAddProjectSshConnection] = useState<{
+    readonly connectionId: string;
+    readonly label: string;
+  } | null>(null);
   const [isPickingProjectFolder, setIsPickingProjectFolder] = useState(false);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const primaryEnvironmentLabel = readPrimaryEnvironmentDescriptor()?.label ?? null;
@@ -325,7 +344,10 @@ function OpenCommandPaletteDialog() {
           : null;
     return getEnvironmentBrowsePlatform(os);
   }, [browseEnvironmentId, primaryEnvironmentId, savedEnvironmentRuntimeById]);
-  const isBrowsing = isFilesystemBrowseQuery(query, browseEnvironmentPlatform);
+  const isFilesystemBrowsing =
+    addProjectSshConnection === null && isFilesystemBrowseQuery(query, browseEnvironmentPlatform);
+  const isSshBrowsing = addProjectSshConnection !== null;
+  const isBrowsing = isFilesystemBrowsing || isSshBrowsing;
   const paletteMode = getCommandPaletteMode({ currentView, isBrowsing });
   const getAddProjectInitialQueryForEnvironment = useCallback(
     (environmentId: EnvironmentId | null): string => {
@@ -380,9 +402,16 @@ function OpenCommandPaletteDialog() {
       : null;
   const relativePathNeedsActiveProject =
     isExplicitRelativeProjectPath(query.trim()) && currentProjectCwdForBrowse === null;
-  const browseDirectoryPath = isBrowsing ? getBrowseDirectoryPath(query) : "";
+  const browseDirectoryPath = isFilesystemBrowsing ? getBrowseDirectoryPath(query) : "";
   const browseFilterQuery =
-    isBrowsing && !hasTrailingPathSeparator(query) ? getBrowseLeafPathSegment(query) : "";
+    isFilesystemBrowsing && !hasTrailingPathSeparator(query) ? getBrowseLeafPathSegment(query) : "";
+
+  const sshBrowse = useSshDirectoryBrowse({
+    environmentId: browseEnvironmentId,
+    connectionId: addProjectSshConnection?.connectionId ?? null,
+    query,
+    enabled: isSshBrowsing,
+  });
 
   const fetchBrowseResult = useCallback(
     async (partialPath: string): Promise<FilesystemBrowseResult | null> => {
@@ -407,7 +436,7 @@ function OpenCommandPaletteDialog() {
     queryFn: () => fetchBrowseResult(browseDirectoryPath),
     staleTime: BROWSE_STALE_TIME_MS,
     enabled:
-      isBrowsing &&
+      isFilesystemBrowsing &&
       browseDirectoryPath.length > 0 &&
       browseEnvironmentId !== null &&
       !relativePathNeedsActiveProject,
@@ -441,7 +470,7 @@ function OpenCommandPaletteDialog() {
   // Prefetch the parent and the most likely next child so browse navigation
   // stays warm without scanning every child directory in large trees.
   useEffect(() => {
-    if (!isBrowsing || filteredBrowseEntries.length === 0) return;
+    if (!isFilesystemBrowsing || filteredBrowseEntries.length === 0) return;
 
     if (canNavigateUp(query)) {
       prefetchBrowsePath(getBrowseParentPath(query)!);
@@ -455,10 +484,24 @@ function OpenCommandPaletteDialog() {
     exactBrowseEntry,
     filteredBrowseEntries.length,
     highlightedBrowseEntry,
-    isBrowsing,
+    isFilesystemBrowsing,
     prefetchBrowsePath,
     query,
   ]);
+
+  const {
+    filteredEntries: filteredSshBrowseEntries,
+    highlightedEntry: _highlightedSshBrowseEntry,
+    exactEntry: exactSshBrowseEntry,
+  } = useMemo(
+    () =>
+      filterSshBrowseEntries({
+        browseEntries: sshBrowse.browseEntries,
+        browseFilterQuery: sshBrowse.browseFilterQuery,
+        highlightedItemValue,
+      }),
+    [highlightedItemValue, sshBrowse.browseEntries, sshBrowse.browseFilterQuery],
+  );
 
   const openProjectFromSearch = useMemo(
     () => async (project: (typeof projects)[number]) => {
@@ -587,6 +630,7 @@ function OpenCommandPaletteDialog() {
   function popView(): void {
     if (viewStack.length <= 1) {
       setAddProjectEnvironmentId(null);
+      setAddProjectSshConnection(null);
     }
     setViewStack((previousViews) => previousViews.slice(0, -1));
     setHighlightedItemValue(null);
@@ -603,6 +647,7 @@ function OpenCommandPaletteDialog() {
 
   const startAddProjectBrowse = useCallback(
     (environmentId: EnvironmentId): void => {
+      setAddProjectSshConnection(null);
       setAddProjectEnvironmentId(environmentId);
       pushPaletteView({
         addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
@@ -612,6 +657,94 @@ function OpenCommandPaletteDialog() {
     },
     [getAddProjectInitialQueryForEnvironment],
   );
+
+  const startAddProjectSshBrowse = useCallback(
+    (
+      environmentId: EnvironmentId,
+      connection: { readonly connectionId: string; readonly label: string },
+    ) => {
+      setAddProjectEnvironmentId(environmentId);
+      setAddProjectSshConnection(connection);
+      setViewStack([]);
+      setHighlightedItemValue(null);
+      setQuery(SSH_BROWSE_INITIAL_PATH);
+      setBrowseGeneration((generation) => generation + 1);
+    },
+    [],
+  );
+
+  const openAddProjectSshFlow = useCallback(async () => {
+    const environmentId = defaultAddProjectEnvironmentId;
+    if (!environmentId) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "无法添加 SSH 项目",
+          description: "没有可用的环境。",
+        }),
+      );
+      return;
+    }
+
+    const api = readEnvironmentApi(environmentId);
+    if (!api) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "无法添加 SSH 项目",
+          description: "环境未连接。",
+        }),
+      );
+      return;
+    }
+
+    let connections;
+    try {
+      connections = await api.ssh.listConnections();
+    } catch (error) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "无法加载 SSH 连接",
+          description: error instanceof Error ? error.message : "发生错误。",
+        }),
+      );
+      return;
+    }
+
+    if (connections.length === 0) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "无 SSH 连接",
+          description: "请先在设置中添加 SSH 连接。",
+        }),
+      );
+      return;
+    }
+
+    setAddProjectEnvironmentId(environmentId);
+    setAddProjectSshConnection(null);
+    pushPaletteView({
+      addonIcon: <ServerIcon className={ADDON_ICON_CLASS} />,
+      groups: [
+        {
+          value: "ssh-connections",
+          label: "SSH 连接",
+          items: buildSshConnectionPickerItems({
+            connections,
+            icon: <ServerIcon className={ITEM_ICON_CLASS} />,
+            onSelect: async (connection) => {
+              startAddProjectSshBrowse(environmentId, {
+                connectionId: connection.id,
+                label: connection.label,
+              });
+            },
+          }),
+        },
+      ],
+    });
+  }, [defaultAddProjectEnvironmentId, startAddProjectSshBrowse]);
 
   const addProjectEnvironmentItems: CommandPaletteActionItem[] = addProjectEnvironmentOptions.map(
     (option) => ({
@@ -669,12 +802,14 @@ function OpenCommandPaletteDialog() {
   ]);
 
   useEffect(() => {
-    if (openIntent?.kind !== "add-project") {
-      return;
+    if (openIntent?.kind === "add-project") {
+      clearOpenIntent();
+      openAddProjectFlow();
+    } else if (openIntent?.kind === "add-project-ssh") {
+      clearOpenIntent();
+      void openAddProjectSshFlow();
     }
-    clearOpenIntent();
-    openAddProjectFlow();
-  }, [clearOpenIntent, openAddProjectFlow, openIntent]);
+  }, [clearOpenIntent, openAddProjectFlow, openAddProjectSshFlow, openIntent]);
 
   const paletteRegisteredCommands = useCommandPaletteStore((s) => s.commands);
   const nlPaletteMatches = useMemo(() => {
@@ -772,6 +907,18 @@ function OpenCommandPaletteDialog() {
       },
     });
   }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:add-project-ssh",
+    searchTerms: ["add project", "ssh", "remote", "server", "sftp"],
+    title: "添加 SSH 远程项目",
+    icon: <ServerIcon className={ITEM_ICON_CLASS} />,
+    keepOpen: true,
+    run: async () => {
+      await openAddProjectSshFlow();
+    },
+  });
 
   actionItems.push({
     kind: "action",
@@ -904,6 +1051,94 @@ function OpenCommandPaletteDialog() {
     ],
   );
 
+  const handleAddSshProject = useCallback(
+    async (rawPath: string) => {
+      if (!browseEnvironmentId || !addProjectSshConnection) {
+        return;
+      }
+
+      const api = readEnvironmentApi(browseEnvironmentId);
+      if (!api) {
+        return;
+      }
+
+      const workspaceRoot = resolveSshProjectWorkspaceRoot(rawPath);
+      if (workspaceRoot.length === 0) {
+        return;
+      }
+
+      const existing = findProjectByPath(
+        projects.filter((project) => project.environmentId === browseEnvironmentId),
+        workspaceRoot,
+      );
+      if (existing) {
+        const latestThread = getLatestThreadForProject(
+          threads.filter((thread) => thread.environmentId === existing.environmentId),
+          existing.id,
+          settings.sidebarThreadSortOrder,
+        );
+        if (latestThread) {
+          await navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(
+              scopeThreadRef(latestThread.environmentId, latestThread.id),
+            ),
+          });
+        } else {
+          await handleNewThread(scopeProjectRef(existing.environmentId, existing.id), {
+            envMode: settings.defaultThreadEnvMode,
+          }).catch(() => undefined);
+        }
+        setOpen(false);
+        return;
+      }
+
+      try {
+        const projectId = newProjectId();
+        await api.orchestration.dispatchCommand({
+          type: "project.create",
+          commandId: newCommandId(),
+          projectId,
+          title: inferProjectTitleFromPath(workspaceRoot),
+          workspaceRoot,
+          transport: {
+            type: "ssh",
+            sshConnectionId: addProjectSshConnection.connectionId,
+          },
+          createWorkspaceRootIfMissing: false,
+          defaultModelSelection: {
+            provider: "claudeAgent",
+            model: DEFAULT_MODEL_BY_PROVIDER.claudeAgent,
+          },
+          createdAt: new Date().toISOString(),
+        });
+        await handleNewThread(scopeProjectRef(browseEnvironmentId, projectId), {
+          envMode: settings.defaultThreadEnvMode,
+        }).catch(() => undefined);
+        setOpen(false);
+      } catch (error) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "添加 SSH 项目失败",
+            description: error instanceof Error ? error.message : "发生错误。",
+          }),
+        );
+      }
+    },
+    [
+      addProjectSshConnection,
+      browseEnvironmentId,
+      handleNewThread,
+      navigate,
+      projects,
+      setOpen,
+      settings.defaultThreadEnvMode,
+      settings.sidebarThreadSortOrder,
+      threads,
+    ],
+  );
+
   function browseTo(name: string): void {
     const nextQuery = appendBrowsePathSegment(query, name);
     setHighlightedItemValue(null);
@@ -922,6 +1157,24 @@ function OpenCommandPaletteDialog() {
     setBrowseGeneration((generation) => generation + 1);
   }
 
+  function sshBrowseTo(name: string): void {
+    const nextQuery = appendSshBrowsePathSegment(query, name);
+    setHighlightedItemValue(null);
+    setQuery(nextQuery);
+    setBrowseGeneration((generation) => generation + 1);
+  }
+
+  function sshBrowseUp(): void {
+    const parentPath = getSshBrowseParentPath(query);
+    if (parentPath === null) {
+      return;
+    }
+
+    setHighlightedItemValue(null);
+    setQuery(parentPath);
+    setBrowseGeneration((generation) => generation + 1);
+  }
+
   // Resolve the add-project path from browse data when available. When the
   // query has a trailing separator (e.g. "~/projects/foo/"), parentPath is the
   // directory itself. Otherwise the user typed a partial leaf name, so we need
@@ -930,8 +1183,14 @@ function OpenCommandPaletteDialog() {
     ? (browseResult?.parentPath ?? query.trim())
     : (exactBrowseEntry?.fullPath ?? query.trim());
 
+  const resolvedAddSshProjectPath = hasTrailingSshPathSeparator(query)
+    ? (sshBrowse.browseResult?.parentPath ?? query.trim())
+    : (exactSshBrowseEntry?.fullPath ?? query.trim());
+
   const canBrowseUp =
-    isBrowsing && !relativePathNeedsActiveProject && canNavigateUp(browseDirectoryPath);
+    isFilesystemBrowsing && !relativePathNeedsActiveProject && canNavigateUp(browseDirectoryPath);
+
+  const canSshBrowseUp = isSshBrowsing && canNavigateSshUp(query);
 
   const browseGroups = buildBrowseGroups({
     browseEntries: filteredBrowseEntries,
@@ -941,6 +1200,16 @@ function OpenCommandPaletteDialog() {
     directoryIcon: <FolderIcon className={ITEM_ICON_CLASS} />,
     browseUp,
     browseTo,
+  });
+
+  const sshBrowseGroups = buildSshBrowseGroups({
+    browseEntries: filteredSshBrowseEntries,
+    browseQuery: query,
+    canBrowseUp: canSshBrowseUp,
+    upIcon: <CornerLeftUpIcon className={ITEM_ICON_CLASS} />,
+    directoryIcon: <FolderIcon className={ITEM_ICON_CLASS} />,
+    browseUp: sshBrowseUp,
+    browseTo: sshBrowseTo,
   });
 
   const recentQueries = useCommandPaletteStore((s) => s.recentQueries);
@@ -1007,29 +1276,42 @@ function OpenCommandPaletteDialog() {
   ]);
 
   let displayedGroups = filteredGroups;
-  if (isBrowsing) {
+  if (isSshBrowsing) {
+    displayedGroups = sshBrowseGroups;
+  } else if (isFilesystemBrowsing) {
     displayedGroups = relativePathNeedsActiveProject ? [] : browseGroups;
   } else if (currentView === null && supplementaryRootGroups) {
     displayedGroups = [...supplementaryRootGroups, ...displayedGroups];
   }
 
-  const inputPlaceholder = getCommandPaletteInputPlaceholder(paletteMode);
+  const inputPlaceholder = getCommandPaletteInputPlaceholder(paletteMode, {
+    ssh: isSshBrowsing,
+  });
   const isSubmenu = paletteMode === "submenu" || paletteMode === "submenu-browse";
-  const hasHighlightedBrowseItem = highlightedItemValue?.startsWith("browse:") ?? false;
-  const canSubmitBrowsePath = isBrowsing && !relativePathNeedsActiveProject;
-  const willCreateProjectPath =
-    canSubmitBrowsePath &&
-    !isBrowsePending &&
-    query.trim().length > 0 &&
-    !hasHighlightedBrowseItem &&
-    (hasTrailingPathSeparator(query) ? !browseResult : exactBrowseEntry === null);
+  const hasHighlightedBrowseItem =
+    (highlightedItemValue?.startsWith("browse:") ||
+      highlightedItemValue?.startsWith("ssh-browse:")) ??
+    false;
+  const canSubmitBrowsePath =
+    (isFilesystemBrowsing && !relativePathNeedsActiveProject) || isSshBrowsing;
+  const willCreateProjectPath = isSshBrowsing
+    ? canSubmitBrowsePath &&
+      !sshBrowse.isBrowsePending &&
+      query.trim().length > 0 &&
+      !hasHighlightedBrowseItem &&
+      (hasTrailingSshPathSeparator(query) ? !sshBrowse.browseResult : exactSshBrowseEntry === null)
+    : canSubmitBrowsePath &&
+      !isBrowsePending &&
+      query.trim().length > 0 &&
+      !hasHighlightedBrowseItem &&
+      (hasTrailingPathSeparator(query) ? !browseResult : exactBrowseEntry === null);
   const useMetaForMod = isMacPlatform(getPlatformString());
   const submitModifierLabel = useMetaForMod ? "\u2318" : "Ctrl";
   const submitActionLabel = willCreateProjectPath ? "创建并添加" : "添加";
   const addShortcutLabel = hasHighlightedBrowseItem ? `${submitModifierLabel} Enter` : "Enter";
   const fileManagerName = getLocalFileManagerName(getPlatformString());
   const canOpenProjectFromFileManager =
-    isBrowsing &&
+    isFilesystemBrowsing &&
     browseEnvironmentId !== null &&
     primaryEnvironmentId !== null &&
     browseEnvironmentId === primaryEnvironmentId &&
@@ -1071,7 +1353,11 @@ function OpenCommandPaletteDialog() {
 
     if (shouldSubmitBrowsePath) {
       event.preventDefault();
-      void handleAddProject(resolvedAddProjectPath);
+      if (isSshBrowsing) {
+        void handleAddSshProject(resolvedAddSshProjectPath);
+      } else {
+        void handleAddProject(resolvedAddProjectPath);
+      }
       return;
     }
 
@@ -1177,7 +1463,7 @@ function OpenCommandPaletteDialog() {
                 }
               : isBrowsing && !isSubmenu
                 ? {
-                    startAddon: <FolderPlusIcon />,
+                    startAddon: isSshBrowsing ? <ServerIcon /> : <FolderPlusIcon />,
                   }
                 : {})}
             onKeyDown={handleKeyDown}
@@ -1192,12 +1478,16 @@ function OpenCommandPaletteDialog() {
                 hasHighlightedBrowseItem ? "gap-1" : "gap-1.5",
               )}
               aria-label={`${submitActionLabel} (${addShortcutLabel})`}
-              disabled={relativePathNeedsActiveProject}
+              disabled={isFilesystemBrowsing && relativePathNeedsActiveProject}
               onMouseDown={(event) => {
                 event.preventDefault();
               }}
               onClick={() => {
-                if (relativePathNeedsActiveProject) {
+                if (isFilesystemBrowsing && relativePathNeedsActiveProject) {
+                  return;
+                }
+                if (isSshBrowsing) {
+                  void handleAddSshProject(resolvedAddSshProjectPath);
                   return;
                 }
                 void handleAddProject(resolvedAddProjectPath);

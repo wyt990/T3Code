@@ -35,6 +35,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   readonly triggerClassName?: string;
   readonly onOpenChange?: (open: boolean) => void;
   readonly onProviderModelChange: (provider: ProviderKind, model: string) => void;
+  readonly onRefreshConnectionProviders?: () => Promise<void>;
 }) {
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const activeProvider = props.lockedProvider ?? props.provider;
@@ -151,6 +152,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           terminalOpen={props.terminalOpen ?? false}
           onRequestClose={() => setIsMenuOpen(false)}
           onProviderModelChange={handleProviderModelChange}
+          {...(props.onRefreshConnectionProviders
+            ? { onRefreshModels: props.onRefreshConnectionProviders }
+            : {})}
         />
       </PopoverPopup>
     </Popover>

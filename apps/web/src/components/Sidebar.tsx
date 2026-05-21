@@ -3,9 +3,11 @@ import {
   ArrowUpDownIcon,
   ChevronRightIcon,
   CloudIcon,
+  FolderPlusIcon,
   GitPullRequestIcon,
   PlusIcon,
   SearchIcon,
+  ServerIcon,
   LayoutDashboardIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -70,8 +72,10 @@ import {
   selectSidebarThreadsForProjectRefs,
   selectSidebarThreadsAcrossEnvironments,
   selectThreadByRef,
+  selectThreadIdsForProject,
   useStore,
 } from "../store";
+import { closeTabsForThreadIds } from "../lib/closeThreadTabs";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { useUiStateStore } from "../uiStateStore";
 import {
@@ -127,6 +131,7 @@ import { Input } from "./ui/input";
 import {
   Menu,
   MenuGroup,
+  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -1310,6 +1315,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const removeProject = useCallback(
     async (member: SidebarProjectGroupMember, options: { force?: boolean } = {}): Promise<void> => {
       const memberProjectRef = scopeProjectRef(member.environmentId, member.id);
+      const threadIdsToClose = selectThreadIdsForProject(
+        useStore.getState(),
+        member.environmentId,
+        member.id,
+      );
       const draftStore = useComposerDraftStore.getState();
       const projectDraftThread = draftStore.getDraftThreadByProjectRef(memberProjectRef);
       if (projectDraftThread) {
@@ -1328,8 +1338,16 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         projectId: member.id,
         ...(options.force === true ? { force: true } : {}),
       });
+
+      if (threadIdsToClose.length > 0) {
+        closeTabsForThreadIds({
+          environmentId: member.environmentId,
+          threadIds: threadIdsToClose,
+          navigate: router.navigate,
+        });
+      }
     },
-    [],
+    [router.navigate],
   );
 
   const handleRemoveProject = useCallback(
@@ -2496,7 +2514,6 @@ interface SidebarProjectsContentProps {
   threadSortOrder: SidebarThreadSortOrder;
   projectGroupingMode: SidebarProjectGroupingMode;
   updateSettings: ReturnType<typeof useUpdateSettings>["updateSettings"];
-  openAddProject: () => void;
   isManualProjectSorting: boolean;
   projectDnDSensors: ReturnType<typeof useSensors>;
   projectCollisionDetection: CollisionDetection;
@@ -2536,7 +2553,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     threadSortOrder,
     projectGroupingMode,
     updateSettings,
-    openAddProject,
     isManualProjectSorting,
     projectDnDSensors,
     projectCollisionDetection,
@@ -2562,6 +2578,11 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     attachProjectListAutoAnimateRef,
     projectsLength,
   } = props;
+
+  const openAddProjectCommandPalette = useCommandPaletteStore((store) => store.openAddProject);
+  const openAddProjectSshCommandPalette = useCommandPaletteStore(
+    (store) => store.openAddProjectSsh,
+  );
 
   const handleProjectSortOrderChange = useCallback(
     (sortOrder: SidebarProjectSortOrder) => {
@@ -2643,22 +2664,33 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               onThreadSortOrderChange={handleThreadSortOrderChange}
               onProjectGroupingModeChange={handleProjectGroupingModeChange}
             />
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label="添加项目"
-                    data-testid="sidebar-add-project-trigger"
-                    className="relative z-30 inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-                    onClick={openAddProject}
-                  />
-                }
+            <Menu>
+              <MenuTrigger
+                aria-label="添加项目"
+                data-testid="sidebar-add-project-trigger"
+                className="relative z-30 inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
               >
                 <PlusIcon className="size-3.5" />
-              </TooltipTrigger>
-              <TooltipPopup side="right">添加项目</TooltipPopup>
-            </Tooltip>
+              </MenuTrigger>
+              <MenuPopup side="bottom" align="end" sideOffset={4}>
+                <MenuItem
+                  onClick={() => {
+                    openAddProjectCommandPalette();
+                  }}
+                >
+                  <FolderPlusIcon className="size-4 opacity-80" />
+                  <span>添加本地项目</span>
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    openAddProjectSshCommandPalette();
+                  }}
+                >
+                  <ServerIcon className="size-4 opacity-80" />
+                  <span>添加 SSH 远程项目</span>
+                </MenuItem>
+              </MenuPopup>
+            </Menu>
           </div>
         </div>
 
@@ -2768,7 +2800,6 @@ export default function Sidebar() {
   });
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
   const keybindings = useServerKeybindings();
-  const openAddProjectCommandPalette = useCommandPaletteStore((store) => store.openAddProject);
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -3401,7 +3432,6 @@ export default function Sidebar() {
             threadSortOrder={sidebarThreadSortOrder}
             projectGroupingMode={sidebarProjectGroupingMode}
             updateSettings={updateSettings}
-            openAddProject={openAddProjectCommandPalette}
             isManualProjectSorting={isManualProjectSorting}
             projectDnDSensors={projectDnDSensors}
             projectCollisionDetection={projectCollisionDetection}

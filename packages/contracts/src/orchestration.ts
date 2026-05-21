@@ -127,6 +127,8 @@ export const ChatImageAttachment = Schema.Struct({
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
   mimeType: TrimmedNonEmptyString.check(Schema.isMaxLength(100), Schema.isPattern(/^image\//i)),
   sizeBytes: NonNegativeInt.check(Schema.isLessThanOrEqualTo(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES)),
+  /** POSIX path relative to project workspace root; read via SFTP on SSH projects. */
+  workspaceRelativePath: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(512))),
 });
 export type ChatImageAttachment = typeof ChatImageAttachment.Type;
 
@@ -165,10 +167,53 @@ export const ProjectScript = Schema.Struct({
 });
 export type ProjectScript = typeof ProjectScript.Type;
 
+export const ProjectTransportLocal = Schema.Struct({
+  type: Schema.Literal("local"),
+});
+export type ProjectTransportLocal = typeof ProjectTransportLocal.Type;
+
+export const ProjectTransportSsh = Schema.Struct({
+  type: Schema.Literal("ssh"),
+  sshConnectionId: TrimmedNonEmptyString,
+});
+export type ProjectTransportSsh = typeof ProjectTransportSsh.Type;
+
+export const ProjectTransport = Schema.Union([ProjectTransportLocal, ProjectTransportSsh]);
+export type ProjectTransport = typeof ProjectTransport.Type;
+
+export const DEFAULT_PROJECT_TRANSPORT: ProjectTransport = { type: "local" };
+
+export const projectTransportFromDb = (
+  transportType: "local" | "ssh",
+  sshConnectionId: string | null,
+): ProjectTransport => {
+  if (transportType === "ssh" && sshConnectionId !== null && sshConnectionId.trim().length > 0) {
+    return { type: "ssh", sshConnectionId: sshConnectionId.trim() };
+  }
+  return DEFAULT_PROJECT_TRANSPORT;
+};
+
+export const projectTransportToDb = (
+  transport: ProjectTransport,
+): {
+  readonly transportType: "local" | "ssh";
+  readonly sshConnectionId: string | null;
+} => {
+  if (transport.type === "ssh") {
+    return { transportType: "ssh", sshConnectionId: transport.sshConnectionId };
+  }
+  return { transportType: "local", sshConnectionId: null };
+};
+
+const ProjectTransportWithDefault = ProjectTransport.pipe(
+  Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROJECT_TRANSPORT)),
+);
+
 export const OrchestrationProject = Schema.Struct({
   id: ProjectId,
   title: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
+  transport: ProjectTransportWithDefault,
   repositoryIdentity: Schema.optional(Schema.NullOr(RepositoryIdentity)),
   defaultModelSelection: Schema.NullOr(ModelSelection),
   scripts: Schema.Array(ProjectScript),
@@ -335,6 +380,7 @@ export const OrchestrationProjectShell = Schema.Struct({
   id: ProjectId,
   title: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
+  transport: ProjectTransportWithDefault,
   repositoryIdentity: Schema.optional(Schema.NullOr(RepositoryIdentity)),
   defaultModelSelection: Schema.NullOr(ModelSelection),
   scripts: Schema.Array(ProjectScript),
@@ -424,6 +470,7 @@ export const ProjectCreateCommand = Schema.Struct({
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
+  transport: Schema.optional(ProjectTransport),
   createWorkspaceRootIfMissing: Schema.optional(Schema.Boolean),
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   createdAt: IsoDateTime,
@@ -435,6 +482,7 @@ const ProjectMetaUpdateCommand = Schema.Struct({
   projectId: ProjectId,
   title: Schema.optional(TrimmedNonEmptyString),
   workspaceRoot: Schema.optional(TrimmedNonEmptyString),
+  transport: Schema.optional(ProjectTransport),
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   scripts: Schema.optional(Schema.Array(ProjectScript)),
 });
@@ -771,6 +819,7 @@ export const ProjectCreatedPayload = Schema.Struct({
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
+  transport: ProjectTransportWithDefault,
   repositoryIdentity: Schema.optional(Schema.NullOr(RepositoryIdentity)),
   defaultModelSelection: Schema.NullOr(ModelSelection),
   scripts: Schema.Array(ProjectScript),
@@ -782,6 +831,7 @@ export const ProjectMetaUpdatedPayload = Schema.Struct({
   projectId: ProjectId,
   title: Schema.optional(TrimmedNonEmptyString),
   workspaceRoot: Schema.optional(TrimmedNonEmptyString),
+  transport: Schema.optional(ProjectTransport),
   repositoryIdentity: Schema.optional(Schema.NullOr(RepositoryIdentity)),
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   scripts: Schema.optional(Schema.Array(ProjectScript)),

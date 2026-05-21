@@ -85,6 +85,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         noBrowser: true,
         startupPresentation: "browser",
         desktopBootstrapToken: undefined,
+        sshCredentialPort: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: true,
       });
@@ -147,6 +148,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         noBrowser: true,
         startupPresentation: "browser",
         desktopBootstrapToken: undefined,
+        sshCredentialPort: undefined,
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
       });
@@ -210,6 +212,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         noBrowser: false,
         startupPresentation: "browser",
         desktopBootstrapToken: undefined,
+        sshCredentialPort: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
       });
@@ -279,6 +282,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         noBrowser: true,
         startupPresentation: "browser",
         desktopBootstrapToken: undefined,
+        sshCredentialPort: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: true,
       });
@@ -397,6 +401,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         noBrowser: true,
         startupPresentation: "browser",
         desktopBootstrapToken: undefined,
+        sshCredentialPort: undefined,
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
       });
@@ -461,6 +466,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         noBrowser: true,
         startupPresentation: "browser",
         desktopBootstrapToken: undefined,
+        sshCredentialPort: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
       });
@@ -520,6 +526,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         noBrowser: true,
         startupPresentation: "headless",
         desktopBootstrapToken: undefined,
+        sshCredentialPort: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
       });

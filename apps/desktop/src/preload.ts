@@ -23,6 +23,12 @@ const SET_SAVED_ENVIRONMENT_REGISTRY_CHANNEL = "desktop:set-saved-environment-re
 const GET_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:get-saved-environment-secret";
 const SET_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:set-saved-environment-secret";
 const REMOVE_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:remove-saved-environment-secret";
+const GET_SSH_SECRET_CHANNEL = "desktop:get-ssh-secret";
+const SET_SSH_SECRET_CHANNEL = "desktop:set-ssh-secret";
+const REMOVE_SSH_SECRETS_CHANNEL = "desktop:remove-ssh-secrets";
+const LIST_SSH_CONNECTIONS_CHANNEL = "desktop:list-ssh-connections";
+const UPSERT_SSH_CONNECTION_CHANNEL = "desktop:upsert-ssh-connection";
+const DELETE_SSH_CONNECTION_CHANNEL = "desktop:delete-ssh-connection";
 const GET_SERVER_EXPOSURE_STATE_CHANNEL = "desktop:get-server-exposure-state";
 const SET_SERVER_EXPOSURE_MODE_CHANNEL = "desktop:set-server-exposure-mode";
 
@@ -52,6 +58,14 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(SET_SAVED_ENVIRONMENT_SECRET_CHANNEL, environmentId, secret),
   removeSavedEnvironmentSecret: (environmentId) =>
     ipcRenderer.invoke(REMOVE_SAVED_ENVIRONMENT_SECRET_CHANNEL, environmentId),
+  getSshSecret: (connectionId, kind) =>
+    ipcRenderer.invoke(GET_SSH_SECRET_CHANNEL, connectionId, kind),
+  setSshSecret: (connectionId, kind, value) =>
+    ipcRenderer.invoke(SET_SSH_SECRET_CHANNEL, connectionId, kind, value),
+  removeSshSecrets: (connectionId) => ipcRenderer.invoke(REMOVE_SSH_SECRETS_CHANNEL, connectionId),
+  listSshConnections: () => ipcRenderer.invoke(LIST_SSH_CONNECTIONS_CHANNEL),
+  upsertSshConnection: (input) => ipcRenderer.invoke(UPSERT_SSH_CONNECTION_CHANNEL, input),
+  deleteSshConnection: (input) => ipcRenderer.invoke(DELETE_SSH_CONNECTION_CHANNEL, input),
   getServerExposureState: () => ipcRenderer.invoke(GET_SERVER_EXPOSURE_STATE_CHANNEL),
   setServerExposureMode: (mode) => ipcRenderer.invoke(SET_SERVER_EXPOSURE_MODE_CHANNEL, mode),
   pickFolder: (options) => ipcRenderer.invoke(PICK_FOLDER_CHANNEL, options),

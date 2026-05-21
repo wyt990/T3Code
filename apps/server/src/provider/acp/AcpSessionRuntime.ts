@@ -6,6 +6,14 @@ import type * as EffectAcpSchema from "effect-acp/schema";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
 
 import {
+  makeWorkspaceInteractiveStdio,
+  makeWorkspaceInteractiveTerminationErrorForAcp,
+} from "../acpWorkspaceStdio.ts";
+import type {
+  WorkspaceExecution,
+  WorkspaceInteractiveProcess,
+} from "../../workspace/Services/WorkspaceExecution.ts";
+import {
   collectSessionConfigOptionValues,
   extractModelConfigId,
   findSessionConfigOption,
@@ -17,6 +25,15 @@ import {
   type AcpToolCallState,
 } from "./AcpRuntimeModel.ts";
 
+export type AcpSpawnConfig =
+  | { readonly kind: "local" }
+  | {
+      readonly kind: "ssh";
+      readonly execution: WorkspaceExecution;
+      readonly binaryPath: string;
+      readonly apiEndpoint?: string;
+    };
+
 export interface AcpSpawnInput {
   readonly command: string;
   readonly args: ReadonlyArray<string>;
@@ -26,6 +43,7 @@ export interface AcpSpawnInput {
 
 export interface AcpSessionRuntimeOptions {
   readonly spawn: AcpSpawnInput;
+  readonly spawnConfig?: AcpSpawnConfig;
   readonly cwd: string;
   readonly resumeSessionId?: string;
   readonly clientCapabilities?: EffectAcpSchema.InitializeRequest["clientCapabilities"];
@@ -184,35 +202,76 @@ const makeAcpSessionRuntime = (
         ),
       );
 
-    const child = yield* spawner
-      .spawn(
-        ChildProcess.make(options.spawn.command, [...options.spawn.args], {
-          ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
-          ...(options.spawn.env ? { env: { ...process.env, ...options.spawn.env } } : {}),
-          shell: process.platform === "win32",
-        }),
-      )
-      .pipe(
-        Effect.provideService(Scope.Scope, runtimeScope),
-        Effect.mapError(
-          (cause) =>
-            new EffectAcpErrors.AcpSpawnError({
-              command: options.spawn.command,
-              cause,
-            }),
-        ),
-      );
+    const spawnConfig = options.spawnConfig ?? { kind: "local" as const };
+    const acpClientOptions = {
+      ...(options.protocolLogging?.logIncoming !== undefined
+        ? { logIncoming: options.protocolLogging.logIncoming }
+        : {}),
+      ...(options.protocolLogging?.logOutgoing !== undefined
+        ? { logOutgoing: options.protocolLogging.logOutgoing }
+        : {}),
+      ...(options.protocolLogging?.logger ? { logger: options.protocolLogging.logger } : {}),
+    };
 
-    const acpContext = yield* Layer.build(
-      EffectAcpClient.layerChildProcess(child, {
-        ...(options.protocolLogging?.logIncoming !== undefined
-          ? { logIncoming: options.protocolLogging.logIncoming }
-          : {}),
-        ...(options.protocolLogging?.logOutgoing !== undefined
-          ? { logOutgoing: options.protocolLogging.logOutgoing }
-          : {}),
-        ...(options.protocolLogging?.logger ? { logger: options.protocolLogging.logger } : {}),
-      }),
+    const acpContext = yield* (
+      spawnConfig.kind === "ssh"
+        ? Effect.gen(function* () {
+            const interactive = yield* Effect.acquireRelease(
+              spawnConfig.execution
+                .spawnInteractive({
+                  command: spawnConfig.binaryPath,
+                  args: [
+                    ...(spawnConfig.apiEndpoint?.trim()
+                      ? (["-e", spawnConfig.apiEndpoint.trim()] as const)
+                      : []),
+                    "acp",
+                  ],
+                  cwd: options.cwd,
+                  env: {},
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new EffectAcpErrors.AcpSpawnError({
+                        command: spawnConfig.binaryPath,
+                        cause,
+                      }),
+                  ),
+                ),
+              (process: WorkspaceInteractiveProcess) => process.kill().pipe(Effect.ignore),
+            );
+            return yield* Layer.build(
+              Layer.effect(
+                EffectAcpClient.AcpClient,
+                EffectAcpClient.make(
+                  makeWorkspaceInteractiveStdio(interactive),
+                  acpClientOptions,
+                  makeWorkspaceInteractiveTerminationErrorForAcp(interactive),
+                ),
+              ),
+            );
+          })
+        : Effect.gen(function* () {
+            const child = yield* spawner
+              .spawn(
+                ChildProcess.make(options.spawn.command, [...options.spawn.args], {
+                  ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
+                  ...(options.spawn.env ? { env: { ...process.env, ...options.spawn.env } } : {}),
+                  shell: process.platform === "win32",
+                }),
+              )
+              .pipe(
+                Effect.provideService(Scope.Scope, runtimeScope),
+                Effect.mapError(
+                  (cause) =>
+                    new EffectAcpErrors.AcpSpawnError({
+                      command: options.spawn.command,
+                      cause,
+                    }),
+                ),
+              );
+            return yield* Layer.build(EffectAcpClient.layerChildProcess(child, acpClientOptions));
+          })
     ).pipe(Effect.provideService(Scope.Scope, runtimeScope));
 
     const acp = yield* Effect.service(EffectAcpClient.AcpClient).pipe(Effect.provide(acpContext));

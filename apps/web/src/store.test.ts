@@ -92,6 +92,7 @@ function makeState(thread: Thread): AppState {
     environmentId: thread.environmentId,
     name: "Project",
     cwd: "/tmp/project",
+    transport: { type: "local" as const },
     defaultModelSelection: {
       provider: "codex" as const,
       model: "gpt-5-codex",
@@ -462,6 +463,7 @@ describe("incremental orchestration updates", () => {
           environmentId: localEnvironmentId,
           name: "Project",
           cwd: "/tmp/project",
+          transport: { type: "local" },
           defaultModelSelection: {
             provider: "codex",
             model: DEFAULT_MODEL_BY_PROVIDER.codex,
@@ -479,6 +481,7 @@ describe("incremental orchestration updates", () => {
         projectId: recreatedProjectId,
         title: "Project Recreated",
         workspaceRoot: "/tmp/project",
+        transport: { type: "local" },
         defaultModelSelection: {
           provider: "codex",
           model: DEFAULT_MODEL_BY_PROVIDER.codex,
@@ -517,6 +520,7 @@ describe("incremental orchestration updates", () => {
           environmentId: localEnvironmentId,
           name: "Project 1",
           cwd: "/tmp/project-1",
+          transport: { type: "local" },
           defaultModelSelection: {
             provider: "codex",
             model: DEFAULT_MODEL_BY_PROVIDER.codex,
@@ -530,6 +534,7 @@ describe("incremental orchestration updates", () => {
           environmentId: localEnvironmentId,
           name: "Project 2",
           cwd: "/tmp/project-2",
+          transport: { type: "local" },
           defaultModelSelection: {
             provider: "codex",
             model: DEFAULT_MODEL_BY_PROVIDER.codex,

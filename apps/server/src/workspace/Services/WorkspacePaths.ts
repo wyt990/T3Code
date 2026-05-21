@@ -81,11 +81,30 @@ export interface WorkspacePathsShape {
   >;
 
   /**
+   * Normalize a remote SSH workspace root without local filesystem checks.
+   * The path is kept as the remote execution cwd (trimmed only).
+   */
+  readonly normalizeRemoteWorkspaceRoot: (
+    workspaceRoot: string,
+  ) => Effect.Effect<string, WorkspaceRootNotExistsError>;
+
+  /**
    * Resolve a relative path within a validated workspace root.
    *
    * Rejects absolute paths and traversal attempts outside the workspace root.
    */
   readonly resolveRelativePathWithinRoot: (input: {
+    workspaceRoot: string;
+    relativePath: string;
+  }) => Effect.Effect<
+    { absolutePath: string; relativePath: string },
+    WorkspacePathOutsideRootError
+  >;
+
+  /**
+   * Resolve a relative path within a remote POSIX workspace root (no local path APIs).
+   */
+  readonly resolveRelativePathWithinPosixRoot: (input: {
     workspaceRoot: string;
     relativePath: string;
   }) => Effect.Effect<

@@ -1,4 +1,5 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime";
 import { describe, expect, it } from "vitest";
 
 import { DraftId } from "./draftId";
@@ -22,6 +23,7 @@ import {
   mergeTabs,
   persistTabsState,
   promoteDraftTab,
+  pruneOrphanedServerTabs,
   pickFallbackTargetFromTabs,
   reorderTabs,
   setCustomTitle,
@@ -416,6 +418,31 @@ describe("uiTabsState - setTabDiffOpen", () => {
 
     const closed = setTabDiffOpen(opened, "tab-1", false);
     expect(closed.tabsById["tab-1"]?.diffOpen).toBe(false);
+  });
+});
+
+describe("uiTabsState - pruneOrphanedServerTabs", () => {
+  it("closes server tabs whose thread key is not in the valid set", () => {
+    const state = buildState([
+      { tabId: "tab-1", target: serverTarget("t-1") },
+      { tabId: "tab-2", target: serverTarget("t-2") },
+      { tabId: "tab-3", target: draftTarget("d-1") },
+    ]);
+    const validKeys = new Set([
+      scopedThreadKey({ environmentId: ENV, threadId: ThreadId.make("t-2") }),
+    ]);
+    const next = pruneOrphanedServerTabs(state, validKeys);
+
+    expect(next.group.tabIds).toEqual(["tab-2", "tab-3"]);
+    expect(next.tabsById["tab-1"]).toBeUndefined();
+  });
+
+  it("returns the same state when every server tab is still valid", () => {
+    const state = buildState([{ tabId: "tab-1", target: serverTarget("t-1") }]);
+    const validKeys = new Set([
+      scopedThreadKey({ environmentId: ENV, threadId: ThreadId.make("t-1") }),
+    ]);
+    expect(pruneOrphanedServerTabs(state, validKeys)).toBe(state);
   });
 });
 

@@ -38,7 +38,19 @@ import {
   parseRemoteRefWithRemoteNames,
 } from "../remoteRefs.ts";
 import { ServerConfig } from "../../config.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { readServerSettingsDiskSnapshot } from "../../serverSettings.ts";
+import {
+  WorkspaceExecutionResolver,
+  type WorkspaceExecution,
+  type WorkspaceExecutionError,
+} from "../../workspace/Services/WorkspaceExecution.ts";
+import {
+  buildGitShellCommand,
+  gitPathBasename,
+  gitPathDirname,
+  joinGitPath,
+} from "../gitWorkspacePaths.ts";
 import { decodeJsonResult } from "@t3tools/shared/schemaJson";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -83,6 +95,7 @@ type TraceTailState = {
 class StatusRemoteRefreshCacheKey extends Data.Class<{
   gitCommonDir: string;
   remoteName: string;
+  usePosixPaths: boolean;
 }> {}
 
 interface ExecuteGitOptions {
@@ -655,6 +668,18 @@ const collectOutput = Effect.fn("collectOutput")(function* <E>(
   };
 });
 
+const workspaceErrorToGitCommandError = (
+  input: Pick<ExecuteGitInput, "operation" | "cwd" | "args">,
+  error: WorkspaceExecutionError,
+): GitCommandError =>
+  new GitCommandError({
+    operation: input.operation,
+    command: quoteGitCommand(input.args),
+    cwd: input.cwd,
+    detail: error.message,
+    cause: error,
+  });
+
 export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   executeOverride?: GitCoreShape["execute"];
 }) {
@@ -662,6 +687,26 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig;
   const { worktreesDir } = serverConfig;
+
+  const resolveSshExecutionForGitCwd = (cwd: string) =>
+    Effect.gen(function* () {
+      const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+      const workspaceExecutionResolver = yield* WorkspaceExecutionResolver;
+      return yield* projectionSnapshotQuery.getActiveProjectByWorkspaceRoot(cwd).pipe(
+        Effect.flatMap((projectOption) =>
+          Option.match(projectOption, {
+            onNone: () => Effect.succeed(Option.none<WorkspaceExecution>()),
+            onSome: (project) =>
+              project.transport.type !== "ssh"
+                ? Effect.succeed(Option.none<WorkspaceExecution>())
+                : workspaceExecutionResolver
+                    .resolveByProjectId(project.id)
+                    .pipe(Effect.map(Option.some)),
+          }),
+        ),
+        Effect.catch(() => Effect.succeed(Option.none<WorkspaceExecution>())),
+      );
+    });
 
   let executeRaw: GitCoreShape["execute"];
 
@@ -679,11 +724,114 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       const truncateOutputAtMaxBytes = input.truncateOutputAtMaxBytes ?? false;
 
       const runGitCommand = Effect.fn("runGitCommand")(function* () {
+        yield* Effect.logInfo("[GitCore] runGitCommand starting", {
+          cwd: commandInput.cwd,
+          operation: commandInput.operation,
+          args: commandInput.args,
+          hasEnv: input.env !== undefined,
+          hasStdin: input.stdin !== undefined,
+        });
+
         const serverSettings = yield* readServerSettingsDiskSnapshot.pipe(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.provideService(ServerConfig, serverConfig),
         );
         const proxyEnv = buildProxyProcessEnv(serverSettings.proxy);
+        yield* Effect.logDebug("[GitCore] resolving SSH execution for cwd", {
+          cwd: commandInput.cwd,
+          operation: commandInput.operation,
+        });
+
+        const sshExecutionOption = yield* resolveSshExecutionForGitCwd(commandInput.cwd).pipe(
+          Effect.mapError(
+            toGitCommandError(commandInput, "failed to resolve workspace execution."),
+          ),
+        );
+
+        if (Option.isSome(sshExecutionOption)) {
+          const sshExecution = sshExecutionOption.value;
+          yield* Effect.logDebug("[GitCore] executing SSH git command", {
+            cwd: commandInput.cwd,
+            operation: commandInput.operation,
+            args: commandInput.args,
+            hasProxy: Object.keys(proxyEnv).length > 0,
+            hasCustomEnv: input.env !== undefined,
+            hasStdin: input.stdin !== undefined,
+          });
+
+          const result = yield* sshExecution
+            .exec({
+              command: buildGitShellCommand(commandInput.args),
+              cwd: commandInput.cwd,
+              sshLane: "git",
+              env: {
+                ...proxyEnv,
+                ...input.env,
+              },
+              ...(input.stdin === undefined ? {} : { stdin: input.stdin }),
+            })
+            .pipe(Effect.mapError((error) => workspaceErrorToGitCommandError(commandInput, error)));
+
+          yield* Effect.logDebug("[GitCore] SSH git command completed", {
+            cwd: commandInput.cwd,
+            exitCode: result.exitCode,
+            stdoutLength: result.stdout.length,
+            stderrLength: result.stderr.length,
+          });
+
+          if (input.progress?.onStdoutLine && result.stdout.length > 0) {
+            for (const line of result.stdout.split("\n")) {
+              const trimmed = line.replace(/\r$/, "");
+              if (trimmed.length > 0) {
+                yield* input.progress.onStdoutLine(trimmed);
+              }
+            }
+          }
+          if (input.progress?.onStderrLine && result.stderr.length > 0) {
+            for (const line of result.stderr.split("\n")) {
+              const trimmed = line.replace(/\r$/, "");
+              if (trimmed.length > 0) {
+                yield* input.progress.onStderrLine(trimmed);
+              }
+            }
+          }
+
+          const stdoutTruncated = truncateOutputAtMaxBytes && result.stdout.length > maxOutputBytes;
+          const stderrTruncated = truncateOutputAtMaxBytes && result.stderr.length > maxOutputBytes;
+          const stdout = stdoutTruncated ? result.stdout.slice(0, maxOutputBytes) : result.stdout;
+          const stderr = stderrTruncated ? result.stderr.slice(0, maxOutputBytes) : result.stderr;
+
+          if (result.exitCode !== 0) {
+            yield* Effect.logInfo("[GitCore] git command failed", {
+              cwd: commandInput.cwd,
+              operation: commandInput.operation,
+              exitCode: result.exitCode,
+              stderrLength: stderr.length,
+            });
+
+            if (!input.allowNonZeroExit) {
+              const trimmedStderr = stderr.trim();
+              return yield* new GitCommandError({
+                operation: commandInput.operation,
+                command: quoteGitCommand(commandInput.args),
+                cwd: commandInput.cwd,
+                detail:
+                  trimmedStderr.length > 0
+                    ? `${quoteGitCommand(commandInput.args)} failed: ${trimmedStderr}`
+                    : `${quoteGitCommand(commandInput.args)} failed with code ${result.exitCode}`,
+              });
+            }
+          }
+
+          return {
+            code: result.exitCode,
+            stdout,
+            stderr,
+            stdoutTruncated,
+            stderrTruncated,
+          } satisfies ExecuteGitResult;
+        }
+
         const trace2Monitor = yield* createTrace2Monitor(commandInput, input.progress).pipe(
           Effect.provideService(Path.Path, path),
           Effect.provideService(FileSystem.FileSystem, fileSystem),
@@ -742,7 +890,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
             detail:
               trimmedStderr.length > 0
                 ? `${quoteGitCommand(commandInput.args)} failed: ${trimmedStderr}`
-                : `${quoteGitCommand(commandInput.args)} failed with code ${exitCode}.`,
+                : `${quoteGitCommand(commandInput.args)} failed with code ${exitCode}`,
           });
         }
 
@@ -929,9 +1077,12 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   const fetchRemoteForStatus = (
     gitCommonDir: string,
     remoteName: string,
+    usePosixPaths: boolean,
   ): Effect.Effect<void, GitCommandError> => {
     const fetchCwd =
-      path.basename(gitCommonDir) === ".git" ? path.dirname(gitCommonDir) : gitCommonDir;
+      gitPathBasename(gitCommonDir, usePosixPaths) === ".git"
+        ? gitPathDirname(gitCommonDir, usePosixPaths)
+        : gitCommonDir;
     return executeGit(
       "GitCore.fetchRemoteForStatus",
       fetchCwd,
@@ -944,17 +1095,19 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   };
 
   const resolveGitCommonDir = Effect.fn("resolveGitCommonDir")(function* (cwd: string) {
+    const sshExecutionOption = yield* resolveSshExecutionForGitCwd(cwd);
+    const usePosixPaths = Option.isSome(sshExecutionOption);
     const gitCommonDir = yield* runGitStdout("GitCore.resolveGitCommonDir", cwd, [
       "rev-parse",
       "--git-common-dir",
     ]).pipe(Effect.map((stdout) => stdout.trim()));
-    return path.isAbsolute(gitCommonDir) ? gitCommonDir : path.resolve(cwd, gitCommonDir);
+    return joinGitPath(cwd, gitCommonDir, usePosixPaths);
   });
 
   const refreshStatusRemoteCacheEntry = Effect.fn("refreshStatusRemoteCacheEntry")(function* (
     cacheKey: StatusRemoteRefreshCacheKey,
   ) {
-    yield* fetchRemoteForStatus(cacheKey.gitCommonDir, cacheKey.remoteName);
+    yield* fetchRemoteForStatus(cacheKey.gitCommonDir, cacheKey.remoteName, cacheKey.usePosixPaths);
     return true as const;
   });
 
@@ -972,12 +1125,15 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   ) {
     const upstream = yield* resolveCurrentUpstream(cwd);
     if (!upstream) return;
+    const sshExecutionOption = yield* resolveSshExecutionForGitCwd(cwd);
+    const usePosixPaths = Option.isSome(sshExecutionOption);
     const gitCommonDir = yield* resolveGitCommonDir(cwd);
     yield* Cache.get(
       statusRemoteRefreshCache,
       new StatusRemoteRefreshCacheKey({
         gitCommonDir,
         remoteName: upstream.remoteName,
+        usePosixPaths,
       }),
     );
   });
@@ -1350,7 +1506,11 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
 
   const statusDetails: GitCoreShape["statusDetails"] = Effect.fn("statusDetails")(function* (cwd) {
     yield* refreshStatusUpstreamIfStale(cwd).pipe(
-      Effect.catchIf(isMissingGitCwdError, () => Effect.void),
+      Effect.catchIf(
+        (error): error is GitCommandError =>
+          Schema.is(GitCommandError)(error) && isMissingGitCwdError(error),
+        () => Effect.void,
+      ),
       Effect.ignoreCause({ log: true }),
     );
     return yield* readStatusDetailsLocal(cwd);
@@ -1858,16 +2018,22 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
         ? defaultRef.stdout.trim().replace(/^refs\/remotes\/origin\//, "")
         : null;
 
+    const sshExecutionOption = yield* resolveSshExecutionForGitCwd(input.cwd);
     const worktreeMap = new Map<string, string>();
     if (worktreeList.code === 0) {
       let currentPath: string | null = null;
       for (const line of worktreeList.stdout.split("\n")) {
         if (line.startsWith("worktree ")) {
           const candidatePath = line.slice("worktree ".length);
-          const exists = yield* fileSystem.stat(candidatePath).pipe(
-            Effect.map(() => true),
-            Effect.catch(() => Effect.succeed(false)),
-          );
+          const exists = Option.isSome(sshExecutionOption)
+            ? yield* sshExecutionOption.value.fileSystem.stat(candidatePath).pipe(
+                Effect.map(() => true),
+                Effect.catch(() => Effect.succeed(false)),
+              )
+            : yield* fileSystem.stat(candidatePath).pipe(
+                Effect.map(() => true),
+                Effect.catch(() => Effect.succeed(false)),
+              );
           currentPath = exists ? candidatePath : null;
         } else if (line.startsWith("branch refs/heads/") && currentPath) {
           worktreeMap.set(line.slice("branch refs/heads/".length), currentPath);

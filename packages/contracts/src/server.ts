@@ -254,3 +254,10 @@ export const ServerRefreshClaudeAgentModelsResult = Schema.Union([
   }),
 ]);
 export type ServerRefreshClaudeAgentModelsResult = typeof ServerRefreshClaudeAgentModelsResult.Type;
+
+export const ServerGetConnectionProvidersInput = Schema.Struct({
+  connectionId: Schema.String,
+  projectId: ProjectId,
+  invalidate: Schema.optional(Schema.Boolean),
+});
+export type ServerGetConnectionProvidersInput = typeof ServerGetConnectionProvidersInput.Type;

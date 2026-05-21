@@ -12,6 +12,7 @@ import { ApprovalRequestId, type ProviderRuntimeEvent, ThreadId } from "@t3tools
 
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { ProviderCollaboratorsTestLive } from "../ProviderCollaboratorsTestLive.ts";
 import { CursorAdapter } from "../Services/CursorAdapter.ts";
 import { makeCursorAdapterLive } from "./CursorAdapter.ts";
 
@@ -100,6 +101,7 @@ const cursorAdapterTestLayer = it.layer(
       }),
     ),
     Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(ProviderCollaboratorsTestLive),
   ),
 );
 

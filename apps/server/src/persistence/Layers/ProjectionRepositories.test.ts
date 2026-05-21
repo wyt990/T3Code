@@ -27,6 +27,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         projectId: ProjectId.make("project-null-options"),
         title: "Null options project",
         workspaceRoot: "/tmp/project-null-options",
+        transport: { type: "local" },
         defaultModelSelection: {
           provider: "codex",
           model: "gpt-5.4",

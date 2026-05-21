@@ -21,6 +21,7 @@ import {
   type OrchestrationThreadShell,
   ModelSelection,
   ProjectId,
+  projectTransportFromDb,
   ThreadId,
 } from "@t3tools/contracts";
 import { Effect, Layer, Option, Schema, Struct } from "effect";
@@ -53,12 +54,34 @@ import {
 const decodeReadModel = Schema.decodeUnknownEffect(OrchestrationReadModel);
 const decodeShellSnapshot = Schema.decodeUnknownEffect(OrchestrationShellSnapshot);
 const decodeThread = Schema.decodeUnknownEffect(OrchestrationThread);
-const ProjectionProjectDbRowSchema = ProjectionProject.mapFields(
-  Struct.assign({
-    defaultModelSelection: Schema.NullOr(Schema.fromJsonString(ModelSelection)),
-    scripts: Schema.fromJsonString(Schema.Array(ProjectScript)),
-  }),
-);
+const ProjectionProjectDbRowColumnsSchema = Schema.Struct({
+  projectId: ProjectionProject.fields.projectId,
+  title: ProjectionProject.fields.title,
+  workspaceRoot: ProjectionProject.fields.workspaceRoot,
+  transportType: Schema.Literals(["local", "ssh"]),
+  sshConnectionId: Schema.NullOr(Schema.String),
+  defaultModelSelection: Schema.NullOr(Schema.fromJsonString(ModelSelection)),
+  scripts: Schema.fromJsonString(Schema.Array(ProjectScript)),
+  createdAt: ProjectionProject.fields.createdAt,
+  updatedAt: ProjectionProject.fields.updatedAt,
+  deletedAt: ProjectionProject.fields.deletedAt,
+});
+
+type ProjectionProjectDbRow = typeof ProjectionProjectDbRowColumnsSchema.Type;
+
+const toProjectionProjectRow = (row: ProjectionProjectDbRow) => ({
+  projectId: row.projectId,
+  title: row.title,
+  workspaceRoot: row.workspaceRoot,
+  transport: projectTransportFromDb(row.transportType, row.sshConnectionId),
+  defaultModelSelection: row.defaultModelSelection,
+  scripts: row.scripts,
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+  deletedAt: row.deletedAt,
+});
+
+const ProjectionProjectDbRowSchema = ProjectionProjectDbRowColumnsSchema;
 const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
   Struct.assign({
     isStreaming: Schema.Number,
@@ -203,18 +226,20 @@ function mapSessionRow(
 }
 
 function mapProjectShellRow(
-  row: Schema.Schema.Type<typeof ProjectionProjectDbRowSchema>,
+  row: ProjectionProjectDbRow,
   repositoryIdentity: OrchestrationProject["repositoryIdentity"],
 ): OrchestrationProjectShell {
+  const mapped = toProjectionProjectRow(row);
   return {
-    id: row.projectId,
-    title: row.title,
-    workspaceRoot: row.workspaceRoot,
+    id: mapped.projectId,
+    title: mapped.title,
+    workspaceRoot: mapped.workspaceRoot,
+    transport: mapped.transport,
     repositoryIdentity,
-    defaultModelSelection: row.defaultModelSelection,
-    scripts: row.scripts,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    defaultModelSelection: mapped.defaultModelSelection,
+    scripts: mapped.scripts,
+    createdAt: mapped.createdAt,
+    updatedAt: mapped.updatedAt,
   };
 }
 
@@ -239,6 +264,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           workspace_root AS "workspaceRoot",
+          transport_type AS "transportType",
+          ssh_connection_id AS "sshConnectionId",
           default_model_selection_json AS "defaultModelSelection",
           scripts_json AS "scripts",
           created_at AS "createdAt",
@@ -435,6 +462,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           workspace_root AS "workspaceRoot",
+          transport_type AS "transportType",
+          ssh_connection_id AS "sshConnectionId",
           default_model_selection_json AS "defaultModelSelection",
           scripts_json AS "scripts",
           created_at AS "createdAt",
@@ -457,6 +486,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           workspace_root AS "workspaceRoot",
+          transport_type AS "transportType",
+          ssh_connection_id AS "sshConnectionId",
           default_model_selection_json AS "defaultModelSelection",
           scripts_json AS "scripts",
           created_at AS "createdAt",
@@ -897,17 +928,21 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 ),
               );
 
-              const projects: ReadonlyArray<OrchestrationProject> = projectRows.map((row) => ({
-                id: row.projectId,
-                title: row.title,
-                workspaceRoot: row.workspaceRoot,
-                repositoryIdentity: repositoryIdentities.get(row.projectId) ?? null,
-                defaultModelSelection: row.defaultModelSelection,
-                scripts: row.scripts,
-                createdAt: row.createdAt,
-                updatedAt: row.updatedAt,
-                deletedAt: row.deletedAt,
-              }));
+              const projects: ReadonlyArray<OrchestrationProject> = projectRows.map((row) => {
+                const mapped = toProjectionProjectRow(row);
+                return {
+                  id: mapped.projectId,
+                  title: mapped.title,
+                  workspaceRoot: mapped.workspaceRoot,
+                  transport: mapped.transport,
+                  repositoryIdentity: repositoryIdentities.get(mapped.projectId) ?? null,
+                  defaultModelSelection: mapped.defaultModelSelection,
+                  scripts: mapped.scripts,
+                  createdAt: mapped.createdAt,
+                  updatedAt: mapped.updatedAt,
+                  deletedAt: mapped.deletedAt,
+                };
+              });
 
               const threads: ReadonlyArray<OrchestrationThread> = threadRows.map((row) => ({
                 id: row.threadId,
@@ -1122,15 +1157,21 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             : repositoryIdentityResolver.resolve(option.value.workspaceRoot).pipe(
                 Effect.map((repositoryIdentity) =>
                   Option.some({
-                    id: option.value.projectId,
-                    title: option.value.title,
-                    workspaceRoot: option.value.workspaceRoot,
+                    ...(() => {
+                      const mapped = toProjectionProjectRow(option.value);
+                      return {
+                        id: mapped.projectId,
+                        title: mapped.title,
+                        workspaceRoot: mapped.workspaceRoot,
+                        transport: mapped.transport,
+                        defaultModelSelection: mapped.defaultModelSelection,
+                        scripts: mapped.scripts,
+                        createdAt: mapped.createdAt,
+                        updatedAt: mapped.updatedAt,
+                        deletedAt: mapped.deletedAt,
+                      };
+                    })(),
                     repositoryIdentity,
-                    defaultModelSelection: option.value.defaultModelSelection,
-                    scripts: option.value.scripts,
-                    createdAt: option.value.createdAt,
-                    updatedAt: option.value.updatedAt,
-                    deletedAt: option.value.deletedAt,
                   } satisfies OrchestrationProject),
                 ),
               ),

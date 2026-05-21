@@ -56,6 +56,7 @@ import {
   selectProjectsAcrossEnvironments,
   selectSidebarThreadSummaryByRef,
   selectThreadByRef,
+  selectThreadIdsForProject,
   selectThreadsAcrossEnvironments,
 } from "~/store";
 import { useTerminalStateStore } from "~/terminalStateStore";
@@ -684,11 +685,26 @@ function promoteDraftThreadAndTabByRef(threadRef: ScopedThreadRef): void {
   }
 }
 
+function buildOpenServerThreadKeys(
+  threads: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly id: ThreadId;
+    readonly archivedAt: string | null;
+  }>,
+): Set<string> {
+  return new Set(
+    threads
+      .filter((thread) => thread.archivedAt === null)
+      .map((thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+  );
+}
+
 function reconcileSnapshotDerivedState() {
   syncProjectUiFromStore();
   syncThreadUiFromStore();
 
   const threads = selectThreadsAcrossEnvironments(useStore.getState());
+  useUiStateStore.getState().pruneOrphanedServerTabs(buildOpenServerThreadKeys(threads));
   const activeThreadKeys = collectActiveTerminalThreadIds({
     snapshotThreads: threads.map((thread) => ({
       key: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
@@ -811,6 +827,10 @@ function applyShellEvent(event: OrchestrationShellStreamEvent, environmentId: En
         : null;
   const threadRef = threadId ? scopeThreadRef(environmentId, threadId) : null;
   const previousThread = threadRef ? selectThreadByRef(useStore.getState(), threadRef) : undefined;
+  const projectThreadIdsToClose =
+    event.kind === "project-removed"
+      ? selectThreadIdsForProject(useStore.getState(), environmentId, event.projectId)
+      : [];
 
   useStore.getState().applyShellEvent(event, environmentId);
   markAppliedProjectionEvent(environmentId, event.sequence);
@@ -818,6 +838,9 @@ function applyShellEvent(event: OrchestrationShellStreamEvent, environmentId: En
   switch (event.kind) {
     case "project-upserted":
     case "project-removed":
+      if (projectThreadIdsToClose.length > 0) {
+        useUiStateStore.getState().closeTabsByThreadIds(environmentId, projectThreadIdsToClose);
+      }
       syncProjectUiFromStore();
       return;
     case "thread-upserted":
@@ -827,6 +850,7 @@ function applyShellEvent(event: OrchestrationShellStreamEvent, environmentId: En
       }
       if (previousThread?.archivedAt === null && event.thread.archivedAt !== null && threadRef) {
         useTerminalStateStore.getState().removeTerminalState(threadRef);
+        useUiStateStore.getState().closeTabsByThreadIds(environmentId, [event.thread.id]);
       }
       reconcileThreadDetailSubscriptionEvictionForThread(environmentId, event.thread.id);
       evictIdleThreadDetailSubscriptionsToCapacity();
@@ -837,6 +861,7 @@ function applyShellEvent(event: OrchestrationShellStreamEvent, environmentId: En
         useComposerDraftStore.getState().clearDraftThread(threadRef);
         useUiStateStore.getState().clearThreadUi(scopedThreadKey(threadRef));
         useTerminalStateStore.getState().removeTerminalState(threadRef);
+        useUiStateStore.getState().closeTabsByThreadIds(environmentId, [event.threadId]);
       }
       syncThreadUiFromStore();
       return;

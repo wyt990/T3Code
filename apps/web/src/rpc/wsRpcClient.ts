@@ -77,6 +77,15 @@ export interface WsRpcClient {
   readonly filesystem: {
     readonly browse: RpcUnaryMethod<typeof WS_METHODS.filesystemBrowse>;
   };
+  readonly ssh: {
+    readonly listConnections: RpcUnaryNoArgMethod<typeof WS_METHODS.sshListConnections>;
+    readonly listDirectory: RpcUnaryMethod<typeof WS_METHODS.sshListDirectory>;
+    readonly upsertConnection: RpcUnaryMethod<typeof WS_METHODS.sshUpsertConnection>;
+    readonly deleteConnection: RpcUnaryMethod<typeof WS_METHODS.sshDeleteConnection>;
+    readonly testConnection: RpcUnaryMethod<typeof WS_METHODS.sshTestConnection>;
+    readonly confirmHostKey: RpcUnaryMethod<typeof WS_METHODS.sshConfirmHostKey>;
+    readonly listProviderProbes: RpcUnaryMethod<typeof WS_METHODS.sshListProviderProbes>;
+  };
   readonly shell: {
     readonly openInEditor: (input: {
       readonly cwd: Parameters<LocalApi["shell"]["openInEditor"]>[0];
@@ -108,6 +117,7 @@ export interface WsRpcClient {
   };
   readonly server: {
     readonly getConfig: RpcUnaryNoArgMethod<typeof WS_METHODS.serverGetConfig>;
+    readonly getConnectionProviders: RpcUnaryMethod<typeof WS_METHODS.serverGetConnectionProviders>;
     readonly refreshProviders: RpcUnaryNoArgMethod<typeof WS_METHODS.serverRefreshProviders>;
     readonly refreshClaudeAgentModels: RpcUnaryNoArgMethod<
       typeof WS_METHODS.serverRefreshClaudeAgentModels
@@ -245,6 +255,21 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
     filesystem: {
       browse: (input) => transport.request((client) => client[WS_METHODS.filesystemBrowse](input)),
     },
+    ssh: {
+      listConnections: () => transport.request((client) => client[WS_METHODS.sshListConnections]()),
+      listDirectory: (input) =>
+        transport.request((client) => client[WS_METHODS.sshListDirectory](input)),
+      upsertConnection: (input) =>
+        transport.request((client) => client[WS_METHODS.sshUpsertConnection](input)),
+      deleteConnection: (input) =>
+        transport.request((client) => client[WS_METHODS.sshDeleteConnection](input)),
+      testConnection: (input) =>
+        transport.request((client) => client[WS_METHODS.sshTestConnection](input)),
+      confirmHostKey: (input) =>
+        transport.request((client) => client[WS_METHODS.sshConfirmHostKey](input)),
+      listProviderProbes: (input) =>
+        transport.request((client) => client[WS_METHODS.sshListProviderProbes](input)),
+    },
     shell: {
       openInEditor: (input) =>
         transport.request((client) => client[WS_METHODS.shellOpenInEditor](input)),
@@ -300,6 +325,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
     },
     server: {
       getConfig: () => transport.request((client) => client[WS_METHODS.serverGetConfig]({})),
+      getConnectionProviders: (input) =>
+        transport.request((client) => client[WS_METHODS.serverGetConnectionProviders](input)),
       refreshProviders: () =>
         transport.request((client) => client[WS_METHODS.serverRefreshProviders]({})),
       refreshClaudeAgentModels: () =>

@@ -214,6 +214,7 @@ function mapProject(
     environmentId,
     name: project.title,
     cwd: project.workspaceRoot,
+    transport: project.transport,
     repositoryIdentity: project.repositoryIdentity ?? null,
     defaultModelSelection: project.defaultModelSelection
       ? normalizeModelSelection(project.defaultModelSelection)
@@ -1151,6 +1152,7 @@ function applyEnvironmentOrchestrationEvent(
           id: event.payload.projectId,
           title: event.payload.title,
           workspaceRoot: event.payload.workspaceRoot,
+          transport: event.payload.transport,
           repositoryIdentity: event.payload.repositoryIdentity ?? null,
           defaultModelSelection: event.payload.defaultModelSelection,
           scripts: event.payload.scripts,
@@ -1205,6 +1207,7 @@ function applyEnvironmentOrchestrationEvent(
         ...project,
         ...(event.payload.title !== undefined ? { name: event.payload.title } : {}),
         ...(event.payload.workspaceRoot !== undefined ? { cwd: event.payload.workspaceRoot } : {}),
+        ...(event.payload.transport !== undefined ? { transport: event.payload.transport } : {}),
         ...(event.payload.repositoryIdentity !== undefined
           ? { repositoryIdentity: event.payload.repositoryIdentity ?? null }
           : {}),
@@ -1733,6 +1736,16 @@ export function selectThreadsForEnvironment(
   environmentId: EnvironmentId | null | undefined,
 ): Thread[] {
   return getThreads(selectEnvironmentState(state, environmentId));
+}
+
+export function selectThreadIdsForProject(
+  state: AppState,
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+): ThreadId[] {
+  return selectThreadsForEnvironment(state, environmentId)
+    .filter((thread) => thread.projectId === projectId)
+    .map((thread) => thread.id);
 }
 
 export function selectProjectsAcrossEnvironments(state: AppState): Project[] {

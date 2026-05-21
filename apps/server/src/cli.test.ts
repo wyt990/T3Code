@@ -74,6 +74,7 @@ const makeCliTestServerConfig = (baseDir: string) =>
       noBrowser: true,
       startupPresentation: "browser",
       desktopBootstrapToken: undefined,
+      sshCredentialPort: undefined,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
     } satisfies ServerConfigShape;

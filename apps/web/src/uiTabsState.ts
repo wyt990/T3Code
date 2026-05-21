@@ -437,6 +437,31 @@ export function setTabDiffOpen(state: UiTabsState, tabId: string, open: boolean)
   };
 }
 
+/**
+ * Drop server tabs whose thread no longer exists in the shell snapshot (or is archived).
+ * Draft tabs are left untouched.
+ */
+export function pruneOrphanedServerTabs(
+  state: UiTabsState,
+  validThreadKeys: ReadonlySet<string>,
+): UiTabsState {
+  const tabIdsToClose: string[] = [];
+  for (const tabId of state.group.tabIds) {
+    const tab = state.tabsById[tabId];
+    if (tab?.target.kind !== "server") {
+      continue;
+    }
+    const key = scopedThreadKey(tab.target.threadRef);
+    if (!validThreadKeys.has(key)) {
+      tabIdsToClose.push(tabId);
+    }
+  }
+  if (tabIdsToClose.length === 0) {
+    return state;
+  }
+  return closeTabs(state, tabIdsToClose);
+}
+
 export function closeTabsByThreadIds(
   state: UiTabsState,
   environmentId: EnvironmentId,

@@ -1,5 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { ProjectId, ThreadId, TurnId } from "@t3tools/contracts";
+import { DEFAULT_PROJECT_TRANSPORT, ProjectId, ThreadId, TurnId } from "@t3tools/contracts";
 import { Effect, Exit, Layer, ManagedRuntime, Option, Scope, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -67,6 +67,7 @@ function makeReadModel(
         id: projectId,
         title: "Provider Reaper Project",
         workspaceRoot: "/tmp/provider-reaper-project",
+        transport: DEFAULT_PROJECT_TRANSPORT,
         defaultModelSelection,
         scripts: [],
         createdAt: now,

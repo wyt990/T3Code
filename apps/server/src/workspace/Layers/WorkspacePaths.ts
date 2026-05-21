@@ -9,6 +9,7 @@ import {
   WorkspaceRootNotExistsError,
   type WorkspacePathsShape,
 } from "../Services/WorkspacePaths.ts";
+import { resolveRelativePathWithinPosixRoot } from "../posixPaths.ts";
 
 function toPosixRelativePath(input: string): string {
   return input.replaceAll("\\", "/");
@@ -64,6 +65,18 @@ export const makeWorkspacePaths = Effect.gen(function* () {
     return normalizedWorkspaceRoot;
   });
 
+  const normalizeRemoteWorkspaceRoot: WorkspacePathsShape["normalizeRemoteWorkspaceRoot"] =
+    Effect.fn("WorkspacePaths.normalizeRemoteWorkspaceRoot")(function* (workspaceRoot) {
+      const trimmed = workspaceRoot.trim();
+      if (trimmed.length === 0) {
+        return yield* new WorkspaceRootNotExistsError({
+          workspaceRoot,
+          normalizedWorkspaceRoot: trimmed,
+        });
+      }
+      return trimmed;
+    });
+
   const resolveRelativePathWithinRoot: WorkspacePathsShape["resolveRelativePathWithinRoot"] =
     Effect.fn("WorkspacePaths.resolveRelativePathWithinRoot")(function* (input) {
       const normalizedInputPath = input.relativePath.trim();
@@ -95,9 +108,23 @@ export const makeWorkspacePaths = Effect.gen(function* () {
       };
     });
 
+  const resolveRelativePathWithinPosixRootImpl: WorkspacePathsShape["resolveRelativePathWithinPosixRoot"] =
+    Effect.fn("WorkspacePaths.resolveRelativePathWithinPosixRoot")(function* (input) {
+      const resolved = resolveRelativePathWithinPosixRoot(input);
+      if ("outsideRoot" in resolved) {
+        return yield* new WorkspacePathOutsideRootError({
+          workspaceRoot: input.workspaceRoot,
+          relativePath: input.relativePath,
+        });
+      }
+      return resolved;
+    });
+
   return {
     normalizeWorkspaceRoot,
+    normalizeRemoteWorkspaceRoot,
     resolveRelativePathWithinRoot,
+    resolveRelativePathWithinPosixRoot: resolveRelativePathWithinPosixRootImpl,
   } satisfies WorkspacePathsShape;
 });
 

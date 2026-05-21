@@ -42,7 +42,10 @@ import {
 import { CodexAdapter, type CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { WorkspaceExecutionResolver } from "../../workspace/Services/WorkspaceExecution.ts";
+import { resolveCodexSpawnForThread } from "../resolveCodexSpawn.ts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
@@ -1365,10 +1368,31 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
               }),
           ),
         );
+        const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+        const workspaceExecutionResolver = yield* WorkspaceExecutionResolver;
+        const codexSpawn = yield* resolveCodexSpawnForThread(
+          input.threadId,
+          codexSettings.binaryPath,
+          input.cwd,
+        ).pipe(
+          Effect.provideService(ProjectionSnapshotQuery, projectionSnapshotQuery),
+          Effect.provideService(WorkspaceExecutionResolver, workspaceExecutionResolver),
+          Effect.mapError(
+            (error) =>
+              new ProviderAdapterValidationError({
+                provider: PROVIDER,
+                operation: "startSession",
+                issue: error.message,
+                cause: error,
+              }),
+          ),
+        );
+
         const runtimeInput: CodexSessionRuntimeOptions = {
           threadId: input.threadId,
           cwd: input.cwd ?? process.cwd(),
-          binaryPath: codexSettings.binaryPath,
+          binaryPath: codexSpawn.kind === "ssh" ? codexSpawn.binaryPath : codexSettings.binaryPath,
+          spawn: codexSpawn,
           ...(codexSettings.homePath ? { homePath: codexSettings.homePath } : {}),
           ...(Schema.is(CodexResumeCursorSchema)(input.resumeCursor)
             ? { resumeCursor: input.resumeCursor }

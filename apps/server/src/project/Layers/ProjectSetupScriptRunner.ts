@@ -9,11 +9,15 @@ import {
 } from "../Services/ProjectSetupScriptRunner.ts";
 
 const makeProjectSetupScriptRunner = Effect.gen(function* () {
-  const orchestrationEngine = yield* OrchestrationEngineService;
   const terminalManager = yield* TerminalManager;
+
+  const getEngine = Effect.fn("lazy.OrchestrationEngineService")(function* () {
+    return yield* OrchestrationEngineService;
+  });
 
   const runForThread: ProjectSetupScriptRunnerShape["runForThread"] = (input) =>
     Effect.gen(function* () {
+      const orchestrationEngine = yield* getEngine();
       const readModel = yield* orchestrationEngine.getReadModel();
       const project =
         (input.projectId
