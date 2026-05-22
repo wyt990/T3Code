@@ -9,6 +9,7 @@ import {
   ThreadArchiveReactor,
   type ThreadArchiveReactorShape,
 } from "../Services/ThreadArchiveReactor.ts";
+import { releaseIdleSshResourceLanesForThread } from "../../ssh/releaseSshResourceLanes.ts";
 import { logCleanupCauseUnlessInterrupted } from "./ThreadDeletionReactor.ts";
 
 type ThreadArchivedEvent = Extract<OrchestrationEvent, { type: "thread.archived" }>;
@@ -22,7 +23,7 @@ const make = Effect.gen(function* () {
     logCleanupCauseUnlessInterrupted({
       effect: providerService.stopSession({ threadId }),
       message: "thread archive cleanup skipped provider session stop",
-      threadId,
+      subjectId: threadId,
     });
 
   const dispatchSessionStop = (event: ThreadArchivedEvent) =>
@@ -34,14 +35,21 @@ const make = Effect.gen(function* () {
         createdAt: new Date().toISOString(),
       }),
       message: "thread archive cleanup skipped orchestration session stop",
-      threadId: event.payload.threadId,
+      subjectId: event.payload.threadId,
     });
 
   const closeThreadTerminals = (threadId: ThreadArchivedEvent["payload"]["threadId"]) =>
     logCleanupCauseUnlessInterrupted({
       effect: terminalManager.close({ threadId }),
       message: "thread archive cleanup skipped terminal close",
-      threadId,
+      subjectId: threadId,
+    });
+
+  const releaseSshLanes = (threadId: ThreadArchivedEvent["payload"]["threadId"]) =>
+    logCleanupCauseUnlessInterrupted({
+      effect: releaseIdleSshResourceLanesForThread(threadId),
+      message: "thread archive cleanup skipped SSH lane release",
+      subjectId: threadId,
     });
 
   const processThreadArchived = Effect.fn("processThreadArchived")(function* (
@@ -51,6 +59,7 @@ const make = Effect.gen(function* () {
     yield* stopProviderSession(threadId);
     yield* dispatchSessionStop(event);
     yield* closeThreadTerminals(threadId);
+    yield* releaseSshLanes(threadId);
   });
 
   const processThreadArchivedSafely = (event: ThreadArchivedEvent) =>

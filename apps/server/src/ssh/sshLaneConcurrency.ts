@@ -1,5 +1,6 @@
 import { Effect, Semaphore, SynchronizedRef } from "effect";
 
+import type { SshLaneConcurrencyShape } from "./Services/SshLaneConcurrency.ts";
 import { resolvePooledConnectionKey, type SshConnectionLane } from "./sshConnectionLane.ts";
 
 /** Max concurrent ssh2 exec/spawn channels per (connectionId, lane) TCP session. */
@@ -8,9 +9,10 @@ export const SSH_LANE_MAX_CONCURRENT_CHANNELS: Record<SshConnectionLane, number>
   git: 4,
   workspace: 2,
   interactive: 2,
+  browse: 2,
 };
 
-export const makeSshLaneConcurrency = () =>
+export const makeSshLaneConcurrency = (): Effect.Effect<SshLaneConcurrencyShape> =>
   Effect.gen(function* () {
     const semaphoresRef = yield* SynchronizedRef.make(new Map<string, Semaphore.Semaphore>());
 
@@ -47,5 +49,16 @@ export const makeSshLaneConcurrency = () =>
         return yield* semaphore.withPermit(effect);
       });
 
-    return { withLanePermit } as const;
+    return { withLanePermit } satisfies SshLaneConcurrencyShape;
+  });
+
+let sharedLaneConcurrency: SshLaneConcurrencyShape | undefined;
+
+/** One semaphore map per process; used by runner + filesystem without a separate Layer service. */
+export const sharedSshLaneConcurrency = (): Effect.Effect<SshLaneConcurrencyShape> =>
+  Effect.sync(() => {
+    if (sharedLaneConcurrency === undefined) {
+      sharedLaneConcurrency = Effect.runSync(makeSshLaneConcurrency());
+    }
+    return sharedLaneConcurrency;
   });

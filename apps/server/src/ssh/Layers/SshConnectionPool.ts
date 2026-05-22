@@ -364,7 +364,18 @@ export const makeSshConnectionPool = (options?: { readonly idleMs?: number }) =>
         }
       });
 
-    return { acquire, invalidate } satisfies (typeof SshConnectionPool)["Service"];
+    const releaseIdleLane = (connectionId: string, lane: SshConnectionLane): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const pooledKey = resolvePooledConnectionKey(connectionId, lane);
+        const pool = yield* SynchronizedRef.get(poolRef);
+        const pooled = pool.get(pooledKey);
+        if (pooled === undefined || pooled.refCount > 0) {
+          return;
+        }
+        yield* closeClient(pooledKey, pooled);
+      });
+
+    return { acquire, invalidate, releaseIdleLane } satisfies (typeof SshConnectionPool)["Service"];
   });
 
 export const SshConnectionPoolLive = Layer.effect(SshConnectionPool, makeSshConnectionPool());
@@ -394,4 +405,5 @@ export const makeSshConnectionPoolTestLayer = (options: {
           });
     },
     invalidate: () => Effect.void,
+    releaseIdleLane: () => Effect.void,
   });

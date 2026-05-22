@@ -2,7 +2,7 @@
  * Logical SSH lanes: one pooled TCP/SSH session per (connectionId, lane).
  * Avoids exec/shell/SFTP channel contention on a single ssh2 client.
  */
-export const SSH_CONNECTION_LANES = ["git", "probe", "interactive", "workspace"] as const;
+export const SSH_CONNECTION_LANES = ["git", "probe", "interactive", "workspace", "browse"] as const;
 
 export type SshConnectionLane = (typeof SSH_CONNECTION_LANES)[number];
 

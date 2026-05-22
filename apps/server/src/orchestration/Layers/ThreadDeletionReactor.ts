@@ -5,6 +5,7 @@ import { Cause, Effect, Layer, Stream } from "effect";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { TerminalManager } from "../../terminal/Services/Manager.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
+import { releaseIdleSshResourceLanesForThread } from "../../ssh/releaseSshResourceLanes.ts";
 import {
   ThreadDeletionReactor,
   type ThreadDeletionReactorShape,
@@ -15,11 +16,11 @@ type ThreadDeletedEvent = Extract<OrchestrationEvent, { type: "thread.deleted" }
 export const logCleanupCauseUnlessInterrupted = <R, E>({
   effect,
   message,
-  threadId,
+  subjectId,
 }: {
   readonly effect: Effect.Effect<void, E, R>;
   readonly message: string;
-  readonly threadId: ThreadDeletedEvent["payload"]["threadId"];
+  readonly subjectId: string;
 }): Effect.Effect<void, E, R> =>
   effect.pipe(
     Effect.catchCause((cause) => {
@@ -27,7 +28,7 @@ export const logCleanupCauseUnlessInterrupted = <R, E>({
         return Effect.failCause(cause);
       }
       return Effect.logDebug(message, {
-        threadId,
+        subjectId,
         cause: Cause.pretty(cause),
       });
     }),
@@ -42,14 +43,14 @@ const make = Effect.gen(function* () {
     logCleanupCauseUnlessInterrupted({
       effect: providerService.stopSession({ threadId }),
       message: "thread deletion cleanup skipped provider session stop",
-      threadId,
+      subjectId: threadId,
     });
 
   const closeThreadTerminals = (threadId: ThreadDeletedEvent["payload"]["threadId"]) =>
     logCleanupCauseUnlessInterrupted({
       effect: terminalManager.close({ threadId, deleteHistory: true }),
       message: "thread deletion cleanup skipped terminal close",
-      threadId,
+      subjectId: threadId,
     });
 
   const processThreadDeleted = Effect.fn("processThreadDeleted")(function* (
@@ -58,6 +59,11 @@ const make = Effect.gen(function* () {
     const { threadId } = event.payload;
     yield* stopProviderSession(threadId);
     yield* closeThreadTerminals(threadId);
+    yield* logCleanupCauseUnlessInterrupted({
+      effect: releaseIdleSshResourceLanesForThread(threadId),
+      message: "thread deletion cleanup skipped SSH lane release",
+      subjectId: threadId,
+    });
   });
 
   const processThreadDeletedSafely = (event: ThreadDeletedEvent) =>

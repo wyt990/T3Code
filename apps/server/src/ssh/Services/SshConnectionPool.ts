@@ -23,8 +23,11 @@ export interface SshConnectionPoolShape {
     options?: SshConnectionAcquireOptions,
   ) => Effect.Effect<SshConnectionLease, SshError>;
 
-  /** Closes every lane (git, probe, interactive, workspace) for this connection id. */
+  /** Closes every lane (git, probe, interactive, workspace, browse) for this connection id. */
   readonly invalidate: (connectionId: string) => Effect.Effect<void>;
+
+  /** Closes one idle lane TCP immediately when refCount is zero (no-op while leased). */
+  readonly releaseIdleLane: (connectionId: string, lane: SshConnectionLane) => Effect.Effect<void>;
 }
 
 export class SshConnectionPool extends Context.Service<SshConnectionPool, SshConnectionPoolShape>()(

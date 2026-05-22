@@ -12,7 +12,7 @@ describe("logCleanupCauseUnlessInterrupted", () => {
       logCleanupCauseUnlessInterrupted({
         effect: Effect.fail("cleanup failed"),
         message: "thread deletion cleanup skipped provider session stop",
-        threadId,
+        subjectId: threadId,
       }),
     );
 
@@ -24,7 +24,7 @@ describe("logCleanupCauseUnlessInterrupted", () => {
       logCleanupCauseUnlessInterrupted({
         effect: Effect.interrupt,
         message: "thread deletion cleanup skipped provider session stop",
-        threadId,
+        subjectId: threadId,
       }),
     );
 

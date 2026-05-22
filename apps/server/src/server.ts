@@ -42,6 +42,7 @@ import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus.
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
+import { ProjectDeletedReactorLive } from "./orchestration/Layers/ProjectDeletedReactor.ts";
 import { ThreadArchiveReactorLive } from "./orchestration/Layers/ThreadArchiveReactor.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
 import { SshTurnStartGateLive } from "./ssh/Layers/SshTurnStartGate.ts";
@@ -140,16 +141,29 @@ const PlatformServicesLive = Layer.unwrap(
   }),
 );
 
-const ReactorLayerLive = Layer.empty.pipe(
-  Layer.provideMerge(OrchestrationReactorLive),
-  Layer.provideMerge(ProviderRuntimeIngestionLive),
-  Layer.provideMerge(ProviderCommandReactorLive),
-  Layer.provideMerge(CheckpointReactorLive),
-  Layer.provideMerge(SshTurnStartGateLive),
-  Layer.provideMerge(ThreadArchiveReactorLive),
-  Layer.provideMerge(ThreadDeletionReactorLive),
-  Layer.provideMerge(RuntimeReceiptBusLive),
+/** Probe + workspace resolver; merged onto layers that yield these services at init. */
+const SshDependentLayersLive = Layer.mergeAll(
+  RemoteProviderProbeLive,
+  WorkspaceExecutionResolverLive,
+).pipe(Layer.provideMerge(SshInfrastructureLive));
+
+const TerminalSshLayersLive = WorkspaceExecutionResolverLive.pipe(
+  Layer.provideMerge(SshInfrastructureLive),
 );
+
+const ReactorLayerLive = Layer.empty
+  .pipe(
+    Layer.provideMerge(OrchestrationReactorLive),
+    Layer.provideMerge(ProviderRuntimeIngestionLive),
+    Layer.provideMerge(ProviderCommandReactorLive),
+    Layer.provideMerge(CheckpointReactorLive),
+    Layer.provideMerge(SshTurnStartGateLive),
+    Layer.provideMerge(ThreadArchiveReactorLive),
+    Layer.provideMerge(ThreadDeletionReactorLive),
+    Layer.provideMerge(ProjectDeletedReactorLive),
+    Layer.provideMerge(RuntimeReceiptBusLive),
+  )
+  .pipe(Layer.provideMerge(SshDependentLayersLive));
 
 const CheckpointingLayerLive = Layer.empty.pipe(
   Layer.provideMerge(CheckpointDiffQueryLive),
@@ -220,10 +234,7 @@ const TerminalLayerLive = TerminalManagerLive.pipe(
       Layer.provide(RepositoryIdentityResolverLive),
     ),
   ),
-  Layer.provideMerge(
-    WorkspaceExecutionResolverLive.pipe(Layer.provideMerge(SshInfrastructureLive)),
-  ),
-);
+).pipe(Layer.provideMerge(TerminalSshLayersLive));
 
 const WorkspaceEntriesLayerLive = WorkspaceEntriesLive.pipe(
   Layer.provide(WorkspacePathsLive),
@@ -251,21 +262,14 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(ProviderLayerLive),
 );
 
-/** SSH-backed services must see SshInfrastructureLive when their Layer.effect runs. */
-const SshDependentLayersLive = Layer.mergeAll(
-  RemoteProviderProbeLive,
-  WorkspaceExecutionResolverLive,
-).pipe(Layer.provideMerge(SshInfrastructureLive));
-
 const RuntimeDependenciesLive = Layer.empty.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+  Layer.provideMerge(SshInfrastructureLive),
   Layer.provideMerge(ReactorLayerLive),
   Layer.provideMerge(CheckpointingLayerLive),
   Layer.provideMerge(ProviderRuntimeLayerLive),
   Layer.provideMerge(GitLayerLive),
   Layer.provideMerge(TerminalLayerLive),
-  Layer.provideMerge(PersistenceLayerLive),
-  Layer.provideMerge(SshInfrastructureLive),
-  Layer.provideMerge(SshDependentLayersLive),
   Layer.provideMerge(PtyAdapterLive),
   Layer.provideMerge(KeybindingsLive),
   Layer.provideMerge(ProviderRegistryLive),

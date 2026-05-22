@@ -20,6 +20,7 @@ export {
   SshHostKeyVerifierLive,
   makeSshHostKeyVerifierTrustAllTestLayer,
 } from "./SshHostKeyVerifier.ts";
+export { SshLaneConcurrencyLive } from "./SshLaneConcurrency.ts";
 export { SshProcessRunnerLive } from "./SshProcessRunner.ts";
 export { SshTurnStartGateLive, makeSshTurnStartGateNoopLayer } from "./SshTurnStartGate.ts";
 export { SshPortForwardLive, makeSshPortForwardTestLayer } from "./SshPortForward.ts";
@@ -28,14 +29,15 @@ export { makeSshConnectionRegistryTestLayer } from "./SshConnectionRegistry.ts";
 
 const SshIdentityLive = Layer.mergeAll(SshConnectionRegistryLive, SshHostKeyVerifierLive);
 
-export const SshInfrastructureLive = SshProcessRunnerLive.pipe(
-  Layer.provideMerge(SshFileSystemLive),
-  Layer.provideMerge(SshPortForwardLive),
-  Layer.provideMerge(
-    SshConnectionPoolLive.pipe(
-      Layer.provideMerge(SshCredentialResolverLive.pipe(Layer.provideMerge(SshIdentityLive))),
-      Layer.provideMerge(SshIdentityLive),
-    ),
-  ),
+const SshConnectionPoolLayerLive = SshConnectionPoolLive.pipe(
+  Layer.provideMerge(SshCredentialResolverLive.pipe(Layer.provideMerge(SshIdentityLive))),
   Layer.provideMerge(SshIdentityLive),
+);
+
+/** Pool must be provided to runner/fs/port-forward before their Layer.effect runs. */
+export const SshInfrastructureLive = Layer.mergeAll(
+  SshConnectionPoolLayerLive,
+  SshProcessRunnerLive.pipe(Layer.provideMerge(SshConnectionPoolLayerLive)),
+  SshFileSystemLive.pipe(Layer.provideMerge(SshConnectionPoolLayerLive)),
+  SshPortForwardLive.pipe(Layer.provideMerge(SshConnectionPoolLayerLive)),
 );

@@ -39,6 +39,7 @@ import {
 } from "../remoteRefs.ts";
 import { ServerConfig } from "../../config.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { releaseIdleSshGitLaneForCwd } from "../../ssh/releaseSshResourceLanes.ts";
 import { readServerSettingsDiskSnapshot } from "../../serverSettings.ts";
 import {
   WorkspaceExecutionResolver,
@@ -822,6 +823,8 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
               });
             }
           }
+
+          yield* releaseIdleSshGitLaneForCwd(commandInput.cwd).pipe(Effect.ignore);
 
           return {
             code: result.exitCode,

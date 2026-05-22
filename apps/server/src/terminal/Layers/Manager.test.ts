@@ -402,6 +402,7 @@ it.layer(Layer.merge(NodeServices.layer, TerminalCollaboratorsTestLive), {
       );
       const snapshot = yield* manager.open(openInput({ cwd: sshCwd }));
       assert.equal(snapshot.status, "running");
+      assert.equal(snapshot.pid, null);
       assert.equal(ptyAdapter.spawnInputs.length, 0);
     }),
   );

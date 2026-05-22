@@ -18,6 +18,7 @@ import {
 import { DEFAULT_OPENCODE_MODEL_CAPABILITIES } from "../provider/openCodeModelList.ts";
 import { buildServerProvider, providerModelsFromSettings } from "../provider/providerSnapshot.ts";
 import { probeRemoteOpenCodeModels } from "../provider/remoteOpenCodeModels.ts";
+import { SshConnectionPool } from "./Services/SshConnectionPool.ts";
 import {
   RemoteProviderProbe,
   refreshRemoteClaudeModelsForConnection,
@@ -205,6 +206,8 @@ export const getConnectionProvidersForSshProject = (input: {
         binaryPath: claudeProbe.binaryPath,
         version: claudeProbe.version,
       }).pipe(Effect.catch(() => Effect.void));
+      const pool = yield* SshConnectionPool;
+      yield* pool.releaseIdleLane(input.connectionId, "probe");
     }
 
     const cachedClaudeModels = remoteProbe.getClaudeModels(input.connectionId) ?? [];

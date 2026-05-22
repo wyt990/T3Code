@@ -14,7 +14,7 @@ import {
 import { SshConnectionPool } from "../Services/SshConnectionPool.ts";
 import { SshProcessRunner } from "../Services/SshProcessRunner.ts";
 import { DEFAULT_SSH_CONNECTION_LANE, type SshConnectionLane } from "../sshConnectionLane.ts";
-import { makeSshLaneConcurrency } from "../sshLaneConcurrency.ts";
+import { sharedSshLaneConcurrency } from "../sshLaneConcurrency.ts";
 import {
   WorkspaceExecutionError,
   type WorkspaceInteractiveProcess,
@@ -133,7 +133,7 @@ const makeInteractiveProcess = (input: {
 
 export const makeSshProcessRunner = Effect.gen(function* () {
   const pool = yield* SshConnectionPool;
-  const laneConcurrency = yield* makeSshLaneConcurrency();
+  const laneConcurrency = yield* sharedSshLaneConcurrency();
 
   const resolveExecLane = (lane: SshConnectionLane | undefined): SshConnectionLane =>
     lane ?? DEFAULT_SSH_CONNECTION_LANE;

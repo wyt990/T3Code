@@ -10,7 +10,8 @@ import {
 it("resolvePooledConnectionKey namespaces lanes per connection id", () => {
   assert.equal(resolvePooledConnectionKey("conn-a", "git"), "conn-a::git");
   assert.equal(resolvePooledConnectionKey("conn-a", "probe"), "conn-a::probe");
-  assert.equal(pooledConnectionKeysForConnection("conn-a").length, 4);
+  assert.equal(pooledConnectionKeysForConnection("conn-a").length, 5);
+  assert.equal(resolvePooledConnectionKey("conn-a", "browse"), "conn-a::browse");
 });
 
 it("parsePooledConnectionKey recovers connection id and lane", () => {

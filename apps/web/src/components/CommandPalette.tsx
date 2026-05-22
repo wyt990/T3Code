@@ -1510,11 +1510,13 @@ function OpenCommandPaletteDialog() {
             onExecuteItem={executeItem}
             {...(relativePathNeedsActiveProject
               ? { emptyStateMessage: "相对路径需要当前有活动项目。" }
-              : willCreateProjectPath
-                ? {
-                    emptyStateMessage: "按 Enter 创建此文件夹并添加为项目。",
-                  }
-                : {})}
+              : isSshBrowsing && sshBrowse.browseErrorMessage
+                ? { emptyStateMessage: sshBrowse.browseErrorMessage }
+                : willCreateProjectPath
+                  ? {
+                      emptyStateMessage: "按 Enter 创建此文件夹并添加为项目。",
+                    }
+                  : {})}
           />
         </CommandPanel>
         <CommandFooter className="gap-3 max-sm:flex-col max-sm:items-start">

@@ -18,7 +18,20 @@ import {
 import type { CommandPaletteActionItem, CommandPaletteGroup } from "./CommandPalette.logic";
 
 const SSH_BROWSE_STALE_TIME_MS = 30_000;
+const SSH_BROWSE_MAX_RETRIES = 4;
 const EMPTY_SSH_BROWSE_ENTRIES: readonly SshDirectoryBrowseEntry[] = [];
+
+const isSshBrowseTransientError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  return /channel|sftp|timeout|temporarily|ECONN|unavailable|busy/i.test(message);
+};
+
+const formatSshBrowseError = (error: unknown): string => {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return "无法列出远程目录，请稍后重试。";
+};
 
 export function filterSshBrowseEntries(input: {
   browseEntries: ReadonlyArray<SshDirectoryBrowseEntry>;
@@ -151,16 +164,26 @@ export function useSshDirectoryBrowse(input: {
     },
     staleTime: SSH_BROWSE_STALE_TIME_MS,
     enabled: input.enabled && input.environmentId !== null && input.connectionId !== null,
+    retry: (failureCount, error) => {
+      if (!isSshBrowseTransientError(error)) {
+        return false;
+      }
+      return failureCount < SSH_BROWSE_MAX_RETRIES;
+    },
+    retryDelay: (attempt) => Math.min(5_000, 400 * 2 ** (attempt - 1)),
   });
 
   const browseEntries = queryResult.data?.entries ?? EMPTY_SSH_BROWSE_ENTRIES;
+  const browseErrorMessage =
+    queryResult.isError && !queryResult.isFetching ? formatSshBrowseError(queryResult.error) : null;
 
   return {
     browseDirectoryPath,
     browseFilterQuery,
     browseResult: queryResult.data ?? null,
     browseEntries,
-    isBrowsePending: queryResult.isPending,
+    browseErrorMessage,
+    isBrowsePending: queryResult.isPending || queryResult.isFetching,
     listPath,
   };
 }

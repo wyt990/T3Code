@@ -81,4 +81,16 @@ TestLayer("SshFileSystem", (it) => {
       assert.equal(stat.isDirectory, true);
     }),
   );
+
+  it.effect("list can use the browse lane without sharing workspace SFTP", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* SshFileSystem;
+      const entries = yield* fileSystem.list({
+        connectionId: "conn-1",
+        path: "/tmp/project",
+        lane: "browse",
+      });
+      assert.equal(entries[0]?.name, "src");
+    }),
+  );
 });

@@ -2,6 +2,7 @@ import { Context } from "effect";
 import type { Effect } from "effect";
 
 import type { SshError } from "../Errors.ts";
+import type { SshConnectionLane } from "../sshConnectionLane.ts";
 import type {
   WorkspaceDirectoryEntry,
   WorkspaceFileStat,
@@ -11,6 +12,7 @@ export interface SshFileSystemShape {
   readonly list: (input: {
     readonly connectionId: string;
     readonly path: string;
+    readonly lane?: SshConnectionLane;
   }) => Effect.Effect<ReadonlyArray<WorkspaceDirectoryEntry>, SshError>;
 
   readonly stat: (input: {

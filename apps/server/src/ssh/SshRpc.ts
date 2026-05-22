@@ -267,7 +267,7 @@ export const listSshDirectory = (input: { readonly connectionId: string; readonl
     const remoteFileSystem = yield* SshFileSystem;
     const parentPath = normalizeRemoteBrowsePath(input.path);
     const entries = yield* remoteFileSystem
-      .list({ connectionId: input.connectionId, path: parentPath })
+      .list({ connectionId: input.connectionId, path: parentPath, lane: "browse" })
       .pipe(
         Effect.mapError((error) =>
           toListDirectoryError({

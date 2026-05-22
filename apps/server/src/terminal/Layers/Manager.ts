@@ -161,7 +161,8 @@ function snapshot(session: TerminalSessionState): TerminalSessionSnapshot {
     cwd: session.cwd,
     worktreePath: session.worktreePath,
     status: session.status,
-    pid: session.pid,
+    // SSH PTY uses pid 0 internally; contract allows null or pid > 0 only.
+    pid: session.pid != null && session.pid > 0 ? session.pid : null,
     history: session.history,
     exitCode: session.exitCode,
     exitSignal: session.exitSignal,
