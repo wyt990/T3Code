@@ -166,16 +166,26 @@ export interface CreateTabOptions {
   activate?: boolean;
 }
 
+export type CreateTabRejectionReason = "at-cap" | "duplicate-id";
+
+export type CreateTabResult =
+  | { readonly state: UiTabsState; readonly outcome: "created" }
+  | {
+      readonly state: UiTabsState;
+      readonly outcome: "rejected";
+      readonly reason: CreateTabRejectionReason;
+    };
+
 export function createTab(
   state: UiTabsState,
   target: TabTarget,
   options: CreateTabOptions,
-): UiTabsState {
+): CreateTabResult {
   if (state.group.tabIds.length >= MAX_TABS) {
-    return state;
+    return { state, outcome: "rejected", reason: "at-cap" };
   }
   if (state.tabsById[options.newTabId]) {
-    return state;
+    return { state, outcome: "rejected", reason: "duplicate-id" };
   }
   const tab: Tab = {
     id: options.newTabId,
@@ -195,12 +205,15 @@ export function createTab(
   nextTabIds.splice(insertIndex, 0, tab.id);
   const shouldActivate = options.activate !== false;
   return {
-    tabsById: { ...state.tabsById, [tab.id]: tab },
-    group: {
-      ...state.group,
-      tabIds: nextTabIds,
-      activeTabId: shouldActivate ? tab.id : state.group.activeTabId,
-      focusedTabId: shouldActivate ? tab.id : state.group.focusedTabId,
+    outcome: "created",
+    state: {
+      tabsById: { ...state.tabsById, [tab.id]: tab },
+      group: {
+        ...state.group,
+        tabIds: nextTabIds,
+        activeTabId: shouldActivate ? tab.id : state.group.activeTabId,
+        focusedTabId: shouldActivate ? tab.id : state.group.focusedTabId,
+      },
     },
   };
 }
@@ -637,7 +650,7 @@ function hydrateTabsByIdMap(input: unknown): Record<string, Tab> | null {
   const result: Record<string, Tab> = {};
   for (const [tabId, tab] of Object.entries(input as Record<string, unknown>)) {
     if (!isValidTab(tab) || tab.id !== tabId) {
-      return null;
+      continue;
     }
     result[tabId] = {
       id: tab.id,
@@ -646,6 +659,9 @@ function hydrateTabsByIdMap(input: unknown): Record<string, Tab> | null {
       titleLocked: tab.titleLocked,
       diffOpen: tab.diffOpen,
     };
+  }
+  if (Object.keys(result).length === 0) {
+    return null;
   }
   return result;
 }
@@ -670,7 +686,11 @@ function hydrateOrderedTabIds(
     }
   }
   if (tabIds.length === 0) {
-    return null;
+    const fallbackTabIds = Object.keys(validTabsById).slice(0, MAX_TABS);
+    if (fallbackTabIds.length === 0) {
+      return null;
+    }
+    return { tabIds: fallbackTabIds, tabIdSet: new Set(fallbackTabIds) };
   }
   return { tabIds, tabIdSet };
 }
@@ -710,10 +730,13 @@ function isValidActiveOrFocusedTabId(candidate: unknown, tabIdSet: ReadonlySet<s
   return typeof candidate === "string" && tabIdSet.has(candidate);
 }
 
+function isSupportedPersistedTabsVersion(version: unknown): boolean {
+  return version === TABS_PERSISTED_VERSION || version === 1 || version === undefined;
+}
+
 /**
- * Validates persisted tabs. Returns null when any constraint is violated; the
- * caller should fall back to seed initialization rather than partially trusting
- * a corrupt blob.
+ * Validates persisted tabs. Returns null only when nothing usable remains; otherwise
+ * drops corrupt tabs/pairs and repairs group metadata when possible.
  */
 export function hydrateTabsState(persisted: unknown): UiTabsState | null {
   if (persisted === null || typeof persisted !== "object") {
@@ -721,16 +744,17 @@ export function hydrateTabsState(persisted: unknown): UiTabsState | null {
     return null;
   }
   const candidate = persisted as PersistedTabsState;
-  if (candidate.version !== TABS_PERSISTED_VERSION) {
+  if (!isSupportedPersistedTabsVersion(candidate.version)) {
     console.log("【标签加载】hydrateTabsState: 版本不匹配，校验失败", {
       当前版本: TABS_PERSISTED_VERSION,
       持久化版本: candidate.version,
     });
     return null;
   }
-  if (!candidate.group || typeof candidate.group !== "object") {
-    console.log("【标签加载】hydrateTabsState: group 字段无效，校验失败");
-    return null;
+  if (candidate.version !== TABS_PERSISTED_VERSION) {
+    console.log("【标签加载】hydrateTabsState: 使用兼容模式加载旧版标签数据", {
+      持久化版本: candidate.version,
+    });
   }
 
   const validTabsById = hydrateTabsByIdMap(candidate.tabsById);
@@ -744,7 +768,21 @@ export function hydrateTabsState(persisted: unknown): UiTabsState | null {
     return null;
   }
 
-  const orderedTabIds = hydrateOrderedTabIds(candidate.group.tabIds, validTabsById);
+  const rawGroup =
+    candidate.group && typeof candidate.group === "object"
+      ? candidate.group
+      : {
+          id: DEFAULT_TAB_GROUP_ID,
+          tabIds: Object.keys(validTabsById),
+          activeTabId: null,
+          focusedTabId: null,
+          mergedPairs: [],
+        };
+  if (!candidate.group || typeof candidate.group !== "object") {
+    console.log("【标签加载】hydrateTabsState: group 字段无效，从 tabsById 重建 group");
+  }
+
+  const orderedTabIds = hydrateOrderedTabIds(rawGroup.tabIds, validTabsById);
   if (!orderedTabIds) {
     console.log("【标签加载】hydrateTabsState: tabIds 有序列表水合失败，校验失败", {
       "tabIds 类型": typeof candidate.group.tabIds,
@@ -757,14 +795,14 @@ export function hydrateTabsState(persisted: unknown): UiTabsState | null {
   }
   const { tabIds, tabIdSet } = orderedTabIds;
 
-  const resolvedActiveTabId = isValidActiveOrFocusedTabId(candidate.group.activeTabId, tabIdSet)
-    ? (candidate.group.activeTabId ?? null)
+  const resolvedActiveTabId = isValidActiveOrFocusedTabId(rawGroup.activeTabId, tabIdSet)
+    ? (rawGroup.activeTabId ?? null)
     : (tabIds[0] ?? null);
-  const resolvedFocusedTabId = isValidActiveOrFocusedTabId(candidate.group.focusedTabId, tabIdSet)
-    ? (candidate.group.focusedTabId ?? null)
+  const resolvedFocusedTabId = isValidActiveOrFocusedTabId(rawGroup.focusedTabId, tabIdSet)
+    ? (rawGroup.focusedTabId ?? null)
     : resolvedActiveTabId;
 
-  const sanitizedPairs = hydrateMergedPairs(candidate.group.mergedPairs, tabIdSet);
+  const sanitizedPairs = hydrateMergedPairs(rawGroup.mergedPairs, tabIdSet);
 
   const finalTabsById: Record<string, Tab> = {};
   for (const tabId of tabIds) {
@@ -781,7 +819,7 @@ export function hydrateTabsState(persisted: unknown): UiTabsState | null {
   return {
     tabsById: finalTabsById,
     group: {
-      id: typeof candidate.group.id === "string" ? candidate.group.id : DEFAULT_TAB_GROUP_ID,
+      id: typeof rawGroup.id === "string" ? rawGroup.id : DEFAULT_TAB_GROUP_ID,
       tabIds,
       activeTabId: resolvedActiveTabId,
       focusedTabId: resolvedFocusedTabId,

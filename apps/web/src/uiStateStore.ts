@@ -2,7 +2,6 @@ import { Debouncer } from "@tanstack/react-pacer";
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { create } from "zustand";
 
-import { decideTabActivation } from "./components/TabBar/TabBar.logic";
 import { showTabsAtCapBlockedToast } from "./components/TabBar/tabsAtCapToast";
 import type { DraftId } from "./draftId";
 import {
@@ -739,14 +738,22 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   // ── 标签操作（含状态日志） ──────────────────────────────────────────────
 
   createTab: (target, options) => {
-    const state = useUiStateStore.getState();
-    const activation = decideTabActivation(state.tabs, target, state.threadLastVisitedAtById);
-    if (activation.action === "exceeds-limit") {
+    const beforeCount = useUiStateStore.getState().tabs.group.tabIds.length;
+    let rejectedReason: "at-cap" | null = null;
+    set((s) => {
+      const result = createTabReducer(s.tabs, target, options);
+      if (result.outcome === "rejected") {
+        if (result.reason === "at-cap") {
+          rejectedReason = "at-cap";
+        }
+        return s;
+      }
+      return updateTabs(s, () => result.state);
+    });
+    if (rejectedReason === "at-cap") {
       showTabsAtCapBlockedToast();
       return;
     }
-    const beforeCount = state.tabs.group.tabIds.length;
-    set((s) => updateTabs(s, (tabs) => createTabReducer(tabs, target, options)));
     const tabs = useUiStateStore.getState().tabs;
     const created = beforeCount < tabs.group.tabIds.length;
     console.log(

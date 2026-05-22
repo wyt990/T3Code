@@ -38,7 +38,7 @@ function draftTarget(draftIdStr: string): TabTarget {
 function buildState(items: Array<{ tabId: string; target: TabTarget }>): UiTabsState {
   let state = initialTabsState;
   for (const { tabId, target } of items) {
-    state = createTab(state, target, { newTabId: tabId });
+    state = createTab(state, target, { newTabId: tabId }).state;
   }
   return state;
 }

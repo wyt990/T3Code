@@ -52,7 +52,7 @@ function draftTarget(draftIdStr: string): TabTarget {
 function buildState(tabsToCreate: Array<{ tabId: string; target: TabTarget }>): UiTabsState {
   let state = initialTabsState;
   for (const { tabId, target } of tabsToCreate) {
-    state = createTab(state, target, { newTabId: tabId });
+    state = createTab(state, target, { newTabId: tabId }).state;
   }
   return state;
 }
@@ -61,10 +61,11 @@ describe("uiTabsState - createTab", () => {
   it("creates a new tab and activates it by default", () => {
     const next = createTab(initialTabsState, serverTarget("t-1"), { newTabId: "tab-1" });
 
-    expect(next.group.tabIds).toEqual(["tab-1"]);
-    expect(next.group.activeTabId).toBe("tab-1");
-    expect(next.group.focusedTabId).toBe("tab-1");
-    expect(next.tabsById["tab-1"]).toMatchObject({
+    expect(next.outcome).toBe("created");
+    expect(next.state.group.tabIds).toEqual(["tab-1"]);
+    expect(next.state.group.activeTabId).toBe("tab-1");
+    expect(next.state.group.focusedTabId).toBe("tab-1");
+    expect(next.state.tabsById["tab-1"]).toMatchObject({
       id: "tab-1",
       titleLocked: false,
       diffOpen: false,
@@ -82,35 +83,39 @@ describe("uiTabsState - createTab", () => {
 
     const next = createTab(activated, serverTarget("t-4"), { newTabId: "tab-4" });
 
-    expect(next.group.tabIds).toEqual(["tab-1", "tab-4", "tab-2", "tab-3"]);
-    expect(next.group.activeTabId).toBe("tab-4");
+    expect(next.state.group.tabIds).toEqual(["tab-1", "tab-4", "tab-2", "tab-3"]);
+    expect(next.state.group.activeTabId).toBe("tab-4");
   });
 
   it("respects MAX_TABS limit", () => {
     let state = initialTabsState;
     for (let i = 0; i < MAX_TABS; i++) {
-      state = createTab(state, serverTarget(`t-${i}`), { newTabId: `tab-${i}` });
+      state = createTab(state, serverTarget(`t-${i}`), { newTabId: `tab-${i}` }).state;
     }
     expect(state.group.tabIds).toHaveLength(MAX_TABS);
 
     const overflow = createTab(state, serverTarget("t-overflow"), { newTabId: "tab-overflow" });
-    expect(overflow).toBe(state);
+    expect(overflow.outcome).toBe("rejected");
+    expect(overflow.reason).toBe("at-cap");
+    expect(overflow.state).toBe(state);
   });
 
   it("ignores duplicate tabId", () => {
-    const state = createTab(initialTabsState, serverTarget("t-1"), { newTabId: "tab-1" });
+    const state = createTab(initialTabsState, serverTarget("t-1"), { newTabId: "tab-1" }).state;
     const dup = createTab(state, serverTarget("t-2"), { newTabId: "tab-1" });
-    expect(dup).toBe(state);
+    expect(dup.outcome).toBe("rejected");
+    expect(dup.reason).toBe("duplicate-id");
+    expect(dup.state).toBe(state);
   });
 
   it("supports activate=false to create without changing active", () => {
-    const state = createTab(initialTabsState, serverTarget("t-1"), { newTabId: "tab-1" });
+    const state = createTab(initialTabsState, serverTarget("t-1"), { newTabId: "tab-1" }).state;
     const next = createTab(state, serverTarget("t-2"), {
       newTabId: "tab-2",
       activate: false,
     });
-    expect(next.group.activeTabId).toBe("tab-1");
-    expect(next.group.tabIds).toEqual(["tab-1", "tab-2"]);
+    expect(next.state.group.activeTabId).toBe("tab-1");
+    expect(next.state.group.tabIds).toEqual(["tab-1", "tab-2"]);
   });
 });
 
@@ -491,7 +496,7 @@ describe("uiTabsState - closeTabsByThreadIds", () => {
 describe("uiTabsState - promoteDraftTab", () => {
   it("upgrades a draft tab to a server tab in place", () => {
     const draftId = DraftId.make("d-1");
-    const state = createTab(initialTabsState, draftTarget("d-1"), { newTabId: "tab-1" });
+    const state = createTab(initialTabsState, draftTarget("d-1"), { newTabId: "tab-1" }).state;
     const promotedTo = { environmentId: ENV, threadId: ThreadId.make("t-1") };
 
     const next = promoteDraftTab(state, draftId, promotedTo);
@@ -585,9 +590,66 @@ describe("uiTabsState - hydration round-trip", () => {
     expect(hydrated).toEqual(final);
   });
 
-  it("rejects unknown version", () => {
-    const result = hydrateTabsState({ version: 1, tabsById: {}, group: {} });
+  it("rejects unknown persisted version", () => {
+    const result = hydrateTabsState({ version: 99, tabsById: {}, group: {} });
     expect(result).toBeNull();
+  });
+
+  it("hydrates version 1 blobs with the same shape as version 2", () => {
+    const blob = {
+      version: 1,
+      tabsById: {
+        "tab-1": {
+          id: "tab-1",
+          target: serverTarget("t-1"),
+          customTitle: null,
+          titleLocked: false,
+          diffOpen: false,
+        },
+      },
+      group: {
+        id: DEFAULT_TAB_GROUP_ID,
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1",
+        focusedTabId: "tab-1",
+        mergedPairs: [],
+      },
+    };
+    const hydrated = hydrateTabsState(blob);
+    expect(hydrated?.group.tabIds).toEqual(["tab-1"]);
+  });
+
+  it("skips corrupt tabs but keeps valid tabs", () => {
+    const blob = {
+      version: 2,
+      tabsById: {
+        "tab-good": {
+          id: "tab-good",
+          target: serverTarget("t-good"),
+          customTitle: null,
+          titleLocked: false,
+          diffOpen: false,
+        },
+        "tab-bad": {
+          id: "tab-bad",
+          target: { kind: "server" },
+          customTitle: null,
+          titleLocked: false,
+          diffOpen: false,
+        },
+      },
+      group: {
+        id: DEFAULT_TAB_GROUP_ID,
+        tabIds: ["tab-good", "tab-bad"],
+        activeTabId: "tab-good",
+        focusedTabId: "tab-good",
+        mergedPairs: [],
+      },
+    };
+    const hydrated = hydrateTabsState(blob);
+    expect(hydrated?.group.tabIds).toEqual(["tab-good"]);
+    expect(hydrated?.tabsById["tab-good"]).toBeDefined();
+    expect(hydrated?.tabsById["tab-bad"]).toBeUndefined();
   });
 
   it("drops invalid mergedPairs with the same tab on both sides", () => {

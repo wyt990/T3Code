@@ -186,6 +186,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       readonly modelSelection?: unknown;
       readonly lastRuntimeEvent?: string;
       readonly lastRuntimeEventAt?: string;
+      readonly clearPersistedResumeCursor?: boolean;
     },
   ) =>
     directory.upsert({
@@ -193,7 +194,11 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       provider: session.provider,
       runtimeMode: session.runtimeMode,
       status: toRuntimeStatus(session),
-      ...(session.resumeCursor !== undefined ? { resumeCursor: session.resumeCursor } : {}),
+      ...(extra?.clearPersistedResumeCursor
+        ? { resumeCursor: null }
+        : session.resumeCursor !== undefined
+          ? { resumeCursor: session.resumeCursor }
+          : {}),
       runtimePayload: toRuntimePayloadFromSession(session, extra),
     });
 
@@ -429,6 +434,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         });
         yield* upsertSessionBinding(session, threadId, {
           modelSelection: input.modelSelection,
+          clearPersistedResumeCursor: explicitUserStopBlocksResumeCursor,
         });
         yield* analytics.record("provider.session.started", {
           provider: session.provider,

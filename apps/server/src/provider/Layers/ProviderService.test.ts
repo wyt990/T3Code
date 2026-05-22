@@ -785,6 +785,15 @@ routing.layer("ProviderServiceLive routing", (it) => {
           false,
         );
       }
+
+      const runtimeRepository = yield* ProviderSessionRuntimeRepository;
+      const persistedAfterFreshStart = yield* runtimeRepository.getByThreadId({
+        threadId: initial.threadId,
+      });
+      assert.equal(Option.isSome(persistedAfterFreshStart), true);
+      if (Option.isSome(persistedAfterFreshStart)) {
+        assert.equal(persistedAfterFreshStart.value.resumeCursor, null);
+      }
     }),
   );
 
