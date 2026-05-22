@@ -1,34 +1,47 @@
-import { describe, expect, it } from "vitest";
+import { assert, it } from "@effect/vitest";
+import { Effect } from "effect";
 
 import {
-  remoteClaudeCommandName,
-  remoteCodexCommandName,
-  remoteCursorCommandName,
-  remoteOpenCodeCommandName,
+  clearRemoteClaudeBinaryCacheForConnection,
+  resolveRemoteClaudeBinaryPath,
+  seedRemoteSpawnBinaryCachesFromProbe,
 } from "./remoteProviderBinary.ts";
+import type { WorkspaceExecution } from "../workspace/Services/WorkspaceExecution.ts";
 
-describe("remoteProviderBinary", () => {
-  it("derives remote codex command name from local configured path", () => {
-    expect(remoteCodexCommandName("codex")).toBe("codex");
-    expect(remoteCodexCommandName("C:\\Users\\me\\AppData\\codex.exe")).toBe("codex");
-    expect(remoteCodexCommandName("/usr/local/bin/codex")).toBe("codex");
-  });
-
-  it("derives remote claude command name from local configured path", () => {
-    expect(remoteClaudeCommandName("claude")).toBe("claude");
-    expect(remoteClaudeCommandName("claudecode.cmd")).toBe("claudecode");
-    expect(remoteClaudeCommandName("C:\\Users\\me\\claudecode.exe")).toBe("claudecode");
-  });
-
-  it("derives remote cursor command name from local configured path", () => {
-    expect(remoteCursorCommandName("agent")).toBe("agent");
-    expect(remoteCursorCommandName("C:\\Users\\me\\agent.exe")).toBe("agent");
-    expect(remoteCursorCommandName("/usr/local/bin/cursor-agent")).toBe("cursor-agent");
-  });
-
-  it("derives remote opencode command name from local configured path", () => {
-    expect(remoteOpenCodeCommandName("opencode")).toBe("opencode");
-    expect(remoteOpenCodeCommandName("C:\\Users\\me\\opencode.exe")).toBe("opencode");
-    expect(remoteOpenCodeCommandName("/usr/local/bin/opencode")).toBe("opencode");
-  });
+const makeExecution = (execCalls: Array<string>): WorkspaceExecution => ({
+  kind: "ssh",
+  workspaceRoot: "/apps/demo",
+  sshConnectionId: "conn-seed",
+  exec: (input) =>
+    Effect.sync(() => {
+      execCalls.push(input.command);
+      return { stdout: "", stderr: "", exitCode: 1 };
+    }),
+  spawnInteractive: () => Effect.die("unused"),
+  fileSystem: {
+    list: () => Effect.die("unused"),
+    stat: () => Effect.die("unused"),
+    readFileString: () => Effect.die("unused"),
+    readFileBytes: () => Effect.die("unused"),
+    writeFileString: () => Effect.die("unused"),
+    makeDirectory: () => Effect.die("unused"),
+  },
+  terminal: {
+    open: () => Effect.die("unused"),
+  },
 });
+
+it.effect("seedRemoteSpawnBinaryCachesFromProbe avoids workspace exec for resolve", () =>
+  Effect.gen(function* () {
+    const execCalls: Array<string> = [];
+    clearRemoteClaudeBinaryCacheForConnection("conn-seed");
+    seedRemoteSpawnBinaryCachesFromProbe(
+      "conn-seed",
+      new Map([["claudeAgent", { available: true, binaryPath: "/root/.local/bin/claudecode" }]]),
+    );
+
+    const path = yield* resolveRemoteClaudeBinaryPath(makeExecution(execCalls), "claudecode");
+    assert.equal(path, "/root/.local/bin/claudecode");
+    assert.equal(execCalls.length, 0);
+  }),
+);

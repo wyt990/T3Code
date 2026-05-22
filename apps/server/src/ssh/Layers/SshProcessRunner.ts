@@ -14,6 +14,7 @@ import {
 import { SshConnectionPool } from "../Services/SshConnectionPool.ts";
 import { SshProcessRunner } from "../Services/SshProcessRunner.ts";
 import { DEFAULT_SSH_CONNECTION_LANE, type SshConnectionLane } from "../sshConnectionLane.ts";
+import { makeSshLaneConcurrency } from "../sshLaneConcurrency.ts";
 import {
   WorkspaceExecutionError,
   type WorkspaceInteractiveProcess,
@@ -132,9 +133,104 @@ const makeInteractiveProcess = (input: {
 
 export const makeSshProcessRunner = Effect.gen(function* () {
   const pool = yield* SshConnectionPool;
+  const laneConcurrency = yield* makeSshLaneConcurrency();
 
   const resolveExecLane = (lane: SshConnectionLane | undefined): SshConnectionLane =>
     lane ?? DEFAULT_SSH_CONNECTION_LANE;
+
+  const runExec = Effect.fn("SshProcessRunner.runExec")(function* (input: {
+    readonly connectionId: string;
+    readonly lane: SshConnectionLane;
+    readonly command: string;
+    readonly cwd?: string;
+    readonly env?: Record<string, string | undefined>;
+    readonly stdin?: string;
+  }) {
+    const lease = yield* pool.acquire(input.connectionId, { lane: input.lane });
+
+    const wrappedCommand = wrapCommandWithShell(input.command, input.cwd);
+
+    const result = yield* Effect.tryPromise({
+      try: () =>
+        new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve, reject) => {
+          const execOptions = envRecord(input.env);
+          lease.client.exec(
+            wrappedCommand,
+            execOptions === undefined ? {} : { env: execOptions },
+            (error, channel) => {
+              if (error !== undefined) {
+                reject(error);
+                return;
+              }
+              if (input.stdin !== undefined) {
+                channel.write(input.stdin);
+              }
+              channel.end();
+              collectChannelOutput(channel).then(resolve, reject);
+            },
+          );
+        }),
+      catch: (cause) => {
+        const errorDetail = cause instanceof Error ? cause.message : String(cause);
+        const errorStack = cause instanceof Error ? cause.stack : undefined;
+        const errorCode = (cause as { code?: string }).code;
+        return toCommandError({
+          connectionId: input.connectionId,
+          command: input.command,
+          detail: `${formatSshUserMessage(cause)} (code: ${errorCode ?? "unknown"})`,
+          cause: new Error(`SSH exec failed: ${errorDetail}\nStack: ${errorStack ?? "N/A"}`),
+        });
+      },
+    }).pipe(
+      Effect.timeoutOption(Duration.millis(SSH_EXEC_TIMEOUT_MS)),
+      Effect.flatMap((option) =>
+        Option.match(option, {
+          onNone: () =>
+            Effect.fail(
+              toCommandError({
+                connectionId: input.connectionId,
+                command: input.command,
+                detail: "远程命令执行超时，请稍后重试或检查远程主机负载。",
+              }),
+            ),
+          onSome: Effect.succeed,
+        }),
+      ),
+      Effect.ensuring(lease.release()),
+      Effect.mapError((error: SshCommandError | SshConnectionError) =>
+        error instanceof SshCommandError
+          ? error
+          : toCommandError({
+              connectionId: input.connectionId,
+              command: input.command,
+              detail: error.message,
+              cause: error,
+            }),
+      ),
+    );
+
+    if (result.exitCode !== 0) {
+      yield* Effect.logInfo("[SshProcessRunner] exec failed", {
+        connectionId: input.connectionId,
+        exitCode: result.exitCode,
+        stderrLength: result.stderr.length,
+        stderr: result.stderr.slice(0, 500),
+      });
+    } else {
+      yield* Effect.logInfo("[SshProcessRunner] exec completed", {
+        connectionId: input.connectionId,
+        exitCode: result.exitCode,
+        stdoutLength: result.stdout.length,
+        stderrLength: result.stderr.length,
+      });
+    }
+
+    return {
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+    };
+  });
 
   const exec: (typeof SshProcessRunner)["Service"]["exec"] = Effect.fn("SshProcessRunner.exec")(
     function* (input) {
@@ -148,101 +244,18 @@ export const makeSshProcessRunner = Effect.gen(function* () {
         hasStdin: input.stdin !== undefined,
       });
 
-      const lease = yield* pool.acquire(input.connectionId, { lane });
-
-      // 使用 bash -ilc 包装命令以确保加载完整的 shell 环境
-      const wrappedCommand = wrapCommandWithShell(input.command, input.cwd);
-
-      const result = yield* Effect.tryPromise({
-        try: () =>
-          new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve, reject) => {
-            const execOptions = envRecord(input.env);
-            // Removed: yield* cannot be used outside of proper context
-            // logDebug(`${operation} calling ssh2 exec`, {
-            //   connectionId: input.connectionId,
-            //   hasExecOptions: execOptions !== undefined,
-            // });
-            lease.client.exec(
-              wrappedCommand,
-              execOptions === undefined ? {} : { env: execOptions },
-              (error, channel) => {
-                if (error !== undefined) {
-                  // Removed: yield* cannot be used in callback
-                  reject(error);
-                  return;
-                }
-                // Removed: yield* cannot be used in callback
-                // logDebug(`${operation} ssh2 channel opened`, {
-                //   connectionId: input.connectionId,
-                // });
-                if (input.stdin !== undefined) {
-                  channel.write(input.stdin);
-                }
-                channel.end();
-                collectChannelOutput(channel).then(resolve, reject);
-              },
-            );
-          }),
-        catch: (cause) => {
-          const errorDetail = cause instanceof Error ? cause.message : String(cause);
-          const errorStack = cause instanceof Error ? cause.stack : undefined;
-          const errorCode = (cause as { code?: string }).code;
-          return toCommandError({
-            connectionId: input.connectionId,
-            command: input.command,
-            detail: `${formatSshUserMessage(cause)} (code: ${errorCode ?? "unknown"})`,
-            cause: new Error(`SSH exec failed: ${errorDetail}\nStack: ${errorStack ?? "N/A"}`),
-          });
-        },
-      }).pipe(
-        Effect.timeoutOption(Duration.millis(SSH_EXEC_TIMEOUT_MS)),
-        Effect.flatMap((option) =>
-          Option.match(option, {
-            onNone: () =>
-              Effect.fail(
-                toCommandError({
-                  connectionId: input.connectionId,
-                  command: input.command,
-                  detail: "远程命令执行超时，请稍后重试或检查远程主机负载。",
-                }),
-              ),
-            onSome: Effect.succeed,
-          }),
-        ),
-        Effect.ensuring(lease.release()),
-        Effect.mapError((error: SshCommandError | SshConnectionError) =>
-          error instanceof SshCommandError
-            ? error
-            : toCommandError({
-                connectionId: input.connectionId,
-                command: input.command,
-                detail: error.message,
-                cause: error,
-              }),
-        ),
+      return yield* laneConcurrency.withLanePermit(
+        input.connectionId,
+        lane,
+        runExec({
+          connectionId: input.connectionId,
+          lane,
+          command: input.command,
+          ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+          ...(input.env === undefined ? {} : { env: input.env }),
+          ...(input.stdin === undefined ? {} : { stdin: input.stdin }),
+        }),
       );
-
-      if (result.exitCode !== 0) {
-        yield* Effect.logInfo("[SshProcessRunner] exec failed", {
-          connectionId: input.connectionId,
-          exitCode: result.exitCode,
-          stderrLength: result.stderr.length,
-          stderr: result.stderr.slice(0, 500),
-        });
-      } else {
-        yield* Effect.logInfo("[SshProcessRunner] exec completed", {
-          connectionId: input.connectionId,
-          exitCode: result.exitCode,
-          stdoutLength: result.stdout.length,
-          stderrLength: result.stderr.length,
-        });
-      }
-
-      return {
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-      };
     },
   );
 
@@ -258,71 +271,98 @@ export const makeSshProcessRunner = Effect.gen(function* () {
       args: input.args?.length ?? 0,
     });
 
-    const lease = yield* pool.acquire(input.connectionId, {
-      lane: input.lane ?? "interactive",
-    });
+    const lane = input.lane ?? "interactive";
 
-    // 构建要执行的命令，包含工作目录和参数
-    const remoteCommand = buildRemoteCommand({
-      cwd: input.cwd,
-      command: input.command,
-      args: input.args,
-    });
-
-    // 使用 bash -ilc 包装命令以确保加载完整的 shell 环境
-    const wrappedCommand = wrapCommandWithShell(remoteCommand, input.cwd);
-
-    const channel = yield* Effect.tryPromise({
-      try: () =>
-        new Promise<ClientChannel>((resolve, reject) => {
-          const execOptions = envRecord(input.env);
-          lease.client.exec(
-            wrappedCommand,
-            execOptions === undefined ? {} : { env: execOptions },
-            (error, stream) => {
-              if (error !== undefined) {
-                reject(error);
-                return;
-              }
-              resolve(stream);
-            },
-          );
-        }),
-      catch: (cause) => {
-        const errorDetail = cause instanceof Error ? cause.message : String(cause);
-        const errorStack = cause instanceof Error ? cause.stack : undefined;
-        const errorCode = (cause as { code?: string }).code;
-        return toCommandError({
-          connectionId: input.connectionId,
-          command: remoteCommand,
-          detail: `${formatSshUserMessage(cause)} (code: ${errorCode ?? "unknown"})`,
-          cause: new Error(
-            `SSH spawnInteractive failed: ${errorDetail}\nStack: ${errorStack ?? "N/A"}`,
-          ),
-        });
-      },
-    }).pipe(
-      Effect.tapError((error) =>
-        Effect.logInfo("[SshProcessRunner] spawnInteractive failed, releasing lease", {
-          connectionId: input.connectionId,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      ),
-      Effect.catch((error) => lease.release().pipe(Effect.flatMap(() => Effect.fail(error)))),
+    return yield* laneConcurrency.withLanePermit(
+      input.connectionId,
+      lane,
+      spawnInteractiveOnLane({
+        connectionId: input.connectionId,
+        lane,
+        command: input.command,
+        cwd: input.cwd,
+        args: input.args,
+        env: input.env,
+        signal: input.signal,
+      }),
     );
-
-    yield* Effect.logInfo("[SshProcessRunner] spawnInteractive channel opened", {
-      connectionId: input.connectionId,
-    });
-
-    return makeInteractiveProcess({
-      connectionId: input.connectionId,
-      command: remoteCommand,
-      channel,
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-      releaseLease: lease.release,
-    });
   });
+
+  const spawnInteractiveOnLane = Effect.fn("SshProcessRunner.spawnInteractiveOnLane")(
+    function* (input: {
+      readonly connectionId: string;
+      readonly lane: SshConnectionLane;
+      readonly command: string;
+      readonly cwd?: string;
+      readonly args?: ReadonlyArray<string>;
+      readonly env?: Record<string, string | undefined>;
+      readonly signal?: AbortSignal;
+    }) {
+      const lease = yield* pool.acquire(input.connectionId, {
+        lane: input.lane,
+      });
+
+      const remoteCommand = buildRemoteCommand({
+        cwd: input.cwd,
+        command: input.command,
+        args: input.args,
+      });
+
+      // 使用 bash -ilc 包装命令以确保加载完整的 shell 环境
+      const wrappedCommand = wrapCommandWithShell(remoteCommand, input.cwd);
+
+      const channel = yield* Effect.tryPromise({
+        try: () =>
+          new Promise<ClientChannel>((resolve, reject) => {
+            const execOptions = envRecord(input.env);
+            lease.client.exec(
+              wrappedCommand,
+              execOptions === undefined ? {} : { env: execOptions },
+              (error, stream) => {
+                if (error !== undefined) {
+                  reject(error);
+                  return;
+                }
+                resolve(stream);
+              },
+            );
+          }),
+        catch: (cause) => {
+          const errorDetail = cause instanceof Error ? cause.message : String(cause);
+          const errorStack = cause instanceof Error ? cause.stack : undefined;
+          const errorCode = (cause as { code?: string }).code;
+          return toCommandError({
+            connectionId: input.connectionId,
+            command: remoteCommand,
+            detail: `${formatSshUserMessage(cause)} (code: ${errorCode ?? "unknown"})`,
+            cause: new Error(
+              `SSH spawnInteractive failed: ${errorDetail}\nStack: ${errorStack ?? "N/A"}`,
+            ),
+          });
+        },
+      }).pipe(
+        Effect.tapError((error) =>
+          Effect.logInfo("[SshProcessRunner] spawnInteractive failed, releasing lease", {
+            connectionId: input.connectionId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        ),
+        Effect.catch((error) => lease.release().pipe(Effect.flatMap(() => Effect.fail(error)))),
+      );
+
+      yield* Effect.logInfo("[SshProcessRunner] spawnInteractive channel opened", {
+        connectionId: input.connectionId,
+      });
+
+      return makeInteractiveProcess({
+        connectionId: input.connectionId,
+        command: remoteCommand,
+        channel,
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+        releaseLease: lease.release,
+      });
+    },
+  );
 
   return { exec, spawnInteractive } satisfies (typeof SshProcessRunner)["Service"];
 });

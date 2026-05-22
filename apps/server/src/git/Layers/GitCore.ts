@@ -1385,6 +1385,11 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       );
     }
 
+    const sshExecutionOption = yield* resolveSshExecutionForGitCwd(cwd).pipe(Effect.option);
+    const statusDetailsGitConcurrency = Option.isSome(sshExecutionOption)
+      ? 2
+      : ("unbounded" as const);
+
     const [unstagedNumstatStdout, stagedNumstatStdout, defaultRefResult, hasOriginRemote] =
       yield* Effect.all(
         [
@@ -1404,7 +1409,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
           ),
           originRemoteExists(cwd).pipe(Effect.catch(() => Effect.succeed(false))),
         ],
-        { concurrency: "unbounded" },
+        { concurrency: statusDetailsGitConcurrency },
       );
     const statusStdout = statusResult.stdout;
     const defaultBranch =

@@ -28,6 +28,10 @@ import { CodeQualityGuard } from "../../provider/Services/CodeQualityGuard.ts";
 import type { CheckpointStoreError } from "../../checkpointing/Errors.ts";
 import type { OrchestrationDispatchError } from "../Errors.ts";
 import { GitStatusBroadcaster } from "../../git/Services/GitStatusBroadcaster.ts";
+import {
+  SshTurnStartGate,
+  sshConnectionIdForProject,
+} from "../../ssh/Services/SshTurnStartGate.ts";
 import { WorkspaceEntries } from "../../workspace/Services/WorkspaceEntries.ts";
 
 type ReactorInput =
@@ -88,6 +92,7 @@ const make = Effect.gen(function* () {
   const codeQualityProjectPreferences = yield* CodeQualityProjectPreferences;
   const fileSystem = yield* FileSystem.FileSystem;
   const contextAnalyzer = yield* ContextAnalyzer;
+  const sshTurnStartGate = yield* SshTurnStartGate;
 
   const appendPostTurnCodeQualitySummary = Effect.fn("appendPostTurnCodeQualitySummary")(
     function* (input: {
@@ -681,47 +686,63 @@ const make = Effect.gen(function* () {
       }
     }
 
-    const threadId = event.payload.threadId;
+    const captureBaseline = Effect.gen(function* () {
+      const threadId = event.payload.threadId;
+      const readModel = yield* orchestrationEngine.getReadModel();
+      const thread = readModel.threads.find((entry) => entry.id === threadId);
+      if (!thread) {
+        return;
+      }
+
+      const checkpointCwd = yield* resolveCheckpointCwd({
+        threadId,
+        thread,
+        projects: readModel.projects,
+        preferSessionRuntime: false,
+      });
+      if (!checkpointCwd) {
+        return;
+      }
+
+      const currentTurnCount = thread.checkpoints.reduce(
+        (maxTurnCount, checkpoint) => Math.max(maxTurnCount, checkpoint.checkpointTurnCount),
+        0,
+      );
+      const baselineCheckpointRef = checkpointRefForThreadTurn(threadId, currentTurnCount);
+      const baselineExists = yield* checkpointStore.hasCheckpointRef({
+        cwd: checkpointCwd,
+        checkpointRef: baselineCheckpointRef,
+      });
+      if (baselineExists) {
+        return;
+      }
+
+      yield* checkpointStore.captureCheckpoint({
+        cwd: checkpointCwd,
+        checkpointRef: baselineCheckpointRef,
+      });
+      yield* receiptBus.publish({
+        type: "checkpoint.baseline.captured",
+        threadId,
+        checkpointTurnCount: currentTurnCount,
+        checkpointRef: baselineCheckpointRef,
+        createdAt: event.occurredAt,
+      });
+    });
+
     const readModel = yield* orchestrationEngine.getReadModel();
-    const thread = readModel.threads.find((entry) => entry.id === threadId);
-    if (!thread) {
+    const thread = readModel.threads.find((entry) => entry.id === event.payload.threadId);
+    const project = thread
+      ? readModel.projects.find((entry) => entry.id === thread.projectId)
+      : undefined;
+    const sshConnectionId = sshConnectionIdForProject(project);
+
+    if (sshConnectionId !== undefined) {
+      yield* sshTurnStartGate.withExclusive(sshConnectionId, captureBaseline);
       return;
     }
 
-    const checkpointCwd = yield* resolveCheckpointCwd({
-      threadId,
-      thread,
-      projects: readModel.projects,
-      preferSessionRuntime: false,
-    });
-    if (!checkpointCwd) {
-      return;
-    }
-
-    const currentTurnCount = thread.checkpoints.reduce(
-      (maxTurnCount, checkpoint) => Math.max(maxTurnCount, checkpoint.checkpointTurnCount),
-      0,
-    );
-    const baselineCheckpointRef = checkpointRefForThreadTurn(threadId, currentTurnCount);
-    const baselineExists = yield* checkpointStore.hasCheckpointRef({
-      cwd: checkpointCwd,
-      checkpointRef: baselineCheckpointRef,
-    });
-    if (baselineExists) {
-      return;
-    }
-
-    yield* checkpointStore.captureCheckpoint({
-      cwd: checkpointCwd,
-      checkpointRef: baselineCheckpointRef,
-    });
-    yield* receiptBus.publish({
-      type: "checkpoint.baseline.captured",
-      threadId,
-      checkpointTurnCount: currentTurnCount,
-      checkpointRef: baselineCheckpointRef,
-      createdAt: event.occurredAt,
-    });
+    yield* captureBaseline;
   });
 
   const handleRevertRequested = Effect.fn("handleRevertRequested")(function* (

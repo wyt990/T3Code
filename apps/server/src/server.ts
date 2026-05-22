@@ -44,6 +44,7 @@ import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderComma
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
 import { ThreadArchiveReactorLive } from "./orchestration/Layers/ThreadArchiveReactor.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
+import { SshTurnStartGateLive } from "./ssh/Layers/SshTurnStartGate.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import { ProviderInstallerLive } from "./provider/ProviderInstallerLive.ts";
 import { ServerSettingsLive } from "./serverSettings.ts";
@@ -144,6 +145,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ProviderRuntimeIngestionLive),
   Layer.provideMerge(ProviderCommandReactorLive),
   Layer.provideMerge(CheckpointReactorLive),
+  Layer.provideMerge(SshTurnStartGateLive),
   Layer.provideMerge(ThreadArchiveReactorLive),
   Layer.provideMerge(ThreadDeletionReactorLive),
   Layer.provideMerge(RuntimeReceiptBusLive),

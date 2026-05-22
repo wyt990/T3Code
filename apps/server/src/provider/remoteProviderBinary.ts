@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import type { ProviderKind } from "@t3tools/contracts";
 import { Effect } from "effect";
 
 import { shellQuotePosix } from "../ssh/ssh2Adapter.ts";
@@ -150,6 +151,43 @@ export const resolveRemoteClaudeBinaryPath = (
 
 export const clearRemoteClaudeBinaryCacheForConnection = (connectionId: string): void => {
   remoteClaudeBinaryCache.delete(connectionId);
+};
+
+const seedBinaryPath = (
+  cache: Map<string, string>,
+  connectionId: string,
+  binaryPath: string | null | undefined,
+): void => {
+  const normalized = binaryPath?.trim();
+  if (normalized !== undefined && normalized.length > 0) {
+    cache.set(connectionId, normalized);
+  }
+};
+
+/** Populate spawn-resolution caches from a successful SSH settings probe (avoids workspace-lane re-probe). */
+export const seedRemoteSpawnBinaryCachesFromProbe = (
+  connectionId: string,
+  probes: ReadonlyMap<
+    ProviderKind,
+    { readonly available: boolean; readonly binaryPath: string | null }
+  >,
+): void => {
+  const claude = probes.get("claudeAgent");
+  if (claude?.available === true) {
+    seedBinaryPath(remoteClaudeBinaryCache, connectionId, claude.binaryPath);
+  }
+  const opencode = probes.get("opencode");
+  if (opencode?.available === true) {
+    seedBinaryPath(remoteOpenCodeBinaryCache, connectionId, opencode.binaryPath);
+  }
+  const codex = probes.get("codex");
+  if (codex?.available === true) {
+    seedBinaryPath(remoteCodexBinaryCache, connectionId, codex.binaryPath);
+  }
+  const cursor = probes.get("cursor");
+  if (cursor?.available === true) {
+    seedBinaryPath(remoteCursorBinaryCache, connectionId, cursor.binaryPath);
+  }
 };
 
 export const remoteCursorCommandName = (localConfiguredPath: string): string => {

@@ -22,6 +22,7 @@ import {
   clearRemoteOpenCodeBinaryCacheForConnection,
   remoteClaudeCommandName,
   remoteOpenCodeCommandName,
+  seedRemoteSpawnBinaryCachesFromProbe,
 } from "./remoteProviderBinary.ts";
 import { shellQuotePosix } from "../ssh/ssh2Adapter.ts";
 
@@ -389,6 +390,7 @@ export const makeRemoteProviderProbe = Effect.gen(function* () {
 
       const byProvider = new Map<ProviderKind, RemoteProviderProbeResult>(probes);
       probeCache.set(connectionId, byProvider);
+      seedRemoteSpawnBinaryCachesFromProbe(connectionId, byProvider);
       return byProvider;
     });
 

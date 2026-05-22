@@ -7,6 +7,7 @@ import { SshFileSystemLive } from "./SshFileSystem.ts";
 import { SshHostKeyVerifierLive } from "./SshHostKeyVerifier.ts";
 import { SshPortForwardLive } from "./SshPortForward.ts";
 import { SshProcessRunnerLive } from "./SshProcessRunner.ts";
+import { SshTurnStartGateLive } from "./SshTurnStartGate.ts";
 
 export { SshConnectionPoolLive } from "./SshConnectionPool.ts";
 export { SshConnectionRegistryLive } from "./SshConnectionRegistry.ts";
@@ -20,6 +21,7 @@ export {
   makeSshHostKeyVerifierTrustAllTestLayer,
 } from "./SshHostKeyVerifier.ts";
 export { SshProcessRunnerLive } from "./SshProcessRunner.ts";
+export { SshTurnStartGateLive, makeSshTurnStartGateNoopLayer } from "./SshTurnStartGate.ts";
 export { SshPortForwardLive, makeSshPortForwardTestLayer } from "./SshPortForward.ts";
 export { makeSshConnectionPoolTestLayer } from "./SshConnectionPool.ts";
 export { makeSshConnectionRegistryTestLayer } from "./SshConnectionRegistry.ts";

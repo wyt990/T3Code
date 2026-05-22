@@ -3,6 +3,8 @@ import { Deferred, Effect, Fiber, Layer, Ref } from "effect";
 
 import { ServerSettingsService } from "../serverSettings.ts";
 import { SshProcessRunner } from "../ssh/Services/SshProcessRunner.ts";
+import { resolveRemoteClaudeBinaryPath } from "./remoteProviderBinary.ts";
+import type { WorkspaceExecution } from "../workspace/Services/WorkspaceExecution.ts";
 import {
   RemoteProviderProbe,
   RemoteProviderProbeLive,
@@ -96,6 +98,32 @@ ProbeTestLayer("RemoteProviderProbe", (it) => {
       assert.strictEqual(claude?.binaryPath, "/usr/bin/claudecode");
       assert.strictEqual(opencode?.available, true);
       assert.strictEqual(opencode?.binaryPath, "/usr/bin/opencode");
+
+      const workspaceExecCalls: Array<string> = [];
+      const execution: WorkspaceExecution = {
+        kind: "ssh",
+        workspaceRoot: "/apps/demo",
+        sshConnectionId: "conn-1",
+        exec: (input) =>
+          Effect.sync(() => {
+            workspaceExecCalls.push(input.command);
+            return { stdout: "", stderr: "", exitCode: 1 };
+          }),
+        spawnInteractive: () => Effect.die("unused"),
+        fileSystem: {
+          list: () => Effect.die("unused"),
+          stat: () => Effect.die("unused"),
+          readFileString: () => Effect.die("unused"),
+          readFileBytes: () => Effect.die("unused"),
+          writeFileString: () => Effect.die("unused"),
+          makeDirectory: () => Effect.die("unused"),
+        },
+        terminal: { open: () => Effect.die("unused") },
+      };
+      const resolved = yield* resolveRemoteClaudeBinaryPath(execution, "claudecode");
+      assert.strictEqual(resolved, "/usr/bin/claudecode");
+      assert.strictEqual(workspaceExecCalls.length, 0);
+
       assert.strictEqual(
         execCalls.some((call) => call.includes("--list-models")),
         false,

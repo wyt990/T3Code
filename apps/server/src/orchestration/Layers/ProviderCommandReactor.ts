@@ -29,6 +29,10 @@ import {
   type ProviderCommandReactorShape,
 } from "../Services/ProviderCommandReactor.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import {
+  SshTurnStartGate,
+  sshConnectionIdForProject,
+} from "../../ssh/Services/SshTurnStartGate.ts";
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -157,6 +161,7 @@ const make = Effect.gen(function* () {
   const gitStatusBroadcaster = yield* GitStatusBroadcaster;
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
+  const sshTurnStartGate = yield* SshTurnStartGate;
 
   const readTextGenerationModelSelection = serverSettingsService.getSettings.pipe(
     Effect.map((settings) => settings.textGenerationModelSelection),
@@ -274,140 +279,151 @@ const make = Effect.gen(function* () {
       return yield* Effect.die(new Error(`Thread '${threadId}' was not found in read model.`));
     }
 
-    const desiredRuntimeMode = thread.runtimeMode;
-    const currentProvider: ProviderKind | undefined = Schema.is(ProviderKind)(
-      thread.session?.providerName,
-    )
-      ? thread.session.providerName
-      : undefined;
-    const requestedModelSelection = options?.modelSelection;
-    const threadProvider: ProviderKind = currentProvider ?? thread.modelSelection.provider;
-    if (
-      requestedModelSelection !== undefined &&
-      requestedModelSelection.provider !== threadProvider
-    ) {
-      return yield* new ProviderAdapterRequestError({
-        provider: threadProvider,
-        method: "thread.turn.start",
-        detail: `Thread '${threadId}' is bound to provider '${threadProvider}' and cannot switch to '${requestedModelSelection.provider}'.`,
-      });
-    }
-    const preferredProvider: ProviderKind = threadProvider;
-    const desiredModelSelection = requestedModelSelection ?? thread.modelSelection;
     const project = readModel.projects.find((entry) => entry.id === thread.projectId);
-    const effectiveCwd = resolveThreadWorkspaceCwd({
-      thread,
-      projects: readModel.projects,
-    });
+    const sshConnectionId = sshConnectionIdForProject(project);
 
-    yield* Effect.annotateCurrentSpan({
-      "project.transport": project?.transport.type ?? "local",
-      ...(project?.transport.type === "ssh"
-        ? { "project.ssh_connection_id": project.transport.sshConnectionId }
-        : {}),
-      "provider.cwd.effective": effectiveCwd ?? "",
-    });
-
-    const resolveActiveSession = (threadId: ThreadId) =>
-      providerService
-        .listSessions()
-        .pipe(Effect.map((sessions) => sessions.find((session) => session.threadId === threadId)));
-
-    const startProviderSession = (input?: {
-      readonly resumeCursor?: unknown;
-      readonly provider?: ProviderKind;
-    }) =>
-      providerService.startSession(threadId, {
-        threadId,
-        ...(preferredProvider ? { provider: preferredProvider } : {}),
-        ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
-        modelSelection: desiredModelSelection,
-        ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
-        runtimeMode: desiredRuntimeMode,
-      });
-
-    const bindSessionToThread = (session: ProviderSession) =>
-      setThreadSession({
-        threadId,
-        session: {
-          threadId,
-          status: mapProviderSessionStatusToOrchestrationStatus(session.status),
-          providerName: session.provider,
-          runtimeMode: desiredRuntimeMode,
-          // Provider turn ids are not orchestration turn ids.
-          activeTurnId: null,
-          lastError: session.lastError ?? null,
-          updatedAt: session.updatedAt,
-        },
-        createdAt,
-      });
-
-    const activeSession = yield* resolveActiveSession(threadId);
-    const existingSessionThreadId =
-      thread.session && thread.session.status !== "stopped" && activeSession ? thread.id : null;
-    if (existingSessionThreadId) {
-      const runtimeModeChanged = thread.runtimeMode !== thread.session?.runtimeMode;
-      const cwdChanged = effectiveCwd !== activeSession?.cwd;
-      const sessionModelSwitch =
-        currentProvider === undefined
-          ? "in-session"
-          : (yield* providerService.getCapabilities(currentProvider)).sessionModelSwitch;
-      const modelChanged =
-        requestedModelSelection !== undefined &&
-        requestedModelSelection.model !== activeSession?.model;
-      const shouldRestartForModelChange = modelChanged && sessionModelSwitch === "unsupported";
-      const previousModelSelection = threadModelSelections.get(threadId);
-      const shouldRestartForModelSelectionChange =
-        currentProvider === "claudeAgent" &&
-        requestedModelSelection !== undefined &&
-        !Equal.equals(previousModelSelection, requestedModelSelection);
-
+    const ensureSession = Effect.gen(function* () {
+      const desiredRuntimeMode = thread.runtimeMode;
+      const currentProvider: ProviderKind | undefined = Schema.is(ProviderKind)(
+        thread.session?.providerName,
+      )
+        ? thread.session.providerName
+        : undefined;
+      const requestedModelSelection = options?.modelSelection;
+      const threadProvider: ProviderKind = currentProvider ?? thread.modelSelection.provider;
       if (
-        !runtimeModeChanged &&
-        !cwdChanged &&
-        !shouldRestartForModelChange &&
-        !shouldRestartForModelSelectionChange
+        requestedModelSelection !== undefined &&
+        requestedModelSelection.provider !== threadProvider
       ) {
-        return existingSessionThreadId;
+        return yield* new ProviderAdapterRequestError({
+          provider: threadProvider,
+          method: "thread.turn.start",
+          detail: `Thread '${threadId}' is bound to provider '${threadProvider}' and cannot switch to '${requestedModelSelection.provider}'.`,
+        });
+      }
+      const preferredProvider: ProviderKind = threadProvider;
+      const desiredModelSelection = requestedModelSelection ?? thread.modelSelection;
+      const effectiveCwd = resolveThreadWorkspaceCwd({
+        thread,
+        projects: readModel.projects,
+      });
+
+      yield* Effect.annotateCurrentSpan({
+        "project.transport": project?.transport.type ?? "local",
+        ...(project?.transport.type === "ssh"
+          ? { "project.ssh_connection_id": project.transport.sshConnectionId }
+          : {}),
+        "provider.cwd.effective": effectiveCwd ?? "",
+      });
+
+      const resolveActiveSession = (threadId: ThreadId) =>
+        providerService
+          .listSessions()
+          .pipe(
+            Effect.map((sessions) => sessions.find((session) => session.threadId === threadId)),
+          );
+
+      const startProviderSession = (input?: {
+        readonly resumeCursor?: unknown;
+        readonly provider?: ProviderKind;
+      }) =>
+        providerService.startSession(threadId, {
+          threadId,
+          ...(preferredProvider ? { provider: preferredProvider } : {}),
+          ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+          modelSelection: desiredModelSelection,
+          ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
+          runtimeMode: desiredRuntimeMode,
+        });
+
+      const bindSessionToThread = (session: ProviderSession) =>
+        setThreadSession({
+          threadId,
+          session: {
+            threadId,
+            status: mapProviderSessionStatusToOrchestrationStatus(session.status),
+            providerName: session.provider,
+            runtimeMode: desiredRuntimeMode,
+            // Provider turn ids are not orchestration turn ids.
+            activeTurnId: null,
+            lastError: session.lastError ?? null,
+            updatedAt: session.updatedAt,
+          },
+          createdAt,
+        });
+
+      const activeSession = yield* resolveActiveSession(threadId);
+      const existingSessionThreadId =
+        thread.session && thread.session.status !== "stopped" && activeSession ? thread.id : null;
+      if (existingSessionThreadId) {
+        const runtimeModeChanged = thread.runtimeMode !== thread.session?.runtimeMode;
+        const cwdChanged = effectiveCwd !== activeSession?.cwd;
+        const sessionModelSwitch =
+          currentProvider === undefined
+            ? "in-session"
+            : (yield* providerService.getCapabilities(currentProvider)).sessionModelSwitch;
+        const modelChanged =
+          requestedModelSelection !== undefined &&
+          requestedModelSelection.model !== activeSession?.model;
+        const shouldRestartForModelChange = modelChanged && sessionModelSwitch === "unsupported";
+        const previousModelSelection = threadModelSelections.get(threadId);
+        const shouldRestartForModelSelectionChange =
+          currentProvider === "claudeAgent" &&
+          requestedModelSelection !== undefined &&
+          !Equal.equals(previousModelSelection, requestedModelSelection);
+
+        if (
+          !runtimeModeChanged &&
+          !cwdChanged &&
+          !shouldRestartForModelChange &&
+          !shouldRestartForModelSelectionChange
+        ) {
+          return existingSessionThreadId;
+        }
+
+        const resumeCursor = shouldRestartForModelChange
+          ? undefined
+          : (activeSession?.resumeCursor ?? undefined);
+        yield* Effect.logInfo("provider command reactor restarting provider session", {
+          threadId,
+          existingSessionThreadId,
+          currentProvider,
+          desiredProvider: desiredModelSelection.provider,
+          currentRuntimeMode: thread.session?.runtimeMode,
+          desiredRuntimeMode: thread.runtimeMode,
+          runtimeModeChanged,
+          previousCwd: activeSession?.cwd,
+          desiredCwd: effectiveCwd,
+          cwdChanged,
+          modelChanged,
+          shouldRestartForModelChange,
+          shouldRestartForModelSelectionChange,
+          hasResumeCursor: resumeCursor !== undefined,
+        });
+        const restartedSession = yield* startProviderSession(
+          resumeCursor !== undefined ? { resumeCursor } : undefined,
+        );
+        yield* Effect.logInfo("provider command reactor restarted provider session", {
+          threadId,
+          previousSessionId: existingSessionThreadId,
+          restartedSessionThreadId: restartedSession.threadId,
+          provider: restartedSession.provider,
+          runtimeMode: restartedSession.runtimeMode,
+          cwd: restartedSession.cwd,
+        });
+        yield* bindSessionToThread(restartedSession);
+        return restartedSession.threadId;
       }
 
-      const resumeCursor = shouldRestartForModelChange
-        ? undefined
-        : (activeSession?.resumeCursor ?? undefined);
-      yield* Effect.logInfo("provider command reactor restarting provider session", {
-        threadId,
-        existingSessionThreadId,
-        currentProvider,
-        desiredProvider: desiredModelSelection.provider,
-        currentRuntimeMode: thread.session?.runtimeMode,
-        desiredRuntimeMode: thread.runtimeMode,
-        runtimeModeChanged,
-        previousCwd: activeSession?.cwd,
-        desiredCwd: effectiveCwd,
-        cwdChanged,
-        modelChanged,
-        shouldRestartForModelChange,
-        shouldRestartForModelSelectionChange,
-        hasResumeCursor: resumeCursor !== undefined,
-      });
-      const restartedSession = yield* startProviderSession(
-        resumeCursor !== undefined ? { resumeCursor } : undefined,
-      );
-      yield* Effect.logInfo("provider command reactor restarted provider session", {
-        threadId,
-        previousSessionId: existingSessionThreadId,
-        restartedSessionThreadId: restartedSession.threadId,
-        provider: restartedSession.provider,
-        runtimeMode: restartedSession.runtimeMode,
-        cwd: restartedSession.cwd,
-      });
-      yield* bindSessionToThread(restartedSession);
-      return restartedSession.threadId;
-    }
+      const startedSession = yield* startProviderSession(undefined);
+      yield* bindSessionToThread(startedSession);
+      return startedSession.threadId;
+    });
 
-    const startedSession = yield* startProviderSession(undefined);
-    yield* bindSessionToThread(startedSession);
-    return startedSession.threadId;
+    if (sshConnectionId !== undefined) {
+      return yield* sshTurnStartGate.withExclusive(sshConnectionId, ensureSession);
+    }
+    return yield* ensureSession;
   });
 
   const buildSendTurnRequestForThread = Effect.fnUntraced(function* (input: {

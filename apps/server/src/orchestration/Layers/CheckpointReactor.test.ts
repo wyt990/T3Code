@@ -24,6 +24,7 @@ import { GitCoreCollaboratorsTestLive } from "../../git/Layers/GitCoreTestSuppor
 import { GitStatusBroadcaster } from "../../git/Services/GitStatusBroadcaster.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { RepositoryIdentityResolverLive } from "../../project/Layers/RepositoryIdentityResolver.ts";
+import { makeSshTurnStartGateNoopLayer } from "../../ssh/Layers/SshTurnStartGate.ts";
 import { CheckpointReactorLive } from "./CheckpointReactor.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
@@ -291,6 +292,7 @@ describe("CheckpointReactor", () => {
     });
 
     const layer = CheckpointReactorLive.pipe(
+      Layer.provideMerge(makeSshTurnStartGateNoopLayer()),
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(RuntimeReceiptBusLive),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),

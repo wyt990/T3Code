@@ -10,6 +10,7 @@ T3 Code 是一个基于 Web 的多提供商 AI 编程代理 GUI。它为 Codex�
 ## 功能特性
 
 ### 多提供商支持
+
 - **Codex** — 通过 JSON-RPC over stdio 与 `codex app-server` 集成
 - **Claude Agent** — 通过 Claude Agent SDK 集成
 - **Cursor** — 通过 Agent Communication Protocol (ACP) 集成
@@ -18,12 +19,14 @@ T3 Code 是一个基于 Web 的多提供商 AI 编程代理 GUI。它为 Codex�
 - **提供商安装器** — 自动检测和安装提供商的 CLI 工具
 
 ### 工作区架构
+
 - **本地/远程统一执行抽象** — `WorkspaceExecution` 接口统一了本地进程和 SSH 远程执行，上层模块无需关心执行位置
 - **本地工作区** — 直接使用系统进程、PTY 终端
 - **SSH 远程工作区** — 通过 SSH2 连接远程服务器，支持 exec、交互式 shell 和 SFTP 文件系统
 - **SSH 连接池** — 复用 SSH 连接，支持多通道（git、probe、interactive、workspace）
 
 ### SSH 远程开发
+
 - SSH 连接管理（添加、编辑、删除、测试连接）
 - SSH 密钥/密码认证，凭据加密持久化
 - 远程主机密钥验证
@@ -33,12 +36,14 @@ T3 Code 是一个基于 Web 的多提供商 AI 编程代理 GUI。它为 Codex�
 - 远程终端
 
 ### 会话管理
+
 - **事件溯源编排系统** — CQRS 架构的命令处理系统，可靠管理会话生命周期
 - **多线程支持** — 每个提供商会话可管理多个线程（thread）
 - **会话恢复** — 支持断线重连和会话历史恢复
 - **双流数据更新** — shell stream（线程摘要）与 detail stream（线程内消息）分流写入
 
 ### 桌面应用（Electron）
+
 - **原生窗口体验** — 嵌入后端服务器，自动管理子进程生命周期
 - **t3:// 自定义协议** — 支持浏览器深度链接
 - **自动更新** — 支持 stable/nightly 双更新通道
@@ -48,33 +53,40 @@ T3 Code 是一个基于 Web 的多提供商 AI 编程代理 GUI。它为 Codex�
 - **端口自动扫描** — 从 3773 开始，最多扫描 10 个端口
 
 ### 终端
+
 - PTY 终端集成（基于 node-pty）
 - 远程 SSH 终端
 - 持久化终端会话
 
 ### 代码质量门控
+
 - 代码质量检查组（lint/typecheck/test 等）
 - 回合门控分发摘要
 - 回合间文本比对
 
 ### 环境管理
+
 - **执行环境** — 管理多个开发环境（本地环境、SSH 远程环境）
 - **环境变量管理** — 支持环境变量的配置和注入
 - **Shell 环境同步** — 从 login shell 读取 PATH 和 env
 
 ### 多 Agent 协作
+
 - Agent 通信协议（ACP）实现
 - 多 Agent 调度
 
 ### 上下文感知
+
 - 依赖图分析
 - 上下文池管理
 
 ### 可视化
+
 - 基于 @xyflow/react 的流程图/关系图渲染
 - Agent 活动可视化
 
 ### 工程工具
+
 - **Git 集成** — 分支管理、状态查看、PR 操作、工作树管理
 - **实时事件推送** — 基于 WebSocket 的领域事件流
 - **一键打开文件** — 在外部编辑器中打开文件
@@ -378,14 +390,15 @@ Agent Communication Protocol 的 Effect 实现，支持 Cursor 等基于 ACP 的
 
 服务器为每个提供商会话启动子进程，通过 WebSocket 推送将结构化事件流式传输到浏览器。
 
-| Provider | 协议 | 子进程 | 适配器文件大小 |
-|----------|------|--------|---------------|
-| Codex | JSON-RPC over stdio | `codex app-server` | ~52KB |
-| Claude Agent | Agent SDK | `claude` CLI | ~108KB |
-| Cursor | ACP (Agent Communication Protocol) | `cursor` CLI | ~40KB |
-| OpenCode | SDK (npm) | `opencode` CLI | ~52KB |
+| Provider     | 协议                               | 子进程             | 适配器文件大小 |
+| ------------ | ---------------------------------- | ------------------ | -------------- |
+| Codex        | JSON-RPC over stdio                | `codex app-server` | ~52KB          |
+| Claude Agent | Agent SDK                          | `claude` CLI       | ~108KB         |
+| Cursor       | ACP (Agent Communication Protocol) | `cursor` CLI       | ~40KB          |
+| OpenCode     | SDK (npm)                          | `opencode` CLI     | ~52KB          |
 
 每个提供商适配器负责：
+
 - 进程启动和参数解析（跨平台二进制发现）
 - 会话创建/恢复
 - 轮次（Turn）发送
