@@ -40,6 +40,7 @@ export const releaseIdleSshAuxiliaryLanes = (connectionId: string) =>
     );
   });
 
+/** For thread/project cleanup only — do not call after each GitCore.exec (breaks multi-step git). */
 export const releaseIdleSshGitLaneForCwd = (cwd: string) =>
   Effect.gen(function* () {
     const query = yield* ProjectionSnapshotQuery;

@@ -22,6 +22,19 @@ import { CheckpointRef } from "@t3tools/contracts";
 
 const CHECKPOINT_DIFF_MAX_OUTPUT_BYTES = 10_000_000;
 
+/** Last 40-char hex object id in git command stdout (tolerates remote shell banner lines). */
+export const parseGitObjectIdFromOutput = (output: string): string | null => {
+  const trimmed = output.trim();
+  if (/^[0-9a-f]{40}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  const matches = trimmed.match(/\b[0-9a-f]{40}\b/gi);
+  if (matches === null || matches.length === 0) {
+    return null;
+  }
+  return matches[matches.length - 1]!.toLowerCase();
+};
+
 const mapCaptureCheckpointError =
   (operation: string) =>
   (error: unknown): CheckpointStoreError => {
@@ -147,8 +160,8 @@ const makeCheckpointStore = Effect.gen(function* () {
           args: ["write-tree"],
           env: commitEnv,
         });
-        const treeOid = writeTreeResult.stdout.trim();
-        if (treeOid.length === 0) {
+        const treeOid = parseGitObjectIdFromOutput(writeTreeResult.stdout);
+        if (treeOid === null) {
           return yield* new GitCommandError({
             operation,
             command: "git write-tree",
@@ -158,14 +171,22 @@ const makeCheckpointStore = Effect.gen(function* () {
         }
 
         const message = `t3 checkpoint ref=${input.checkpointRef}`;
+        const commitTreeArgs: string[] = ["commit-tree", treeOid, "-m", message];
+        if (headExists) {
+          const parentOid = yield* resolveHeadCommit(input.cwd);
+          if (parentOid !== null) {
+            commitTreeArgs.push("-p", parentOid);
+          }
+        }
+
         const commitTreeResult = yield* git.execute({
           operation,
           cwd: input.cwd,
-          args: ["commit-tree", treeOid, "-m", message],
+          args: commitTreeArgs,
           env: commitEnv,
         });
-        const commitOid = commitTreeResult.stdout.trim();
-        if (commitOid.length === 0) {
+        const commitOid = parseGitObjectIdFromOutput(commitTreeResult.stdout);
+        if (commitOid === null) {
           return yield* new GitCommandError({
             operation,
             command: "git commit-tree",

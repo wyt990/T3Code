@@ -20,12 +20,16 @@ import {
   type WorkspaceInteractiveProcess,
 } from "../../workspace/Services/WorkspaceExecution.ts";
 
-// 包装命令以加载交互式 shell 环境，确保 PATH 等环境变量可用
-const wrapCommandWithShell = (command: string, cwd?: string): string => {
+// 包装命令以加载 shell 环境。git lane 用非交互式 bash，避免 .bashrc 污染 stdout（commit-tree oid 解析）。
+const wrapCommandWithShell = (
+  command: string,
+  cwd?: string,
+  options?: { readonly interactive?: boolean },
+): string => {
   const fullCommand = `${buildRemoteCdPrefix(cwd)}${command}`;
-  // 使用 bash -ilc 加载交互式登录 shell 环境
-  // -i: 交互式 shell, -l: 登录 shell
-  // 先尝试 source ~/.bashrc 和 ~/.profile 加载用户配置
+  if (options?.interactive === false) {
+    return `bash -lc ${shellQuotePosix(fullCommand)}`;
+  }
   return `bash -ilc ${shellQuotePosix(`source ~/.bashrc 2>/dev/null; source ~/.profile 2>/dev/null; ${fullCommand}`)}`;
 };
 
@@ -148,7 +152,9 @@ export const makeSshProcessRunner = Effect.gen(function* () {
   }) {
     const lease = yield* pool.acquire(input.connectionId, { lane: input.lane });
 
-    const wrappedCommand = wrapCommandWithShell(input.command, input.cwd);
+    const wrappedCommand = wrapCommandWithShell(input.command, input.cwd, {
+      interactive: input.lane !== "git",
+    });
 
     const result = yield* Effect.tryPromise({
       try: () =>
