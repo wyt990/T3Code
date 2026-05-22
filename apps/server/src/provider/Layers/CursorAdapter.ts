@@ -40,7 +40,10 @@ import type * as EffectAcpSchema from "effect-acp/schema";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { formatSshUserMessage } from "../../ssh/formatSshUserMessage.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { WorkspaceExecutionResolver } from "../../workspace/Services/WorkspaceExecution.ts";
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
@@ -73,6 +76,7 @@ import {
   extractTodosAsPlan,
 } from "../acp/CursorAcpExtension.ts";
 import { CursorAdapter, type CursorAdapterShape } from "../Services/CursorAdapter.ts";
+import { resolveCursorSpawnForThread } from "../resolveCursorSpawn.ts";
 import { resolveCursorAcpBaseModelId } from "./CursorProvider.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
@@ -475,11 +479,55 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
             threadId: input.threadId,
           });
 
+          const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+          const workspaceExecutionResolver = yield* WorkspaceExecutionResolver;
+          const cursorSpawn = yield* resolveCursorSpawnForThread(
+            input.threadId,
+            cursorSettings.binaryPath || "agent",
+            cwd,
+          ).pipe(
+            Effect.provideService(ProjectionSnapshotQuery, projectionSnapshotQuery),
+            Effect.provideService(WorkspaceExecutionResolver, workspaceExecutionResolver),
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapterProcessError({
+                  provider: PROVIDER,
+                  threadId: input.threadId,
+                  detail: `Failed to resolve Cursor spawn: ${formatSshUserMessage(cause) || (cause instanceof Error ? cause.message : String(cause))}.`,
+                  cause,
+                }),
+            ),
+            Effect.tap((spawn) =>
+              Effect.logInfo("[CursorAdapter] Cursor spawn resolved", {
+                threadId: input.threadId,
+                kind: spawn.kind,
+                ...(spawn.kind === "ssh"
+                  ? {
+                      remoteBinaryPath: spawn.binaryPath,
+                      workspaceRoot: spawn.execution.workspaceRoot,
+                    }
+                  : {}),
+              }),
+            ),
+          );
+
           const acp = yield* makeCursorAcpRuntime({
             cursorSettings,
             childProcessSpawner,
             cwd,
             ...(resumeSessionId ? { resumeSessionId } : {}),
+            ...(cursorSpawn.kind === "ssh"
+              ? {
+                  spawnConfig: {
+                    kind: "ssh" as const,
+                    execution: cursorSpawn.execution,
+                    binaryPath: cursorSpawn.binaryPath,
+                    ...(cursorSettings.apiEndpoint?.trim()
+                      ? { apiEndpoint: cursorSettings.apiEndpoint.trim() }
+                      : {}),
+                  },
+                }
+              : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
             ...acpNativeLoggers,
           }).pipe(

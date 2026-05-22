@@ -48,6 +48,16 @@ export const createSshTerminalPtyProcess = (session: WorkspaceTerminalSession): 
     ),
   );
 
+  const notifyExit = (exitCode: number) => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    for (const listener of exitListeners) {
+      listener({ exitCode, signal: null });
+    }
+  };
+
   const cleanupFibers = () => {
     void Effect.runPromise(Fiber.interrupt(outputFiber));
     void Effect.runPromise(Fiber.interrupt(exitFiber));
@@ -62,8 +72,16 @@ export const createSshTerminalPtyProcess = (session: WorkspaceTerminalSession): 
       void Effect.runPromise(session.resize(cols, rows)).catch(() => undefined);
     },
     kill: () => {
-      cleanupFibers();
-      void Effect.runPromise(session.close()).catch(() => undefined);
+      void Effect.runPromise(
+        Effect.gen(function* () {
+          yield* session.close();
+          const exitCode = yield* session.exited.pipe(Effect.catch(() => Effect.succeed(0)));
+          notifyExit(exitCode);
+        }).pipe(Effect.ensuring(Effect.sync(cleanupFibers))),
+      ).catch(() => {
+        notifyExit(0);
+        cleanupFibers();
+      });
     },
     onData: (callback) => {
       dataListeners.add(callback);

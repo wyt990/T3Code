@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Deferred, Effect, Fiber, Layer, Ref } from "effect";
 
 import { ServerSettingsService } from "../serverSettings.ts";
 import { SshProcessRunner } from "../ssh/Services/SshProcessRunner.ts";
@@ -172,6 +172,86 @@ ProbeTestLayer("RemoteProviderProbe", (it) => {
       assert.deepStrictEqual(
         probe.getClaudeModels("conn-fail-cache")?.map((model) => model.slug),
         ["custom-1"],
+      );
+    }),
+  );
+
+  it.effect("coalesces concurrent probeConnection for the same connection", () =>
+    Effect.gen(function* () {
+      execCalls.length = 0;
+      const releaseFirstExec = yield* Deferred.make<void>();
+      const execStarted = yield* Ref.make(0);
+
+      const SlowLayer = RemoteProviderProbeLive.pipe(
+        Layer.provideMerge(
+          Layer.succeed(SshProcessRunner, {
+            exec: ({ command }) =>
+              Effect.gen(function* () {
+                const started = yield* Ref.updateAndGet(execStarted, (n) => n + 1);
+                if (started === 1) {
+                  yield* Deferred.await(releaseFirstExec);
+                }
+                execCalls.push(command);
+                if (command.includes("command -v") || command.includes("which")) {
+                  if (command.includes("claudecode") || command.includes("claude")) {
+                    return {
+                      stdout: "/usr/bin/claudecode\n",
+                      stderr: "",
+                      exitCode: 0,
+                    };
+                  }
+                  if (command.includes("opencode")) {
+                    return {
+                      stdout: "/usr/bin/opencode\n",
+                      stderr: "",
+                      exitCode: 0,
+                    };
+                  }
+                }
+                if (command.includes("--version") || command.includes("-v")) {
+                  return { stdout: "2.1.111\n", stderr: "", exitCode: 0 };
+                }
+                return { stdout: "", stderr: "", exitCode: 0 };
+              }),
+            spawnInteractive: () => Effect.die("unused"),
+          }),
+        ),
+        Layer.provide(
+          ServerSettingsService.layerTest({
+            providers: {
+              codex: { enabled: true, binaryPath: "codex", customModels: [], homePath: "" },
+              claudeAgent: {
+                enabled: true,
+                binaryPath: "claudecode",
+                customModels: [],
+                launchArgs: "",
+              },
+              cursor: { enabled: false, binaryPath: "agent" },
+              opencode: { enabled: true, binaryPath: "opencode" },
+            },
+          }),
+        ),
+      );
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const probe = yield* RemoteProviderProbe;
+          const firstFiber = yield* probe.probeConnection("conn-coalesce").pipe(Effect.forkScoped);
+          yield* Effect.yieldNow;
+          assert.strictEqual(yield* Ref.get(execStarted), 1);
+
+          const secondFiber = yield* probe.probeConnection("conn-coalesce").pipe(Effect.forkScoped);
+          yield* Effect.yieldNow;
+          assert.strictEqual(yield* Ref.get(execStarted), 1);
+
+          yield* Deferred.succeed(releaseFirstExec, undefined);
+          const first = yield* Fiber.join(firstFiber);
+          const second = yield* Fiber.join(secondFiber);
+
+          assert.strictEqual(first.get("claudeAgent")?.available, true);
+          assert.strictEqual(second.get("claudeAgent")?.available, true);
+          assert.deepStrictEqual(first, second);
+        }).pipe(Effect.provide(SlowLayer)),
       );
     }),
   );

@@ -1,5 +1,15 @@
 import type { ProviderKind, ServerProviderModel } from "@t3tools/contracts";
-import { Context, DateTime, Effect, Layer, Option, Result } from "effect";
+import {
+  Context,
+  DateTime,
+  Deferred,
+  Effect,
+  Layer,
+  Option,
+  Result,
+  Semaphore,
+  SynchronizedRef,
+} from "effect";
 
 import { SshProcessRunner, type SshProcessRunnerShape } from "../ssh/Services/SshProcessRunner.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -31,6 +41,17 @@ export const REMOTE_MODEL_PROBE_CWD = "~";
 const PROBE_CWD = REMOTE_MODEL_PROBE_CWD;
 
 const probeCache = new Map<string, Map<ProviderKind, RemoteProviderProbeResult>>();
+
+type ConnectionProbeResult = ReadonlyMap<ProviderKind, RemoteProviderProbeResult>;
+
+const emptyConnectionProbeResult = (): ConnectionProbeResult =>
+  new Map<ProviderKind, RemoteProviderProbeResult>();
+
+/** Serializes probe-lane SSH exec per connection (set by RemoteProviderProbeLive). */
+let withRemoteProbeLaneExclusive: <A, E, R>(
+  connectionId: string,
+  effect: Effect.Effect<A, E, R>,
+) => Effect.Effect<A, E, R> = (_connectionId, effect) => effect;
 
 type ConnectionModelCache = {
   claudeAgent?: ReadonlyArray<ServerProviderModel>;
@@ -257,6 +278,40 @@ const invalidateRemoteProviderProbeCaches = (
 
 export const makeRemoteProviderProbe = Effect.gen(function* () {
   const serverSettings = yield* ServerSettingsService;
+  const probeLaneSemaphoresRef = yield* SynchronizedRef.make(
+    new Map<string, Semaphore.Semaphore>(),
+  );
+  const probeInFlightRef = yield* SynchronizedRef.make(
+    new Map<string, Deferred.Deferred<ConnectionProbeResult, never>>(),
+  );
+
+  const getProbeLaneSemaphore = (connectionId: string) =>
+    Effect.gen(function* () {
+      const existing = yield* SynchronizedRef.get(probeLaneSemaphoresRef).pipe(
+        Effect.map((map) => map.get(connectionId)),
+      );
+      if (existing !== undefined) {
+        return existing;
+      }
+      const created = yield* Semaphore.make(1);
+      return yield* SynchronizedRef.modify(probeLaneSemaphoresRef, (map) => {
+        const current = map.get(connectionId);
+        if (current !== undefined) {
+          return [current, map] as const;
+        }
+        const next = new Map(map);
+        next.set(connectionId, created);
+        return [created, next] as const;
+      });
+    });
+
+  const withProbeLaneExclusive = <A, E, R>(connectionId: string, effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const semaphore = yield* getProbeLaneSemaphore(connectionId);
+      return yield* semaphore.withPermit(effect);
+    });
+
+  withRemoteProbeLaneExclusive = withProbeLaneExclusive;
 
   const exec = (input: {
     readonly connectionId: string;
@@ -267,31 +322,32 @@ export const makeRemoteProviderProbe = Effect.gen(function* () {
     stderr: string;
     exitCode: number;
   }> =>
-    Effect.gen(function* () {
-      const sshProcessRunner = yield* SshProcessRunner;
-      return yield* sshProcessRunner.exec({ ...input, lane: "probe" });
-    }).pipe(
-      Effect.map((result) => ({
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-      })),
-      Effect.catch(() =>
-        Effect.succeed({
-          stdout: "",
-          stderr: "",
-          exitCode: 1,
-        }),
+    withProbeLaneExclusive(
+      input.connectionId,
+      Effect.gen(function* () {
+        const sshProcessRunner = yield* SshProcessRunner;
+        return yield* sshProcessRunner.exec({ ...input, lane: "probe" });
+      }).pipe(
+        Effect.map((result) => ({
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+        })),
+        Effect.catch(() =>
+          Effect.succeed({
+            stdout: "",
+            stderr: "",
+            exitCode: 1,
+          }),
+        ),
       ),
     );
 
-  const probeConnection: RemoteProviderProbeShape["probeConnection"] = (connectionId) =>
+  const runProbeConnectionImpl = (connectionId: string) =>
     Effect.gen(function* () {
       const settings = yield* serverSettings.getSettings;
       const claudeCommandName = remoteClaudeCommandName(settings.providers.claudeAgent.binaryPath);
 
-      // ClaudeAgent 检测：尝试 claude 和 claudecode 两个命令
-      // 优先使用配置的命令名，失败后尝试另一个
       const claudeAgentProbe = Effect.gen(function* () {
         const firstProbe = yield* probeProviderBinary({
           connectionId,
@@ -302,7 +358,6 @@ export const makeRemoteProviderProbe = Effect.gen(function* () {
         if (firstProbe.available) {
           return firstProbe;
         }
-        // 如果配置的是 claudecode，第二个尝试 claude；反之亦然
         const secondCommandName = claudeCommandName === "claudecode" ? "claude" : "claudecode";
         const secondProbe = yield* probeProviderBinary({
           connectionId,
@@ -313,15 +368,12 @@ export const makeRemoteProviderProbe = Effect.gen(function* () {
         if (secondProbe.available) {
           return secondProbe;
         }
-        // 两个都失败，返回第一个的错误信息（包含尝试过的命令）
         return {
           ...firstProbe,
           error: `Remote binary '${claudeCommandName}' and '${secondCommandName}' were not found.`,
         } satisfies RemoteProviderProbeResult;
       });
 
-      // 顺序探测：只探测 claudeAgent 和 opencode
-      // 使用 Effect.all 统一 Effect 上下文，{ concurrency: 1 } 确保顺序执行
       const probes = yield* Effect.all(
         [
           claudeAgentProbe.pipe(Effect.map((result) => ["claudeAgent", result] as const)),
@@ -337,12 +389,55 @@ export const makeRemoteProviderProbe = Effect.gen(function* () {
 
       const byProvider = new Map<ProviderKind, RemoteProviderProbeResult>(probes);
       probeCache.set(connectionId, byProvider);
-
       return byProvider;
-    }).pipe(
-      Effect.withSpan("RemoteProviderProbe.probeConnection"),
-      Effect.catch(() => Effect.succeed(new Map<ProviderKind, RemoteProviderProbeResult>())),
-    );
+    });
+
+  const completeInFlightProbe = (
+    connectionId: string,
+    deferred: Deferred.Deferred<ConnectionProbeResult, never>,
+    result: ConnectionProbeResult,
+  ) =>
+    Effect.gen(function* () {
+      yield* Deferred.succeed(deferred, result);
+      yield* SynchronizedRef.update(probeInFlightRef, (inFlight) => {
+        const next = new Map(inFlight);
+        next.delete(connectionId);
+        return next;
+      });
+    });
+
+  const probeConnection: RemoteProviderProbeShape["probeConnection"] = (connectionId) =>
+    Effect.gen(function* () {
+      const cached = probeCache.get(connectionId);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const deferred = yield* Deferred.make<ConnectionProbeResult>();
+      const role = yield* SynchronizedRef.modify(probeInFlightRef, (inFlight) => {
+        const existing = inFlight.get(connectionId);
+        if (existing !== undefined) {
+          return [{ role: "join" as const, deferred: existing }, inFlight] as const;
+        }
+        const next = new Map(inFlight);
+        next.set(connectionId, deferred);
+        return [{ role: "owner" as const, deferred }, next] as const;
+      });
+
+      if (role.role === "join") {
+        return yield* Deferred.await(role.deferred);
+      }
+
+      const result = yield* runProbeConnectionImpl(connectionId).pipe(
+        Effect.catch(() => Effect.succeed(emptyConnectionProbeResult())),
+        Effect.tap((value) => completeInFlightProbe(connectionId, role.deferred, value)),
+        Effect.tapError(() =>
+          completeInFlightProbe(connectionId, role.deferred, emptyConnectionProbeResult()),
+        ),
+      );
+
+      return result;
+    }).pipe(Effect.withSpan("RemoteProviderProbe.probeConnection"));
 
   return {
     probeConnection,
@@ -395,14 +490,17 @@ const probeRemoteClaudeModelsImpl = (
   Effect.gen(function* () {
     const command = `${shellQuotePosix(binaryPath)} --list-models --json`;
 
-    const result = yield* sshProcessRunner
-      .exec({
-        connectionId,
-        command,
-        cwd: PROBE_CWD,
-        lane: "probe",
-      })
-      .pipe(Effect.timeout(MODEL_PROBE_TIMEOUT_MS));
+    const result = yield* withRemoteProbeLaneExclusive(
+      connectionId,
+      sshProcessRunner
+        .exec({
+          connectionId,
+          command,
+          cwd: PROBE_CWD,
+          lane: "probe",
+        })
+        .pipe(Effect.timeout(MODEL_PROBE_TIMEOUT_MS)),
+    );
 
     if (result.exitCode !== 0) {
       const stderr = result.stderr?.trim() ?? "";

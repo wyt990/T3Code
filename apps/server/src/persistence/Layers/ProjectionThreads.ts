@@ -139,6 +139,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE project_id = ${projectId}
+          AND deleted_at IS NULL
         ORDER BY created_at ASC, thread_id ASC
       `,
   });

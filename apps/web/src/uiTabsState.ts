@@ -654,37 +654,43 @@ function hydrateOrderedTabIds(
   rawTabIds: unknown,
   validTabsById: Record<string, Tab>,
 ): { tabIds: string[]; tabIdSet: Set<string> } | null {
-  if (!Array.isArray(rawTabIds) || rawTabIds.length > MAX_TABS) {
+  if (!Array.isArray(rawTabIds)) {
     return null;
   }
   const tabIdSet = new Set<string>();
   const tabIds: string[] = [];
   for (const tabId of rawTabIds) {
     if (typeof tabId !== "string" || !validTabsById[tabId] || tabIdSet.has(tabId)) {
-      return null;
+      continue;
     }
     tabIdSet.add(tabId);
     tabIds.push(tabId);
+    if (tabIds.length >= MAX_TABS) {
+      break;
+    }
+  }
+  if (tabIds.length === 0) {
+    return null;
   }
   return { tabIds, tabIdSet };
 }
 
-function hydrateMergedPairs(
-  rawPairs: unknown,
-  tabIdSet: ReadonlySet<string>,
-): MergedTabPair[] | null {
-  if (!Array.isArray(rawPairs) || rawPairs.length > MAX_MERGED_PAIRS) {
-    return null;
+function hydrateMergedPairs(rawPairs: unknown, tabIdSet: ReadonlySet<string>): MergedTabPair[] {
+  if (!Array.isArray(rawPairs)) {
+    return [];
   }
   const mergedTabIds = new Set<string>();
   const sanitizedPairs: MergedTabPair[] = [];
   for (const pair of rawPairs) {
+    if (sanitizedPairs.length >= MAX_MERGED_PAIRS) {
+      break;
+    }
     if (
       !isValidMergedPair(pair, tabIdSet) ||
       mergedTabIds.has(pair.leftTabId) ||
       mergedTabIds.has(pair.rightTabId)
     ) {
-      return null;
+      continue;
     }
     mergedTabIds.add(pair.leftTabId);
     mergedTabIds.add(pair.rightTabId);
@@ -751,28 +757,14 @@ export function hydrateTabsState(persisted: unknown): UiTabsState | null {
   }
   const { tabIds, tabIdSet } = orderedTabIds;
 
-  if (
-    !isValidActiveOrFocusedTabId(candidate.group.activeTabId, tabIdSet) ||
-    !isValidActiveOrFocusedTabId(candidate.group.focusedTabId, tabIdSet)
-  ) {
-    console.log("【标签加载】hydrateTabsState: activeTabId 或 focusedTabId 无效，校验失败", {
-      activeTabId: candidate.group.activeTabId,
-      focusedTabId: candidate.group.focusedTabId,
-      "有效标签 ID 集合": Array.from(tabIdSet),
-    });
-    return null;
-  }
+  const resolvedActiveTabId = isValidActiveOrFocusedTabId(candidate.group.activeTabId, tabIdSet)
+    ? (candidate.group.activeTabId ?? null)
+    : (tabIds[0] ?? null);
+  const resolvedFocusedTabId = isValidActiveOrFocusedTabId(candidate.group.focusedTabId, tabIdSet)
+    ? (candidate.group.focusedTabId ?? null)
+    : resolvedActiveTabId;
 
   const sanitizedPairs = hydrateMergedPairs(candidate.group.mergedPairs, tabIdSet);
-  if (!sanitizedPairs) {
-    console.log("【标签加载】hydrateTabsState: mergedPairs 水合失败，校验失败", {
-      "mergedPairs 类型": typeof candidate.group.mergedPairs,
-      "mergedPairs 长度": Array.isArray(candidate.group.mergedPairs)
-        ? candidate.group.mergedPairs.length
-        : undefined,
-    });
-    return null;
-  }
 
   const finalTabsById: Record<string, Tab> = {};
   for (const tabId of tabIds) {
@@ -782,7 +774,7 @@ export function hydrateTabsState(persisted: unknown): UiTabsState | null {
   console.log("【标签加载】hydrateTabsState: 水合成功", {
     最终标签数量: tabIds.length,
     "标签 ID 列表": tabIds,
-    "激活标签 ID": candidate.group.activeTabId ?? null,
+    "激活标签 ID": resolvedActiveTabId,
     聚合对数量: sanitizedPairs.length,
   });
 
@@ -791,8 +783,8 @@ export function hydrateTabsState(persisted: unknown): UiTabsState | null {
     group: {
       id: typeof candidate.group.id === "string" ? candidate.group.id : DEFAULT_TAB_GROUP_ID,
       tabIds,
-      activeTabId: candidate.group.activeTabId ?? null,
-      focusedTabId: candidate.group.focusedTabId ?? null,
+      activeTabId: resolvedActiveTabId,
+      focusedTabId: resolvedFocusedTabId,
       mergedPairs: sanitizedPairs,
     },
   };

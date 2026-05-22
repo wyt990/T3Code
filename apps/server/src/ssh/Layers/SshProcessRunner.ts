@@ -4,6 +4,7 @@ import { Duration, Effect, Layer, Option, Queue, Stream } from "effect";
 import { SshCommandError, SshConnectionError } from "../Errors.ts";
 import { formatSshUserMessage } from "../formatSshUserMessage.ts";
 import { SSH_EXEC_TIMEOUT_MS } from "../sshConnectDefaults.ts";
+import { attachSshChannelLifecycle } from "../sshChannelLifecycle.ts";
 import {
   buildRemoteCdPrefix,
   buildRemoteCommand,
@@ -83,16 +84,18 @@ const makeInteractiveProcess = (input: {
   input.channel.stderr?.on("data", (chunk: Buffer) => {
     void Effect.runPromise(Queue.offer(stderrQueue, chunk.toString("utf8")));
   });
-  input.channel.on("exit", (code) => {
-    void Effect.runPromise(Queue.offer(exitQueue, typeof code === "number" ? code : 1));
+  const { closeChannel, offerExit } = attachSshChannelLifecycle({
+    channel: input.channel,
+    exitQueue,
+    releaseLease: input.releaseLease,
   });
+
   input.channel.on("close", () => {
     closed = true;
     input.signal?.removeEventListener("abort", onAbort);
-    void Effect.runPromise(input.releaseLease());
   });
   input.channel.on("error", (error: unknown) => {
-    void Effect.runPromise(Queue.offer(exitQueue, 1));
+    void offerExit(1).pipe(Effect.runPromise);
     void Effect.runPromise(
       Queue.offer(outputQueue, error instanceof Error ? error.message : String(error)),
     );
@@ -120,8 +123,9 @@ const makeInteractiveProcess = (input: {
     ),
     kill: () =>
       Effect.gen(function* () {
-        input.channel.close();
-        yield* input.releaseLease();
+        closed = true;
+        input.signal?.removeEventListener("abort", onAbort);
+        yield* closeChannel();
       }),
   };
 };

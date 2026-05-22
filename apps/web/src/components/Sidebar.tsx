@@ -104,6 +104,7 @@ import {
 } from "../threadRoutes";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { navigateToThreadWithTabAwareness } from "./TabBar/tabNavigation";
+import { showTabsAtCapToast } from "./TabBar/tabsAtCapToast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { Kbd } from "./ui/kbd";
@@ -213,34 +214,6 @@ const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> =
   repository: "按仓库分组",
   repository_path: "按仓库路径分组",
   separate: "保持独立",
-};
-
-const TABS_AT_CAP_TOAST_TIMEOUT_MS = 8000;
-
-const showTabsAtCapToast: (args: {
-  threadRef: ScopedThreadRef;
-  suggestedReplacementTabId: string | null;
-  onReplaceLru: () => void;
-}) => void = ({ suggestedReplacementTabId, onReplaceLru }) => {
-  toastManager.add(
-    stackedThreadToast({
-      type: "warning",
-      title: "已达 6 个标签上限",
-      description:
-        suggestedReplacementTabId === null
-          ? "请先关闭一个标签后再打开此会话。"
-          : "替换最久未访问的标签以打开此会话？",
-      timeout: TABS_AT_CAP_TOAST_TIMEOUT_MS,
-      ...(suggestedReplacementTabId === null
-        ? {}
-        : {
-            actionProps: {
-              children: "替换最久未访问",
-              onClick: onReplaceLru,
-            },
-          }),
-    }),
-  );
 };
 
 function formatProjectMemberActionLabel(

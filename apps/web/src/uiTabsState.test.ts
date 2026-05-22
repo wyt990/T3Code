@@ -590,7 +590,7 @@ describe("uiTabsState - hydration round-trip", () => {
     expect(result).toBeNull();
   });
 
-  it("rejects mergedPairs with the same tab on both sides", () => {
+  it("drops invalid mergedPairs with the same tab on both sides", () => {
     const blob = {
       version: 2,
       tabsById: {
@@ -610,10 +610,11 @@ describe("uiTabsState - hydration round-trip", () => {
         mergedPairs: [{ leftTabId: "tab-1", rightTabId: "tab-1", splitRatio: 0.5 }],
       },
     };
-    expect(hydrateTabsState(blob)).toBeNull();
+    const hydrated = hydrateTabsState(blob);
+    expect(hydrated?.group.mergedPairs).toEqual([]);
   });
 
-  it("rejects when a tabId appears in two pairs (nesting forbidden)", () => {
+  it("drops invalid merged pairs instead of rejecting the whole blob", () => {
     const tabsById: Record<string, Tab> = {};
     for (const id of ["a", "b", "c"]) {
       tabsById[id] = {
@@ -638,10 +639,13 @@ describe("uiTabsState - hydration round-trip", () => {
         ],
       },
     };
-    expect(hydrateTabsState(blob)).toBeNull();
+    const hydrated = hydrateTabsState(blob);
+    expect(hydrated?.group.mergedPairs).toEqual([
+      { leftTabId: "a", rightTabId: "b", splitRatio: 0.5 },
+    ]);
   });
 
-  it("rejects when tabIds exceeds MAX_TABS", () => {
+  it("truncates tabIds when persisted list exceeds MAX_TABS", () => {
     const tabsById: Record<string, Tab> = {};
     const tabIds: string[] = [];
     for (let i = 0; i < MAX_TABS + 1; i++) {
@@ -666,10 +670,12 @@ describe("uiTabsState - hydration round-trip", () => {
         mergedPairs: [],
       },
     };
-    expect(hydrateTabsState(blob)).toBeNull();
+    const hydrated = hydrateTabsState(blob);
+    expect(hydrated?.group.tabIds).toHaveLength(MAX_TABS);
+    expect(hydrated?.group.tabIds[0]).toBe("tab-0");
   });
 
-  it("rejects active/focused tabId not in tabIds", () => {
+  it("repairs active/focused tabId when they are not in tabIds", () => {
     const blob = {
       version: 2,
       tabsById: {
@@ -689,7 +695,9 @@ describe("uiTabsState - hydration round-trip", () => {
         mergedPairs: [],
       },
     };
-    expect(hydrateTabsState(blob)).toBeNull();
+    const hydrated = hydrateTabsState(blob);
+    expect(hydrated?.group.activeTabId).toBe("tab-1");
+    expect(hydrated?.group.focusedTabId).toBeNull();
   });
 
   it("rejects malformed tab entries", () => {

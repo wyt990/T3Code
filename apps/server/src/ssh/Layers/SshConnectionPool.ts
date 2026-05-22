@@ -278,57 +278,41 @@ export const makeSshConnectionPool = (options?: { readonly idleMs?: number }) =>
       //   isPooledAlive: pooledAfterStaleClose !== undefined && isSsh2ClientAlive(pooledAfterStaleClose.client),
       // });
 
-      const client =
-        pooledAfterStaleClose !== undefined && isSsh2ClientAlive(pooledAfterStaleClose.client)
-          ? pooledAfterStaleClose.client
-          : yield* connect(connectionId).pipe(
-              Effect.tap((connectedClient) => {
-                attachClientDisconnectHandler(pooledKey, connectionId, connectedClient);
-                return SynchronizedRef.update(poolRef, (pool) => {
-                  const next = new Map(pool);
-                  next.set(pooledKey, {
-                    client: connectedClient,
-                    refCount: 0,
-                    idleTimer: undefined,
-                  });
-                  return next;
-                });
-              }),
-            );
+      const reuseExisting =
+        pooledAfterStaleClose !== undefined && isSsh2ClientAlive(pooledAfterStaleClose.client);
 
-      // Removed: yield* cannot be used outside Effect.gen function
-      // logDebug("[SshConnectionPool] updating refCount", {
-      //   connectionId,
-      //   hasCurrent: pool.get(connectionId) !== undefined,
-      //   oldRefCount: pool.get(connectionId)?.refCount ?? 0,
-      // });
+      const client = reuseExisting ? pooledAfterStaleClose.client : yield* connect(connectionId);
+
+      if (!reuseExisting) {
+        attachClientDisconnectHandler(pooledKey, connectionId, client);
+      }
 
       yield* SynchronizedRef.update(poolRef, (pool) => {
         const current = pool.get(pooledKey);
-        if (current === undefined) {
+        if (
+          current !== undefined &&
+          isSsh2ClientAlive(current.client) &&
+          current.client === client
+        ) {
+          if (current.idleTimer !== undefined) {
+            clearTimeout(current.idleTimer);
+          }
           const next = new Map(pool);
           next.set(pooledKey, {
+            ...current,
             client,
-            refCount: 1,
+            refCount: current.refCount + 1,
             idleTimer: undefined,
           });
           return next;
         }
-        if (current.idleTimer !== undefined) {
-          clearTimeout(current.idleTimer);
-        }
+
         const next = new Map(pool);
         next.set(pooledKey, {
-          ...current,
           client,
-          refCount: current.refCount + 1,
+          refCount: 1,
           idleTimer: undefined,
         });
-        // Removed: yield* cannot be used outside Effect.gen function
-        // logDebug("[SshConnectionPool] refCount updated", {
-        //   connectionId,
-        //   newRefCount: next.get(connectionId)?.refCount ?? 0,
-        // });
         return next;
       });
 

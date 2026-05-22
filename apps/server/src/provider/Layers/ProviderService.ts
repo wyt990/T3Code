@@ -141,6 +141,16 @@ function readPersistedCwd(
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readPersistedLastRuntimeEvent(
+  runtimePayload: ProviderRuntimeBinding["runtimePayload"],
+): string | undefined {
+  if (!runtimePayload || typeof runtimePayload !== "object" || Array.isArray(runtimePayload)) {
+    return undefined;
+  }
+  const raw = "lastRuntimeEvent" in runtimePayload ? runtimePayload.lastRuntimeEvent : undefined;
+  return typeof raw === "string" && raw.length > 0 ? raw : undefined;
+}
+
 const makeProviderService = Effect.fn("makeProviderService")(function* (
   options?: ProviderServiceLiveOptions,
 ) {
@@ -369,9 +379,13 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           );
         }
         const persistedBinding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+        const explicitUserStopBlocksResumeCursor =
+          persistedBinding?.status === "stopped" &&
+          readPersistedLastRuntimeEvent(persistedBinding.runtimePayload) ===
+            "provider.session.stop";
         const effectiveResumeCursor =
           input.resumeCursor ??
-          (persistedBinding?.provider === input.provider
+          (persistedBinding?.provider === input.provider && !explicitUserStopBlocksResumeCursor
             ? persistedBinding.resumeCursor
             : undefined);
         const effectiveCwd =
@@ -650,6 +664,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           status: "stopped",
           runtimePayload: {
             activeTurnId: null,
+            lastRuntimeEvent: "provider.session.stop",
+            lastRuntimeEventAt: new Date().toISOString(),
           },
         });
         yield* analytics.record("provider.session.stopped", {

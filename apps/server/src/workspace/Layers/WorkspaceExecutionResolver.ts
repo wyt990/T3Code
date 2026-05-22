@@ -10,6 +10,7 @@ import { PtyAdapter } from "../../terminal/Services/PTY.ts";
 import {
   WorkspaceExecutionProjectNotFoundError,
   WorkspaceExecutionResolver,
+  WorkspaceExecutionUnsupportedTransportError,
 } from "../Services/WorkspaceExecution.ts";
 import { createLocalWorkspaceExecution } from "./LocalExecution.ts";
 import { createSshWorkspaceExecution } from "./SshExecution.ts";
@@ -66,23 +67,38 @@ export const makeWorkspaceExecutionResolver = Effect.gen(function* () {
         return createLocalWorkspaceExecution(localDeps, shell.workspaceRoot);
       }
 
-      yield* Effect.logInfo("[WorkspaceExecutionResolver] creating SSH workspace execution", {
+      if (shell.transport.type === "ssh") {
+        yield* Effect.logInfo("[WorkspaceExecutionResolver] creating SSH workspace execution", {
+          projectId,
+          workspaceRoot: shell.workspaceRoot,
+          connectionId: shell.transport.sshConnectionId,
+        });
+
+        const sshDeps = yield* makeSshDeps();
+
+        yield* Effect.logDebug("[WorkspaceExecutionResolver] SSH dependencies resolved", {
+          hasRunner: sshDeps.runner !== undefined,
+          hasRemoteFileSystem: sshDeps.remoteFileSystem !== undefined,
+          hasPool: sshDeps.pool !== undefined,
+        });
+
+        return createSshWorkspaceExecution(sshDeps, {
+          connectionId: shell.transport.sshConnectionId,
+          workspaceRoot: shell.workspaceRoot,
+        });
+      }
+
+      const transportType =
+        typeof shell.transport === "object" &&
+        shell.transport !== null &&
+        "type" in shell.transport &&
+        typeof shell.transport.type === "string"
+          ? shell.transport.type
+          : "unknown";
+
+      return yield* new WorkspaceExecutionUnsupportedTransportError({
         projectId,
-        workspaceRoot: shell.workspaceRoot,
-        connectionId: shell.transport.sshConnectionId,
-      });
-
-      const sshDeps = yield* makeSshDeps();
-
-      yield* Effect.logDebug("[WorkspaceExecutionResolver] SSH dependencies resolved", {
-        hasRunner: sshDeps.runner !== undefined,
-        hasRemoteFileSystem: sshDeps.remoteFileSystem !== undefined,
-        hasPool: sshDeps.pool !== undefined,
-      });
-
-      return createSshWorkspaceExecution(sshDeps, {
-        connectionId: shell.transport.sshConnectionId,
-        workspaceRoot: shell.workspaceRoot,
+        transportType,
       });
     });
 

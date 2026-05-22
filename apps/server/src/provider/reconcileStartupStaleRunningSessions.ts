@@ -18,13 +18,9 @@ export const reconcileStartupStaleRunningSessions = Effect.gen(function* () {
 
   const readModel = yield* orchestrationEngine.getReadModel();
   const now = new Date().toISOString();
-  const activeThreadIds = new Set((yield* providerService.listSessions()).map((s) => s.threadId));
 
   for (const thread of readModel.threads) {
     if (thread.deletedAt != null) {
-      continue;
-    }
-    if (thread.archivedAt != null) {
       continue;
     }
 
@@ -36,14 +32,13 @@ export const reconcileStartupStaleRunningSessions = Effect.gen(function* () {
       continue;
     }
 
-    const bindingOption = yield* directory.getBinding(thread.id);
-    const binding = Option.getOrUndefined(bindingOption);
-
-    const hasLiveProviderSession = activeThreadIds.has(thread.id);
-
-    if (hasLiveProviderSession) {
+    const activeThreadIds = new Set((yield* providerService.listSessions()).map((s) => s.threadId));
+    if (activeThreadIds.has(thread.id)) {
       continue;
     }
+
+    const bindingOption = yield* directory.getBinding(thread.id);
+    const binding = Option.getOrUndefined(bindingOption);
 
     yield* Effect.logInfo("orchestration.startup.reconcile-stale-running-session", {
       threadId: thread.id,

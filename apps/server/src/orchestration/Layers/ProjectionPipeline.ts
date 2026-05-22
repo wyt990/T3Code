@@ -670,13 +670,33 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
 
         case "thread.deleted": {
-          attachmentSideEffects.deletedThreadIds.add(event.payload.threadId);
-          const existingRow = yield* projectionThreadRepository.getById({
-            threadId: event.payload.threadId,
-          });
+          const threadId = event.payload.threadId;
+          attachmentSideEffects.deletedThreadIds.add(threadId);
+          const existingRow = yield* projectionThreadRepository.getById({ threadId });
           if (Option.isNone(existingRow)) {
             return;
           }
+
+          const pendingApprovals = yield* projectionPendingApprovalRepository.listByThreadId({
+            threadId,
+          });
+          yield* Effect.forEach(
+            [
+              projectionThreadMessageRepository.deleteByThreadId({ threadId }),
+              projectionThreadProposedPlanRepository.deleteByThreadId({ threadId }),
+              projectionThreadActivityRepository.deleteByThreadId({ threadId }),
+              projectionThreadSessionRepository.deleteByThreadId({ threadId }),
+              projectionTurnRepository.deleteByThreadId({ threadId }),
+              ...pendingApprovals.map((approval) =>
+                projectionPendingApprovalRepository.deleteByRequestId({
+                  requestId: approval.requestId,
+                }),
+              ),
+            ],
+            (effect) => effect,
+            { concurrency: 1 },
+          );
+
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
             deletedAt: event.payload.deletedAt,

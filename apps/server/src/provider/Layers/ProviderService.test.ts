@@ -753,6 +753,41 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect("does not reuse a stopped session resume cursor on explicit startSession", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const threadId = asThreadId("thread-fresh-start-after-stop");
+
+      const initial = yield* provider.startSession(threadId, {
+        provider: "codex",
+        threadId,
+        cwd: "/tmp/project-fresh-start",
+        runtimeMode: "full-access",
+      });
+
+      yield* provider.stopSession({ threadId: initial.threadId });
+
+      routing.codex.startSession.mockClear();
+
+      yield* provider.startSession(threadId, {
+        provider: "codex",
+        threadId,
+        cwd: "/tmp/project-fresh-start",
+        runtimeMode: "full-access",
+      });
+
+      assert.equal(routing.codex.startSession.mock.calls.length, 1);
+      const startPayload = routing.codex.startSession.mock.calls[0]?.[0];
+      assert.equal(typeof startPayload === "object" && startPayload !== null, true);
+      if (startPayload && typeof startPayload === "object") {
+        assert.equal(
+          "resumeCursor" in startPayload && startPayload.resumeCursor !== undefined,
+          false,
+        );
+      }
+    }),
+  );
+
   it.effect("routes explicit claudeAgent provider session starts to the claude adapter", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService;

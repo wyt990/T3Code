@@ -4,6 +4,7 @@ import { Effect, Queue, Stream } from "effect";
 import type { SshConnectionPoolShape } from "../../ssh/Services/SshConnectionPool.ts";
 import type { SshFileSystemShape } from "../../ssh/Services/SshFileSystem.ts";
 import type { SshProcessRunnerShape } from "../../ssh/Services/SshProcessRunner.ts";
+import { attachSshChannelLifecycle } from "../../ssh/sshChannelLifecycle.ts";
 import { shellQuotePosix } from "../../ssh/ssh2Adapter.ts";
 import {
   toWorkspaceExecutionError,
@@ -25,15 +26,6 @@ export const createSshWorkspaceExecution = (
     readonly workspaceRoot: string;
   },
 ): WorkspaceExecution => {
-  Effect.runSync(
-    Effect.logInfo("[SshExecution] creating SSH workspace execution", {
-      connectionId: input.connectionId,
-      workspaceRoot: input.workspaceRoot,
-      hasRunner: deps.runner !== undefined,
-      hasRemoteFileSystem: deps.remoteFileSystem !== undefined,
-      hasPool: deps.pool !== undefined,
-    }),
-  );
   const { runner, remoteFileSystem, pool } = deps;
   const mapExec = mapWorkspaceExecutionError("ssh", "exec");
   const mapSpawn = mapWorkspaceExecutionError("ssh", "spawnInteractive");
@@ -100,11 +92,11 @@ export const createSshWorkspaceExecution = (
         channel.on("data", (chunk: Buffer) => {
           void Queue.offer(outputQueue, chunk.toString("utf8")).pipe(Effect.runPromise);
         });
-        channel.on("exit", (code) => {
-          void Queue.offer(exitQueue, typeof code === "number" ? code : 1).pipe(Effect.runPromise);
-        });
-        channel.on("close", () => {
-          void lease.release().pipe(Effect.runPromise);
+
+        const { closeChannel } = attachSshChannelLifecycle({
+          channel,
+          exitQueue,
+          releaseLease: () => lease.release(),
         });
 
         channel.write(initialCommand);
@@ -124,11 +116,7 @@ export const createSshWorkspaceExecution = (
               toWorkspaceExecutionError("ssh", "terminal.exited", "SSH shell exited without code"),
             ),
           ),
-          close: () =>
-            Effect.gen(function* () {
-              channel.close();
-              yield* lease.release();
-            }),
+          close: closeChannel,
         };
         return session;
       }),
