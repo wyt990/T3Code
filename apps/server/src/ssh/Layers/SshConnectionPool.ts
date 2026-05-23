@@ -318,12 +318,6 @@ export const makeSshConnectionPool = (options?: { readonly idleMs?: number }) =>
 
       const release = () =>
         Effect.gen(function* () {
-          yield* Effect.logInfo("[SshConnectionPool] release called", {
-            connectionId,
-            lane,
-            pooledKey,
-          });
-
           const pooled = yield* SynchronizedRef.modify(poolRef, (pool) => {
             const current = pool.get(pooledKey);
             if (current === undefined) {
@@ -338,12 +332,6 @@ export const makeSshConnectionPool = (options?: { readonly idleMs?: number }) =>
             yield* scheduleIdleClose(pooledKey);
           }
         });
-
-      yield* Effect.logInfo("[SshConnectionPool] returning lease", {
-        connectionId,
-        lane,
-        pooledKey,
-      });
 
       return {
         connectionId,

@@ -497,18 +497,6 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
                   cause,
                 }),
             ),
-            Effect.tap((spawn) =>
-              Effect.logInfo("[CursorAdapter] Cursor spawn resolved", {
-                threadId: input.threadId,
-                kind: spawn.kind,
-                ...(spawn.kind === "ssh"
-                  ? {
-                      remoteBinaryPath: spawn.binaryPath,
-                      workspaceRoot: spawn.execution.workspaceRoot,
-                    }
-                  : {}),
-              }),
-            ),
           );
 
           const acp = yield* makeCursorAcpRuntime({

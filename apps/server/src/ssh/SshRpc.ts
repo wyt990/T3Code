@@ -89,12 +89,6 @@ const runTestSshConnection = (input: SshTestConnectionInput) =>
     const hostKeys = yield* SshHostKeyVerifier;
 
     const connection = yield* registry.getById(input.connectionId);
-    yield* Effect.logInfo("SSH 测试连接：凭证已加载", {
-      connectionId: input.connectionId,
-      host: connection.host,
-      port: connection.port,
-      authType: connection.authType,
-    });
     const auth = yield* credentials.resolve(input.connectionId).pipe(
       Effect.tapError((error) =>
         Effect.logWarning("SSH 凭证解析失败", {

@@ -34,15 +34,10 @@ const makeLocalDeps = Effect.fn("makeLocalDeps")(function* () {
 });
 
 export const makeWorkspaceExecutionResolver = Effect.gen(function* () {
-  yield* Effect.logInfo("[WorkspaceExecutionResolver] makeWorkspaceExecutionResolver starting");
-
   const resolveByProjectId: (typeof WorkspaceExecutionResolver)["Service"]["resolveByProjectId"] = (
     projectId,
   ) =>
     Effect.gen(function* () {
-      yield* Effect.logInfo("[WorkspaceExecutionResolver] resolving execution for project", {
-        projectId,
-      });
       const snapshotQuery = yield* ProjectionSnapshotQuery;
       yield* Effect.logDebug("[WorkspaceExecutionResolver] querying project shell", { projectId });
 
@@ -59,21 +54,11 @@ export const makeWorkspaceExecutionResolver = Effect.gen(function* () {
 
       const shell = project.value;
       if (shell.transport.type === "local") {
-        yield* Effect.logInfo("[WorkspaceExecutionResolver] creating local workspace execution", {
-          projectId,
-          workspaceRoot: shell.workspaceRoot,
-        });
         const localDeps = yield* makeLocalDeps();
         return createLocalWorkspaceExecution(localDeps, shell.workspaceRoot);
       }
 
       if (shell.transport.type === "ssh") {
-        yield* Effect.logInfo("[WorkspaceExecutionResolver] creating SSH workspace execution", {
-          projectId,
-          workspaceRoot: shell.workspaceRoot,
-          connectionId: shell.transport.sshConnectionId,
-        });
-
         const sshDeps = yield* makeSshDeps();
 
         yield* Effect.logDebug("[WorkspaceExecutionResolver] SSH dependencies resolved", {

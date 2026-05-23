@@ -96,7 +96,9 @@ describe("uiTabsState - createTab", () => {
 
     const overflow = createTab(state, serverTarget("t-overflow"), { newTabId: "tab-overflow" });
     expect(overflow.outcome).toBe("rejected");
-    expect(overflow.reason).toBe("at-cap");
+    if (overflow.outcome === "rejected") {
+      expect(overflow.reason).toBe("at-cap");
+    }
     expect(overflow.state).toBe(state);
   });
 
@@ -104,7 +106,9 @@ describe("uiTabsState - createTab", () => {
     const state = createTab(initialTabsState, serverTarget("t-1"), { newTabId: "tab-1" }).state;
     const dup = createTab(state, serverTarget("t-2"), { newTabId: "tab-1" });
     expect(dup.outcome).toBe("rejected");
-    expect(dup.reason).toBe("duplicate-id");
+    if (dup.outcome === "rejected") {
+      expect(dup.reason).toBe("duplicate-id");
+    }
     expect(dup.state).toBe(state);
   });
 

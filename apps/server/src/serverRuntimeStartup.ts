@@ -445,9 +445,7 @@ export const makeServerRuntimeStartup = Effect.gen(function* () {
         yield* Effect.logDebug("启动阶段: 浏览器打开检查");
         const startupBrowserTarget = yield* resolveStartupBrowserTarget;
         if (serverConfig.mode !== "desktop") {
-          yield* Effect.logInfo("认证要求。使用配对 URL 打开 T3 Code。").pipe(
-            Effect.annotateLogs({ pairingUrl: startupBrowserTarget }),
-          );
+          // 认证配对 URL 已在启动时输出
         }
         yield* runStartupPhase("browser.open浏览器打开", maybeOpenBrowser(startupBrowserTarget));
       }

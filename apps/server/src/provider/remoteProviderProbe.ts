@@ -129,12 +129,6 @@ const probeProviderBinary = Effect.fn("probeProviderBinary")(function* (input: {
 }) {
   const probedAt = DateTime.formatIso(yield* DateTime.now);
 
-  yield* Effect.logInfo("[RemoteProviderProbe] Probing binary", {
-    connectionId: input.connectionId,
-    commandName: input.commandName,
-    versionArgs: input.versionArgs,
-  });
-
   const whichCommand = remoteWhichProbeCommand(input.commandName);
 
   yield* Effect.logDebug("[RemoteProviderProbe] executing which command", {
@@ -173,12 +167,6 @@ const probeProviderBinary = Effect.fn("probeProviderBinary")(function* (input: {
     } satisfies RemoteProviderProbeResult;
   }
 
-  yield* Effect.logInfo("[RemoteProviderProbe] Binary found, probing version", {
-    connectionId: input.connectionId,
-    commandName: input.commandName,
-    binaryPath,
-  });
-
   if (input.versionArgs.length === 0) {
     return {
       available: true,
@@ -213,13 +201,6 @@ const probeProviderBinary = Effect.fn("probeProviderBinary")(function* (input: {
     });
     if (versionResult.exitCode === 0) {
       version = parseFirstLine(versionResult.stdout) ?? null;
-      yield* Effect.logInfo("[RemoteProviderProbe] Version detected", {
-        connectionId: input.connectionId,
-        commandName: input.commandName,
-        binaryPath,
-        versionArg,
-        version,
-      });
       break;
     }
     if (versionResult.stderr.trim().length > 0) {

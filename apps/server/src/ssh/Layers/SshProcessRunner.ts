@@ -222,13 +222,6 @@ export const makeSshProcessRunner = Effect.gen(function* () {
         stderrLength: result.stderr.length,
         stderr: result.stderr.slice(0, 500),
       });
-    } else {
-      yield* Effect.logInfo("[SshProcessRunner] exec completed", {
-        connectionId: input.connectionId,
-        exitCode: result.exitCode,
-        stdoutLength: result.stdout.length,
-        stderrLength: result.stderr.length,
-      });
     }
 
     return {
@@ -241,14 +234,6 @@ export const makeSshProcessRunner = Effect.gen(function* () {
   const exec: (typeof SshProcessRunner)["Service"]["exec"] = Effect.fn("SshProcessRunner.exec")(
     function* (input) {
       const lane = resolveExecLane(input.lane);
-      yield* Effect.logInfo("[SshProcessRunner] exec starting", {
-        connectionId: input.connectionId,
-        lane,
-        command: input.command,
-        cwd: input.cwd,
-        hasEnv: input.env !== undefined,
-        hasStdin: input.stdin !== undefined,
-      });
 
       return yield* laneConcurrency.withLanePermit(
         input.connectionId,
@@ -270,13 +255,6 @@ export const makeSshProcessRunner = Effect.gen(function* () {
   const spawnInteractive: (typeof SshProcessRunner)["Service"]["spawnInteractive"] = Effect.fn(
     "SshProcessRunner.spawnInteractive",
   )(function* (input) {
-    yield* Effect.logInfo("[SshProcessRunner] spawnInteractive starting", {
-      connectionId: input.connectionId,
-      command: input.command,
-      cwd: input.cwd,
-      args: input.args?.length ?? 0,
-    });
-
     const lane = input.lane ?? "interactive";
 
     return yield* laneConcurrency.withLanePermit(

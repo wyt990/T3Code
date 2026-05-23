@@ -66,14 +66,6 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
         }
 
         const reaped = yield* providerService.stopSession({ threadId: binding.threadId }).pipe(
-          Effect.tap(() =>
-            Effect.logInfo("provider.session.reaped", {
-              threadId: binding.threadId,
-              provider: binding.provider,
-              idleDurationMs,
-              reason: "inactivity_threshold",
-            }),
-          ),
           Effect.as(true),
           Effect.catchCause((cause) =>
             Effect.logWarning("provider.session.reaper.stop-failed", {
@@ -90,12 +82,7 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
         }
       }
 
-      if (reapedCount > 0) {
-        yield* Effect.logInfo("provider.session.reaper.sweep-complete", {
-          reapedCount,
-          totalBindings: bindings.length,
-        });
-      }
+      // sweep-complete logged implicitly: reapedCount > 0 means sweep did work
     });
 
     const start: ProviderSessionReaperShape["start"] = () =>
@@ -116,10 +103,7 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
           ),
         );
 
-        yield* Effect.logInfo("provider.session.reaper.started", {
-          inactivityThresholdMs,
-          sweepIntervalMs,
-        });
+        // provider.session.reaper.started — operational; no longer logged as info
       });
 
     return {

@@ -40,13 +40,6 @@ export const createSshWorkspaceExecution = (
   const openTerminal: WorkspaceExecution["terminal"]["open"] = (openInput) =>
     mapTerminal(
       Effect.gen(function* () {
-        yield* Effect.logInfo("[SshExecution] opening SSH terminal", {
-          connectionId: input.connectionId,
-          cwd: openInput.cwd,
-          cols: openInput.cols,
-          rows: openInput.rows,
-        });
-
         const lease = yield* pool.acquire(input.connectionId, { lane: "interactive" });
 
         // Removed logging statements due to build errors

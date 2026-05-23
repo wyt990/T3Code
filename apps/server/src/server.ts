@@ -262,7 +262,8 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(ProviderLayerLive),
 );
 
-const RuntimeDependenciesLive = Layer.empty.pipe(
+/** Effect Layer.pipe typings cap arity at 20; split to preserve provideMerge order. */
+const RuntimeDependenciesMidLive = Layer.empty.pipe(
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provideMerge(SshInfrastructureLive),
   Layer.provideMerge(ReactorLayerLive),
@@ -283,6 +284,9 @@ const RuntimeDependenciesLive = Layer.empty.pipe(
   Layer.provideMerge(MultiAgentOrchestratorLive),
   Layer.provideMerge(ContextAnalyzerLive),
   Layer.provideMerge(CodeQualityProjectPreferencesLive),
+);
+
+const RuntimeDependenciesLive = RuntimeDependenciesMidLive.pipe(
   Layer.provideMerge(CodeQualityGuardLive),
   Layer.provideMerge(TestOrchestratorLive),
   Layer.provideMerge(EnvironmentManagerLive),

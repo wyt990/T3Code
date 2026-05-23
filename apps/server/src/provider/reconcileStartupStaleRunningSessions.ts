@@ -40,12 +40,6 @@ export const reconcileStartupStaleRunningSessions = Effect.gen(function* () {
     const bindingOption = yield* directory.getBinding(thread.id);
     const binding = Option.getOrUndefined(bindingOption);
 
-    yield* Effect.logInfo("orchestration.startup.reconcile-stale-running-session", {
-      threadId: thread.id,
-      persistedSessionStatus: session.status,
-      hadProviderBinding: binding !== undefined,
-    });
-
     yield* orchestrationEngine
       .dispatch({
         type: "thread.session.stop",

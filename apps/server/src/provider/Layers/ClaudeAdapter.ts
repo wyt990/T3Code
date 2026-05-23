@@ -2862,15 +2862,6 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
               cause,
             }),
         ),
-        Effect.tap((spawn) =>
-          Effect.logInfo("[ClaudeAdapter] Claude spawn resolved", {
-            threadId,
-            kind: spawn.kind,
-            ...(spawn.kind === "ssh"
-              ? { remoteBinaryPath: spawn.binaryPath, workspaceRoot: spawn.execution.workspaceRoot }
-              : { localBinaryPath: claudeBinaryPath }),
-          }),
-        ),
       );
       const extraArgs = parseCliArgs(claudeSettings.launchArgs).flags;
       const modelSelection =

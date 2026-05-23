@@ -724,14 +724,6 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       const truncateOutputAtMaxBytes = input.truncateOutputAtMaxBytes ?? false;
 
       const runGitCommand = Effect.fn("runGitCommand")(function* () {
-        yield* Effect.logInfo("[GitCore] runGitCommand starting", {
-          cwd: commandInput.cwd,
-          operation: commandInput.operation,
-          args: commandInput.args,
-          hasEnv: input.env !== undefined,
-          hasStdin: input.stdin !== undefined,
-        });
-
         const serverSettings = yield* readServerSettingsDiskSnapshot.pipe(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.provideService(ServerConfig, serverConfig),
