@@ -70,6 +70,15 @@ export interface WorkspaceExecutionFileSystem {
     path: string,
     options?: { readonly recursive?: boolean },
   ) => Effect.Effect<void, WorkspaceExecutionError>;
+
+  readonly unlink: (path: string) => Effect.Effect<void, WorkspaceExecutionError>;
+
+  readonly rmdir: (path: string) => Effect.Effect<void, WorkspaceExecutionError>;
+
+  readonly rename: (
+    fromPath: string,
+    toPath: string,
+  ) => Effect.Effect<void, WorkspaceExecutionError>;
 }
 
 export interface WorkspaceTerminalSession {

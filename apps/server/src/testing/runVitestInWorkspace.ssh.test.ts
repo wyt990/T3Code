@@ -38,6 +38,9 @@ const makeRemoteExecution = (): WorkspaceExecution => ({
     readFileBytes: () => Effect.die("unused"),
     writeFileString: () => Effect.die("unused"),
     makeDirectory: () => Effect.die("unused"),
+    unlink: () => Effect.die("unused"),
+    rmdir: () => Effect.die("unused"),
+    rename: () => Effect.die("unused"),
   },
   terminal: {
     open: () => Effect.die("unused"),

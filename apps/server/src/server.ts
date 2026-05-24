@@ -244,6 +244,13 @@ const WorkspaceEntriesLayerLive = WorkspaceEntriesLive.pipe(
 const WorkspaceFileSystemLayerLive = WorkspaceFileSystemLive.pipe(
   Layer.provide(WorkspacePathsLive),
   Layer.provide(WorkspaceEntriesLayerLive),
+  Layer.provide(WorkspaceExecutionResolverLive),
+  Layer.provide(
+    OrchestrationProjectionSnapshotQueryLive.pipe(
+      Layer.provideMerge(PersistenceLayerLive),
+      Layer.provide(RepositoryIdentityResolverLive),
+    ),
+  ),
 );
 
 const WorkspaceLayerLive = Layer.mergeAll(

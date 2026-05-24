@@ -5,6 +5,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { SshProcessRunner } from "../ssh/Services/SshProcessRunner.ts";
 import { resolveRemoteClaudeBinaryPath } from "./remoteProviderBinary.ts";
 import type { WorkspaceExecution } from "../workspace/Services/WorkspaceExecution.ts";
+import { unusedWorkspaceExecutionFileSystem } from "../workspace/workspaceExecutionTestStubs.ts";
 import {
   RemoteProviderProbe,
   RemoteProviderProbeLive,
@@ -110,14 +111,7 @@ ProbeTestLayer("RemoteProviderProbe", (it) => {
             return { stdout: "", stderr: "", exitCode: 1 };
           }),
         spawnInteractive: () => Effect.die("unused"),
-        fileSystem: {
-          list: () => Effect.die("unused"),
-          stat: () => Effect.die("unused"),
-          readFileString: () => Effect.die("unused"),
-          readFileBytes: () => Effect.die("unused"),
-          writeFileString: () => Effect.die("unused"),
-          makeDirectory: () => Effect.die("unused"),
-        },
+        fileSystem: unusedWorkspaceExecutionFileSystem(),
         terminal: { open: () => Effect.die("unused") },
       };
       const resolved = yield* resolveRemoteClaudeBinaryPath(execution, "claudecode");

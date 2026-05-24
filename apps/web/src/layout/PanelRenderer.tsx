@@ -9,6 +9,7 @@ import { EnvironmentPanel } from "../environmentManagement/EnvironmentPanel";
 import { MultiAgentPanel } from "../multiAgent/MultiAgentPanel";
 import { TestCoveragePanel } from "../testing/TestCoveragePanel";
 import { VisualizationPanel } from "../visualization/VisualizationPanel";
+import { FileExplorerPanelLayoutSlot } from "../components/fileExplorer/FileExplorerPanelLayoutSlot";
 import { useLayoutStore, isDockPanelDisplayed } from "./layoutStore";
 
 interface PanelRendererProps {
@@ -87,6 +88,7 @@ const PANEL_COMPONENTS: Record<string, ComponentType<{ className?: string }>> = 
   testing: TestCoveragePanel,
   environment: EnvironmentPanelLayoutSlot,
   multiAgent: MultiAgentPanelLayoutSlot,
+  fileExplorer: FileExplorerPanelLayoutSlot,
 };
 
 export function PanelRenderer({ position, className = "" }: PanelRendererProps) {

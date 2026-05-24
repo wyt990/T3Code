@@ -39,6 +39,9 @@ const TestLayer = it.layer(
         readFileBytes: () => Effect.die("SSH filesystem not used in local resolver test"),
         writeFileString: () => Effect.die("SSH filesystem not used in local resolver test"),
         makeDirectory: () => Effect.die("SSH filesystem not used in local resolver test"),
+        unlink: () => Effect.die("SSH filesystem not used in local resolver test"),
+        rmdir: () => Effect.die("SSH filesystem not used in local resolver test"),
+        rename: () => Effect.die("SSH filesystem not used in local resolver test"),
       }),
     ),
     Layer.provideMerge(
@@ -97,6 +100,9 @@ const sshTestLayer = it.layer(
         readFileBytes: () => Effect.die("SSH filesystem not used in resolver test"),
         writeFileString: () => Effect.die("SSH filesystem not used in resolver test"),
         makeDirectory: () => Effect.die("SSH filesystem not used in resolver test"),
+        unlink: () => Effect.die("SSH filesystem not used in resolver test"),
+        rmdir: () => Effect.die("SSH filesystem not used in resolver test"),
+        rename: () => Effect.die("SSH filesystem not used in resolver test"),
       }),
     ),
     Layer.provideMerge(
@@ -167,6 +173,9 @@ TestLayer("WorkspaceExecutionResolver", (it) => {
             readFileBytes: () => Effect.die("unused"),
             writeFileString: () => Effect.die("unused"),
             makeDirectory: () => Effect.die("unused"),
+            unlink: () => Effect.die("unused"),
+            rmdir: () => Effect.die("unused"),
+            rename: () => Effect.die("unused"),
           }),
         ),
         Layer.provideMerge(

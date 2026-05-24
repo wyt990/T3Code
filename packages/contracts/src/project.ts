@@ -53,3 +53,103 @@ export class ProjectWriteFileError extends Schema.TaggedErrorClass<ProjectWriteF
     cause: Schema.optional(Schema.Defect),
   },
 ) {}
+
+// ─── 文件浏览器 ───
+
+export const ProjectDirectoryEntry = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  fullPath: TrimmedNonEmptyString,
+  type: Schema.Literals(["file", "directory", "symlink", "other"]),
+});
+export type ProjectDirectoryEntry = typeof ProjectDirectoryEntry.Type;
+
+// readFile
+export const ProjectReadFileInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  relativePath: TrimmedNonEmptyString,
+});
+export type ProjectReadFileInput = typeof ProjectReadFileInput.Type;
+
+export const ProjectReadFileResult = Schema.Struct({
+  contents: Schema.String,
+});
+export type ProjectReadFileResult = typeof ProjectReadFileResult.Type;
+
+export class ProjectReadFileError extends Schema.TaggedErrorClass<ProjectReadFileError>()(
+  "ProjectReadFileError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+// listDirectory
+export const ProjectListDirectoryInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  relativePath: TrimmedNonEmptyString,
+});
+export type ProjectListDirectoryInput = typeof ProjectListDirectoryInput.Type;
+
+export const ProjectListDirectoryResult = Schema.Struct({
+  entries: Schema.Array(ProjectDirectoryEntry),
+});
+export type ProjectListDirectoryResult = typeof ProjectListDirectoryResult.Type;
+
+export class ProjectListDirectoryError extends Schema.TaggedErrorClass<ProjectListDirectoryError>()(
+  "ProjectListDirectoryError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+// fileStat
+export const ProjectFileStatInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  relativePath: TrimmedNonEmptyString,
+});
+export type ProjectFileStatInput = typeof ProjectFileStatInput.Type;
+
+export const ProjectFileStatResult = Schema.Struct({
+  size: Schema.Number,
+  isDirectory: Schema.Boolean,
+  isFile: Schema.Boolean,
+  isSymlink: Schema.Boolean,
+});
+export type ProjectFileStatResult = typeof ProjectFileStatResult.Type;
+
+export class ProjectFileStatError extends Schema.TaggedErrorClass<ProjectFileStatError>()(
+  "ProjectFileStatError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+// createDirectory
+export const ProjectCreateDirectoryInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  relativePath: TrimmedNonEmptyString,
+});
+export type ProjectCreateDirectoryInput = typeof ProjectCreateDirectoryInput.Type;
+
+// deleteFile
+export const ProjectDeleteFileInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  relativePath: TrimmedNonEmptyString,
+  recursive: Schema.optional(Schema.Boolean),
+});
+export type ProjectDeleteFileInput = typeof ProjectDeleteFileInput.Type;
+
+// renameFile
+export const ProjectRenameFileInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  fromPath: TrimmedNonEmptyString,
+  toPath: TrimmedNonEmptyString,
+});
+export type ProjectRenameFileInput = typeof ProjectRenameFileInput.Type;
+
+export const ProjectRenameFileResult = Schema.Struct({
+  relativePath: TrimmedNonEmptyString,
+});
+export type ProjectRenameFileResult = typeof ProjectRenameFileResult.Type;

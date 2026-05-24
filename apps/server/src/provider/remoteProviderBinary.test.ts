@@ -7,6 +7,7 @@ import {
   seedRemoteSpawnBinaryCachesFromProbe,
 } from "./remoteProviderBinary.ts";
 import type { WorkspaceExecution } from "../workspace/Services/WorkspaceExecution.ts";
+import { unusedWorkspaceExecutionFileSystem } from "../workspace/workspaceExecutionTestStubs.ts";
 
 const makeExecution = (execCalls: Array<string>): WorkspaceExecution => ({
   kind: "ssh",
@@ -18,14 +19,7 @@ const makeExecution = (execCalls: Array<string>): WorkspaceExecution => ({
       return { stdout: "", stderr: "", exitCode: 1 };
     }),
   spawnInteractive: () => Effect.die("unused"),
-  fileSystem: {
-    list: () => Effect.die("unused"),
-    stat: () => Effect.die("unused"),
-    readFileString: () => Effect.die("unused"),
-    readFileBytes: () => Effect.die("unused"),
-    writeFileString: () => Effect.die("unused"),
-    makeDirectory: () => Effect.die("unused"),
-  },
+  fileSystem: unusedWorkspaceExecutionFileSystem(),
   terminal: {
     open: () => Effect.die("unused"),
   },

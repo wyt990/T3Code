@@ -4,6 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   DEFAULT_TERMINAL_ID,
+  ProjectId,
   type TerminalEvent,
   type TerminalOpenInput,
   type TerminalRestartInput,
@@ -35,8 +36,15 @@ import {
   type PtySpawnInput,
   PtySpawnError,
 } from "../Services/PTY.ts";
-import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { WorkspaceExecutionResolver } from "../../workspace/Services/WorkspaceExecution.ts";
+import {
+  ProjectionSnapshotQuery,
+  type ProjectionSnapshotQueryShape,
+} from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import {
+  WorkspaceExecutionResolver,
+  type WorkspaceExecutionResolverShape,
+} from "../../workspace/Services/WorkspaceExecution.ts";
+import { unusedWorkspaceExecutionFileSystem } from "../../workspace/workspaceExecutionTestStubs.ts";
 import { makeTerminalManagerWithOptions } from "./Manager.ts";
 
 const TerminalCollaboratorsTestLive = Layer.mergeAll(
@@ -239,7 +247,7 @@ const createManager = (
 ): Effect.Effect<
   ManagerFixture,
   PlatformError.PlatformError,
-  FileSystem.FileSystem | Scope.Scope
+  FileSystem.FileSystem | Scope.Scope | ProjectionSnapshotQuery | WorkspaceExecutionResolver
 > =>
   Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) =>
     Effect.gen(function* () {
@@ -341,16 +349,13 @@ it.layer(Layer.merge(NodeServices.layer, TerminalCollaboratorsTestLive), {
           Effect.succeed(
             root === sshCwd
               ? Option.some({
-                  id: "project-ssh",
+                  id: ProjectId.make("project-ssh"),
                   title: "claude-code",
                   workspaceRoot: sshCwd,
                   transport: { type: "ssh" as const, sshConnectionId: "conn-ssh" },
-                  repositoryIdentity: null,
-                  defaultModelSelection: null,
                   scripts: [],
                   createdAt: "2026-01-01T00:00:00.000Z",
                   updatedAt: "2026-01-01T00:00:00.000Z",
-                  deletedAt: null,
                 })
               : Option.none(),
           ),
@@ -359,25 +364,21 @@ it.layer(Layer.merge(NodeServices.layer, TerminalCollaboratorsTestLive), {
         getThreadCheckpointContext: () => Effect.succeed(Option.none()),
         getThreadShellById: () => Effect.succeed(Option.none()),
         getThreadDetailById: () => Effect.succeed(Option.none()),
-      };
+      } as ProjectionSnapshotQueryShape;
       const sshWorkspaceExecutionResolver = {
-        resolveByProjectId: () =>
+        resolveByProjectId: (_projectId: ProjectId) =>
           Effect.succeed({
             kind: "ssh" as const,
             workspaceRoot: sshCwd,
             sshConnectionId: "conn-ssh",
             fileSystem: {
+              ...unusedWorkspaceExecutionFileSystem(),
               stat: (targetPath: string) =>
                 Effect.succeed({
                   path: targetPath,
                   isDirectory: true,
                   size: 0,
                 }),
-              list: () => Effect.die("unused"),
-              readFileString: () => Effect.die("unused"),
-              readFileBytes: () => Effect.die("unused"),
-              writeFileString: () => Effect.die("unused"),
-              makeDirectory: () => Effect.die("unused"),
             },
             terminal: {
               open: () =>
@@ -385,16 +386,14 @@ it.layer(Layer.merge(NodeServices.layer, TerminalCollaboratorsTestLive), {
                   write: () => Effect.void,
                   resize: () => Effect.void,
                   output: Stream.fromQueue(outputQueue),
-                  exited: Queue.take(exitQueue).pipe(
-                    Effect.mapError(() => new Error("ssh terminal exited")),
-                  ),
+                  exited: Queue.take(exitQueue).pipe(Effect.orDie),
                   close: () => Effect.void,
                 }),
             },
             spawnInteractive: () => Effect.die("unused"),
             exec: () => Effect.die("unused"),
           }),
-      };
+      } satisfies WorkspaceExecutionResolverShape;
 
       const { manager, ptyAdapter } = yield* createManager(5, {}).pipe(
         Effect.provideService(ProjectionSnapshotQuery, sshProjectionSnapshotQuery),

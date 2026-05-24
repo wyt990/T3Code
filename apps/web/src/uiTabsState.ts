@@ -12,7 +12,8 @@ export const TABS_PERSISTED_VERSION = 2;
 
 export type TabTarget =
   | { kind: "server"; threadRef: ScopedThreadRef }
-  | { kind: "draft"; draftId: DraftId };
+  | { kind: "draft"; draftId: DraftId }
+  | { kind: "file"; filePath: string; workspaceRoot: string; environmentId: EnvironmentId; fileName: string };
 
 export interface Tab {
   id: string;
@@ -121,6 +122,16 @@ export function findTabByDraft(state: UiTabsState, draftId: DraftId): Tab | unde
   return undefined;
 }
 
+export function findTabByFile(state: UiTabsState, filePath: string): Tab | undefined {
+  for (const tabId of state.group.tabIds) {
+    const tab = state.tabsById[tabId];
+    if (tab && tab.target.kind === "file" && tab.target.filePath === filePath) {
+      return tab;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Returns the best-effort tab target to navigate to when callers lose the
  * current route context (for example, after closing an active draft route).
@@ -181,7 +192,8 @@ export function createTab(
   target: TabTarget,
   options: CreateTabOptions,
 ): CreateTabResult {
-  if (state.group.tabIds.length >= MAX_TABS) {
+  // 文件标签不占会话标签的 MAX_TABS 限制
+  if (target.kind !== "file" && state.group.tabIds.length >= MAX_TABS) {
     return { state, outcome: "rejected", reason: "at-cap" };
   }
   if (state.tabsById[options.newTabId]) {
@@ -368,7 +380,13 @@ export function mergeTabs(
   if (leftTabId === rightTabId) {
     return { state, ok: false };
   }
-  if (!state.tabsById[leftTabId] || !state.tabsById[rightTabId]) {
+  const leftTab = state.tabsById[leftTabId];
+  const rightTab = state.tabsById[rightTabId];
+  if (!leftTab || !rightTab) {
+    return { state, ok: false };
+  }
+  // 文件标签不可与任何标签合并
+  if (leftTab.target.kind === "file" || rightTab.target.kind === "file") {
     return { state, ok: false };
   }
   if (
@@ -579,7 +597,9 @@ export function formatTabsSnapshot(state: UiTabsState): Record<string, unknown> 
       const targetDesc =
         tab.target.kind === "server"
           ? `会话(${tab.target.threadRef.environmentId}/${tab.target.threadRef.threadId})`
-          : `草稿(${tab.target.draftId})`;
+          : tab.target.kind === "draft"
+            ? `草稿(${tab.target.draftId})`
+            : `文件(${tab.target.filePath})`;
       return {
         id,
         目标: targetDesc,
@@ -608,6 +628,15 @@ function isValidTabTarget(target: unknown): target is TabTarget {
   }
   if (candidate.kind === "draft") {
     return typeof (candidate as { draftId?: unknown }).draftId === "string";
+  }
+  if (candidate.kind === "file") {
+    const f = candidate as { filePath?: unknown; workspaceRoot?: unknown; environmentId?: unknown; fileName?: unknown };
+    return (
+      typeof f.filePath === "string" &&
+      typeof f.workspaceRoot === "string" &&
+      typeof f.environmentId === "string" &&
+      typeof f.fileName === "string"
+    );
   }
   return false;
 }
@@ -650,6 +679,10 @@ function hydrateTabsByIdMap(input: unknown): Record<string, Tab> | null {
   const result: Record<string, Tab> = {};
   for (const [tabId, tab] of Object.entries(input as Record<string, unknown>)) {
     if (!isValidTab(tab) || tab.id !== tabId) {
+      continue;
+    }
+    // 文件标签不持久化，刷新后自动清除
+    if (tab.target.kind === "file") {
       continue;
     }
     result[tabId] = {

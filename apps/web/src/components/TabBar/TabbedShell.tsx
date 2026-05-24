@@ -78,7 +78,16 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
   const { urlTarget, legacyDiffOpenInUrl } = props;
   const navigate = useNavigate();
   const tabs = useUiStateStore((state) => state.tabs);
-  const activeTab = useMemo(() => deriveActiveTab(tabs, urlTarget), [tabs, urlTarget]);
+  const activeTab = useMemo(() => {
+    const fromUrl = deriveActiveTab(tabs, urlTarget);
+    // 文件标签没有独立路由，优先使用 group.activeTabId 指向的文件标签
+    const groupActiveId = tabs.group.activeTabId;
+    if (groupActiveId) {
+      const groupActive = tabs.tabsById[groupActiveId];
+      if (groupActive?.target.kind === "file") return groupActive;
+    }
+    return fromUrl;
+  }, [tabs, urlTarget]);
   const mergedPair = useMemo(() => deriveMergedPairContext(tabs, activeTab), [activeTab, tabs]);
   const focusedSide = useMemo(() => deriveFocusedSide(tabs, mergedPair), [mergedPair, tabs]);
   const orderedTabs = useMemo(() => buildOrderedTabs(tabs), [tabs]);
@@ -145,6 +154,10 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
     (tabId: string) => {
       const tab = tabs.tabsById[tabId];
       if (!tab) return;
+      if (tab.target.kind === "file") {
+        useUiStateStore.getState().activateTab(tabId);
+        return;
+      }
       void navigateToTarget(navigate, tab.target);
     },
     [navigate, tabs.tabsById],
@@ -211,7 +224,7 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
   // In merged view the diff acts on the focused side, otherwise on the active
   // (single) tab. `diffSourceTab` already encodes that distinction.
   const onToggleDiff = useCallback(() => {
-    if (!diffSourceTab) return;
+    if (!diffSourceTab || diffSourceTab.target.kind !== "server") return;
     if (!diffSourceTab.diffOpen) {
       markDiffOpened();
     }
@@ -490,11 +503,13 @@ function useTabTitleMap(tabs: readonly Tab[]): Record<string, string> {
           tab,
           serverThreadTitle: serverThreadTitleByKey[key],
         });
-      } else {
+      } else if (tab.target.kind === "draft") {
         out[tab.id] = resolveTabTitle({
           tab,
           draftPrompt: draftPromptByDraftId[tab.target.draftId],
         });
+      } else {
+        out[tab.id] = resolveTabTitle({ tab });
       }
     }
     return out;
@@ -516,10 +531,14 @@ async function navigateToTarget(
     });
     return;
   }
-  await navigate({
-    to: "/draft/$draftId",
-    params: buildDraftThreadRouteParams(target.draftId),
-  });
+  if (target.kind === "draft") {
+    await navigate({
+      to: "/draft/$draftId",
+      params: buildDraftThreadRouteParams(target.draftId),
+    });
+    return;
+  }
+  // 文件标签无独立路由，激活仅改变 TabBar 视觉状态
 }
 
 function navigateAfterStrip(navigate: ReturnType<typeof useNavigate>, target: TabTarget): void {
@@ -535,11 +554,14 @@ function navigateAfterStrip(navigate: ReturnType<typeof useNavigate>, target: Ta
     });
     return;
   }
-  void navigate({
-    to: "/draft/$draftId",
-    params: buildDraftThreadRouteParams(target.draftId),
-    replace: true,
-  });
+  if (target.kind === "draft") {
+    void navigate({
+      to: "/draft/$draftId",
+      params: buildDraftThreadRouteParams(target.draftId),
+      replace: true,
+    });
+  }
+  // 文件标签无路由，无需处理
 }
 
 /**
@@ -559,7 +581,9 @@ function useUrlTargetSync(urlTarget: TabTarget | null): void {
     const targetLabel =
       currentTarget.kind === "server"
         ? `会话(${currentTarget.threadRef.environmentId}/${currentTarget.threadRef.threadId})`
-        : `草稿(${currentTarget.draftId})`;
+        : currentTarget.kind === "draft"
+          ? `草稿(${currentTarget.draftId})`
+          : ""; // 文件标签不会出现在 URL 同步中
 
     if (decision.action === "activate-existing") {
       console.log(

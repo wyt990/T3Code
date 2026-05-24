@@ -1,10 +1,11 @@
-import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef, TurnId } from "@t3tools/contracts";
 import { useCallback } from "react";
 
 import { cn } from "../../lib/utils";
 import ChatView from "../ChatView";
 import { useComposerDraftStore, type DraftId } from "../../composerDraftStore";
 import type { MergedTabPair, Tab } from "../../uiTabsState";
+import { FileEditor } from "../fileExplorer/FileEditor";
 
 import { SplitLayout } from "./SplitLayout";
 
@@ -228,6 +229,17 @@ function TabPaneContent(props: Readonly<TabPaneContentProps>) {
     onRequestDraftNavigation,
     onRequestFocus,
   } = props;
+
+  if (tab.target.kind === "file") {
+    return (
+      <FileEditor
+        filePath={tab.target.filePath}
+        workspaceRoot={tab.target.workspaceRoot}
+        environmentId={tab.target.environmentId as EnvironmentId}
+        className="flex-1 min-h-0"
+      />
+    );
+  }
 
   if (tab.target.kind === "server") {
     const { threadRef } = tab.target;

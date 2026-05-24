@@ -37,6 +37,9 @@ import {
   ProjectId,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
+  ProjectReadFileError,
+  ProjectListDirectoryError,
+  ProjectFileStatError,
   ThreadId,
   type TerminalEvent,
   type ProxySettings,
@@ -1817,6 +1820,86 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
             ),
             { "rpc.aggregate": "workspace" },
           ),
+        [WS_METHODS.projectsReadFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsReadFile,
+            workspaceFileSystem.readFile(input).pipe(
+              Effect.map((contents) => ({ contents })),
+              Effect.mapError((cause) => {
+                const message = Schema.is(WorkspacePathOutsideRootError)(cause)
+                  ? "File path must stay within the project root."
+                  : "Failed to read workspace file";
+                return new ProjectReadFileError({ message, cause });
+              }),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsListDirectory]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsListDirectory,
+            workspaceFileSystem.listDirectory(input).pipe(
+              Effect.map((entries) => ({
+                entries: entries.map((e) => ({
+                  name: e.name,
+                  fullPath: e.path,
+                  type: e.type,
+                })),
+              })),
+              Effect.mapError((cause) => {
+                const message = Schema.is(WorkspacePathOutsideRootError)(cause)
+                  ? "Directory path must stay within the project root."
+                  : "Failed to list workspace directory";
+                return new ProjectListDirectoryError({ message, cause });
+              }),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsFileStat]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsFileStat,
+            workspaceFileSystem.stat(input).pipe(
+              Effect.map((stat) => ({
+                size: stat.size,
+                isDirectory: stat.isDirectory,
+                isFile: !stat.isDirectory,
+                isSymlink: false,
+              })),
+              Effect.mapError((cause) => {
+                const message = Schema.is(WorkspacePathOutsideRootError)(cause)
+                  ? "File path must stay within the project root."
+                  : "Failed to stat workspace file";
+                return new ProjectFileStatError({ message, cause });
+              }),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsCreateDirectory]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsCreateDirectory,
+            workspaceFileSystem.createDirectory(input).pipe(Effect.catch(() => Effect.void)),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsDeleteFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsDeleteFile,
+            workspaceFileSystem
+              .deleteFile({
+                cwd: input.cwd,
+                relativePath: input.relativePath,
+                ...(input.recursive !== undefined ? { recursive: input.recursive } : {}),
+              })
+              .pipe(Effect.catch(() => Effect.void)),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsRenameFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsRenameFile,
+            workspaceFileSystem.renameFile(input).pipe(
+              Effect.map((relativePath) => ({ relativePath })),
+              Effect.catch(() => Effect.succeed({ relativePath: input.toPath })),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
         [WS_METHODS.shellOpenInEditor]: (input) =>
           observeRpcEffect(WS_METHODS.shellOpenInEditor, open.openInEditor(input), {
             "rpc.aggregate": "workspace",
@@ -1864,9 +1947,13 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId, wsTraceId: string) =>
             "rpc.aggregate": "ssh",
           }),
         [WS_METHODS.serverGetConnectionProviders]: (input) =>
-          observeRpcEffect(WS_METHODS.serverGetConnectionProviders, getConnectionProviders(input), {
-            "rpc.aggregate": "ssh",
-          }),
+          observeRpcEffect(
+            WS_METHODS.serverGetConnectionProviders,
+            getConnectionProviders(input).pipe(Effect.orDie),
+            {
+              "rpc.aggregate": "ssh",
+            },
+          ),
         [WS_METHODS.subscribeGitStatus]: (input) =>
           observeRpcStream(
             WS_METHODS.subscribeGitStatus,

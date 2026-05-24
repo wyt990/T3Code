@@ -1,6 +1,7 @@
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { Effect, Layer, Option, Scope } from "effect";
 import { FileSystem, Path } from "effect";
+import type { ProjectId } from "@t3tools/contracts";
 
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { SshConnectionPool } from "../../ssh/Services/SshConnectionPool.ts";
@@ -15,28 +16,8 @@ import {
 import { createLocalWorkspaceExecution } from "./LocalExecution.ts";
 import { createSshWorkspaceExecution } from "./SshExecution.ts";
 
-const makeSshDeps = Effect.fn("makeSshDeps")(function* () {
-  return {
-    runner: yield* SshProcessRunner,
-    remoteFileSystem: yield* SshFileSystem,
-    pool: yield* SshConnectionPool,
-  };
-});
-
-const makeLocalDeps = Effect.fn("makeLocalDeps")(function* () {
-  return {
-    fileSystem: yield* FileSystem.FileSystem,
-    path: yield* Path.Path,
-    spawner: yield* ChildProcessSpawner.ChildProcessSpawner,
-    ptyAdapter: yield* PtyAdapter,
-    scope: yield* Scope.Scope,
-  };
-});
-
 export const makeWorkspaceExecutionResolver = Effect.gen(function* () {
-  const resolveByProjectId: (typeof WorkspaceExecutionResolver)["Service"]["resolveByProjectId"] = (
-    projectId,
-  ) =>
+  const resolveByProjectId = ((projectId: ProjectId) =>
     Effect.gen(function* () {
       const snapshotQuery = yield* ProjectionSnapshotQuery;
       yield* Effect.logDebug("[WorkspaceExecutionResolver] querying project shell", { projectId });
@@ -54,12 +35,22 @@ export const makeWorkspaceExecutionResolver = Effect.gen(function* () {
 
       const shell = project.value;
       if (shell.transport.type === "local") {
-        const localDeps = yield* makeLocalDeps();
+        const localDeps = {
+          fileSystem: yield* FileSystem.FileSystem,
+          path: yield* Path.Path,
+          spawner: yield* ChildProcessSpawner.ChildProcessSpawner,
+          ptyAdapter: yield* PtyAdapter,
+          scope: yield* Scope.Scope,
+        };
         return createLocalWorkspaceExecution(localDeps, shell.workspaceRoot);
       }
 
       if (shell.transport.type === "ssh") {
-        const sshDeps = yield* makeSshDeps();
+        const sshDeps = {
+          runner: yield* SshProcessRunner,
+          remoteFileSystem: yield* SshFileSystem,
+          pool: yield* SshConnectionPool,
+        };
 
         yield* Effect.logDebug("[WorkspaceExecutionResolver] SSH dependencies resolved", {
           hasRunner: sshDeps.runner !== undefined,
@@ -73,19 +64,11 @@ export const makeWorkspaceExecutionResolver = Effect.gen(function* () {
         });
       }
 
-      const transportType =
-        typeof shell.transport === "object" &&
-        shell.transport !== null &&
-        "type" in shell.transport &&
-        typeof shell.transport.type === "string"
-          ? shell.transport.type
-          : "unknown";
-
       return yield* new WorkspaceExecutionUnsupportedTransportError({
         projectId,
-        transportType,
+        transportType: "unknown",
       });
-    });
+    })) as (typeof WorkspaceExecutionResolver)["Service"]["resolveByProjectId"];
 
   return { resolveByProjectId } satisfies (typeof WorkspaceExecutionResolver)["Service"];
 });

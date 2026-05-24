@@ -50,7 +50,20 @@ export const resolveRelativePathWithinPosixRoot = (input: {
   | { readonly absolutePath: string; readonly relativePath: string }
   | { readonly outsideRoot: true } => {
   const normalizedInputPath = input.relativePath.trim().replaceAll("\\", "/");
+  const root = input.workspaceRoot.trim().replace(/\/+$/, "") || "/";
+
+  // 支持地址栏输入的绝对 POSIX 路径（如 /apps/project 或 /apps/project/src）
   if (isPosixAbsolutePath(normalizedInputPath)) {
+    if (normalizedInputPath === root || normalizedInputPath === root + "/") {
+      // 绝对路径等于 workspaceRoot → 相当于浏览根目录
+      return { absolutePath: root || "/", relativePath: "." };
+    }
+    const prefix = root + "/";
+    if (normalizedInputPath.startsWith(prefix)) {
+      // 绝对路径在 workspaceRoot 内 → 提取相对部分
+      const relativePath = normalizedInputPath.slice(prefix.length);
+      return { absolutePath: normalizedInputPath, relativePath };
+    }
     return { outsideRoot: true };
   }
 
@@ -61,7 +74,6 @@ export const resolveRelativePathWithinPosixRoot = (input: {
     }
   }
 
-  const root = input.workspaceRoot.trim().replace(/\/+$/, "") || "/";
   const absolutePath = segments.length === 0 ? root : joinPosix(root, ...segments);
   const relativePath = segments.join("/");
 

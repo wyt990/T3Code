@@ -287,6 +287,87 @@ export const makeSshFileSystem = Effect.gen(function* () {
     });
   });
 
+  const unlink: (typeof SshFileSystem)["Service"]["unlink"] = Effect.fn("SshFileSystem.unlink")(
+    function* (input) {
+      yield* withSftpSession(input.connectionId, "workspace", (sftp) =>
+        Effect.tryPromise({
+          try: () =>
+            new Promise<void>((resolve, reject) => {
+              sftp.unlink(input.path, (error) => {
+                if (error !== undefined) {
+                  reject(error);
+                  return;
+                }
+                resolve();
+              });
+            }),
+          catch: (cause: unknown): SshFileSystemError =>
+            toFsError({
+              connectionId: input.connectionId,
+              path: input.path,
+              operation: "unlink",
+              detail: cause instanceof Error ? cause.message : "SFTP unlink failed",
+              cause,
+            }),
+        }),
+      );
+    },
+  );
+
+  const rmdir: (typeof SshFileSystem)["Service"]["rmdir"] = Effect.fn("SshFileSystem.rmdir")(
+    function* (input) {
+      yield* withSftpSession(input.connectionId, "workspace", (sftp) =>
+        Effect.tryPromise({
+          try: () =>
+            new Promise<void>((resolve, reject) => {
+              sftp.rmdir(input.path, (error) => {
+                if (error !== undefined) {
+                  reject(error);
+                  return;
+                }
+                resolve();
+              });
+            }),
+          catch: (cause: unknown): SshFileSystemError =>
+            toFsError({
+              connectionId: input.connectionId,
+              path: input.path,
+              operation: "rmdir",
+              detail: cause instanceof Error ? cause.message : "SFTP rmdir failed",
+              cause,
+            }),
+        }),
+      );
+    },
+  );
+
+  const rename: (typeof SshFileSystem)["Service"]["rename"] = Effect.fn("SshFileSystem.rename")(
+    function* (input) {
+      yield* withSftpSession(input.connectionId, "workspace", (sftp) =>
+        Effect.tryPromise({
+          try: () =>
+            new Promise<void>((resolve, reject) => {
+              sftp.rename(input.fromPath, input.toPath, (error) => {
+                if (error !== undefined) {
+                  reject(error);
+                  return;
+                }
+                resolve();
+              });
+            }),
+          catch: (cause: unknown): SshFileSystemError =>
+            toFsError({
+              connectionId: input.connectionId,
+              path: input.fromPath,
+              operation: "rename",
+              detail: cause instanceof Error ? cause.message : "SFTP rename failed",
+              cause,
+            }),
+        }),
+      );
+    },
+  );
+
   return {
     list,
     stat,
@@ -294,6 +375,9 @@ export const makeSshFileSystem = Effect.gen(function* () {
     readFileBytes,
     writeFileString,
     makeDirectory,
+    unlink,
+    rmdir,
+    rename,
   } satisfies (typeof SshFileSystem)["Service"];
 });
 

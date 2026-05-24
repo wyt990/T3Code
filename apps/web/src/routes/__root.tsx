@@ -239,7 +239,9 @@ function StartupTabNavigation() {
         目标:
           target.kind === "server"
             ? `会话(${target.threadRef.environmentId}/${target.threadRef.threadId})`
-            : `草稿(${target.draftId})`,
+            : target.kind === "draft"
+              ? `草稿(${target.draftId})`
+              : `文件(${target.filePath})`,
         标签ID: activeTabId,
       },
     );
@@ -250,13 +252,14 @@ function StartupTabNavigation() {
         params: buildThreadRouteParams(target.threadRef),
         replace: true,
       });
-    } else {
+    } else if (target.kind === "draft") {
       void navigate({
         to: "/draft/$draftId",
         params: { draftId: target.draftId },
         replace: true,
       });
     }
+    // 文件标签无路由
   }, [navigate]);
 
   return null;

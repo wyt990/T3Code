@@ -35,6 +35,9 @@ export const createSshWorkspaceExecution = (
   const mapReadFileBytes = mapWorkspaceExecutionError("ssh", "fileSystem.readFileBytes");
   const mapWriteFile = mapWorkspaceExecutionError("ssh", "fileSystem.writeFileString");
   const mapMakeDirectory = mapWorkspaceExecutionError("ssh", "fileSystem.makeDirectory");
+  const mapUnlink = mapWorkspaceExecutionError("ssh", "fileSystem.unlink");
+  const mapRmdir = mapWorkspaceExecutionError("ssh", "fileSystem.rmdir");
+  const mapRename = mapWorkspaceExecutionError("ssh", "fileSystem.rename");
   const mapTerminal = mapWorkspaceExecutionError("ssh", "terminal.open");
 
   const openTerminal: WorkspaceExecution["terminal"]["open"] = (openInput) =>
@@ -193,6 +196,18 @@ export const createSshWorkspaceExecution = (
             connectionId: input.connectionId,
             path: targetPath,
             ...(options?.recursive === undefined ? {} : { recursive: options.recursive }),
+          }),
+        ),
+      unlink: (targetPath) =>
+        mapUnlink(remoteFileSystem.unlink({ connectionId: input.connectionId, path: targetPath })),
+      rmdir: (targetPath) =>
+        mapRmdir(remoteFileSystem.rmdir({ connectionId: input.connectionId, path: targetPath })),
+      rename: (fromPath, toPath) =>
+        mapRename(
+          remoteFileSystem.rename({
+            connectionId: input.connectionId,
+            fromPath,
+            toPath,
           }),
         ),
     },

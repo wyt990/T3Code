@@ -113,6 +113,30 @@ export const createLocalWorkspaceExecution = (
             localError("fileSystem.makeDirectory", filesystemErrorMessage(cause), cause),
           ),
         ),
+    unlink: (targetPath) =>
+      fileSystem
+        .remove(resolvePath(targetPath))
+        .pipe(
+          Effect.mapError((cause) =>
+            localError("fileSystem.unlink", filesystemErrorMessage(cause), cause),
+          ),
+        ),
+    rmdir: (targetPath) =>
+      fileSystem
+        .remove(resolvePath(targetPath))
+        .pipe(
+          Effect.mapError((cause) =>
+            localError("fileSystem.rmdir", filesystemErrorMessage(cause), cause),
+          ),
+        ),
+    rename: (fromPath, toPath) =>
+      fileSystem
+        .rename(resolvePath(fromPath), resolvePath(toPath))
+        .pipe(
+          Effect.mapError((cause) =>
+            localError("fileSystem.rename", filesystemErrorMessage(cause), cause),
+          ),
+        ),
   };
 
   const terminal: WorkspaceExecution["terminal"] = {

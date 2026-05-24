@@ -3,6 +3,7 @@ import { scopedThreadKey } from "@t3tools/client-runtime";
 import type { DraftId } from "../../draftId";
 import {
   findTabByDraft,
+  findTabByFile,
   findTabByThread,
   MAX_MERGED_PAIRS,
   MAX_TABS,
@@ -52,6 +53,9 @@ function computeBaseTitle(
   serverThreadTitle: string | null | undefined,
   draftPrompt: string | undefined,
 ): string {
+  if (tab.target.kind === "file") {
+    return tab.target.fileName;
+  }
   if (tab.target.kind === "server") {
     const trimmed = serverThreadTitle?.trim() ?? "";
     return trimmed.length > 0 ? trimmed : SERVER_FALLBACK_TITLE;
@@ -126,7 +130,8 @@ export function decideTabActivation(
       alreadyActive: state.group.activeTabId === existing.id,
     };
   }
-  if (state.group.tabIds.length < MAX_TABS) {
+  // 文件标签不占会话标签上限
+  if (target.kind === "file" || state.group.tabIds.length < MAX_TABS) {
     return { action: "create" };
   }
   return {
@@ -139,7 +144,10 @@ function findExistingTab(state: UiTabsState, target: TabTarget): Tab | undefined
   if (target.kind === "server") {
     return findTabByThread(state, target.threadRef);
   }
-  return findTabByDraft(state, target.draftId);
+  if (target.kind === "draft") {
+    return findTabByDraft(state, target.draftId);
+  }
+  return findTabByFile(state, target.filePath);
 }
 
 /**
@@ -162,6 +170,10 @@ export function pickLeastRecentlyVisitedTabId(
     }
     const tab = state.tabsById[tabId];
     if (!tab) {
+      continue;
+    }
+    // 文件标签不参与 LRU 淘汰
+    if (tab.target.kind === "file") {
       continue;
     }
     const visitedAt = readVisitedAtForTab(tab, threadLastVisitedAtById);
@@ -222,7 +234,10 @@ export function tabTargetKey(target: TabTarget): string {
   if (target.kind === "server") {
     return `server:${scopedThreadKey(target.threadRef)}`;
   }
-  return `draft:${target.draftId}`;
+  if (target.kind === "draft") {
+    return `draft:${target.draftId}`;
+  }
+  return `file:${target.filePath}`;
 }
 
 export function tabTargetToServer(target: TabTarget): ScopedThreadRef | null {
@@ -231,6 +246,10 @@ export function tabTargetToServer(target: TabTarget): ScopedThreadRef | null {
 
 export function tabTargetToDraft(target: TabTarget): DraftId | null {
   return target.kind === "draft" ? target.draftId : null;
+}
+
+export function tabTargetToFile(target: TabTarget): { filePath: string; workspaceRoot: string; environmentId: string; fileName: string } | null {
+  return target.kind === "file" ? { filePath: target.filePath, workspaceRoot: target.workspaceRoot, environmentId: target.environmentId, fileName: target.fileName } : null;
 }
 
 /**
@@ -305,6 +324,10 @@ export function pickAutoMergeCandidate(state: UiTabsState): MergeNeighborCandida
     const right = tabIds[i];
     const left = tabIds[i - 1];
     if (!right || !left) continue;
+    const rightTab = state.tabsById[right];
+    const leftTab = state.tabsById[left];
+    // 文件标签不参与合并
+    if (!rightTab || !leftTab || rightTab.target.kind === "file" || leftTab.target.kind === "file") continue;
     if (isMerged(right) || isMerged(left)) continue;
     return { leftTabId: left, rightTabId: right };
   }
@@ -368,6 +391,12 @@ export function buildSingleTabMenuEntries(
   args: SingleMenuArgs,
 ): readonly MenuEntry<TabSingleMenuAction>[] {
   const { tab, orderedTabIds, mergedPairs, tabTitle } = args;
+
+  // 文件标签右键菜单精简：仅保留"关闭"
+  if (tab.target.kind === "file") {
+    return [{ id: "close", label: "关闭标签" }];
+  }
+
   const tabIndex = orderedTabIds.indexOf(tab.id);
   const isInPair = mergedPairs.some(
     (pair) => pair.leftTabId === tab.id || pair.rightTabId === tab.id,

@@ -12,7 +12,7 @@ import {
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Bug, ChevronDownIcon, MergeIcon, PlusIcon, XIcon } from "lucide-react";
+import { Bug, ChevronDownIcon, FileIcon, MergeIcon, PlusIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -685,6 +685,7 @@ function TabBarSingleItem(props: Readonly<TabBarSingleItemProps>) {
         "text-sm text-muted-foreground transition-colors",
         "hover:bg-muted/60 hover:text-foreground",
         isActive && "bg-muted text-foreground font-medium",
+        tab.target.kind === "file" && !isActive && "text-muted-foreground/70",
         isFocused && "shadow-[inset_0_-2px_0_0_var(--primary)]",
         isDraggingPlaceholder && "pointer-events-none opacity-30",
       )}
@@ -704,6 +705,9 @@ function TabBarSingleItem(props: Readonly<TabBarSingleItemProps>) {
           title={title}
           className="flex flex-1 items-center gap-1 truncate text-left focus-visible:outline-none"
         >
+          {tab.target.kind === "file" && (
+            <FileIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          )}
           <span className="truncate">{title}</span>
         </button>
       )}

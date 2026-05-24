@@ -13,6 +13,7 @@ import {
   WorkspaceExecutionResolver,
   type WorkspaceExecution,
 } from "./workspace/Services/WorkspaceExecution.ts";
+import { unusedWorkspaceExecutionFileSystem } from "./workspace/workspaceExecutionTestStubs.ts";
 import { resolveWorkspaceExecutionForTargetPath } from "./workspace/resolveWorkspaceExecutionByCwd.ts";
 
 const remoteRoot = "/home/user/repo";
@@ -24,20 +25,17 @@ const makeRemoteExecution = (): WorkspaceExecution => ({
   spawnInteractive: () => Effect.die("unused"),
   exec: () => Effect.die("unused"),
   fileSystem: {
-    list: () => Effect.die("unused"),
+    ...unusedWorkspaceExecutionFileSystem(),
     stat: (targetPath) =>
       Effect.succeed({
         path: targetPath,
         isDirectory: targetPath === remoteRoot,
         size: targetPath === remoteRoot ? 0 : 42,
       }),
-    readFileBytes: () => Effect.die("unused"),
     readFileString: (targetPath) =>
       targetPath === `${remoteRoot}/src/app.ts`
         ? Effect.succeed("export const app = 1;\n")
         : Effect.die(`unexpected read: ${targetPath}`),
-    writeFileString: () => Effect.die("unused"),
-    makeDirectory: () => Effect.die("unused"),
   },
   terminal: {
     open: () => Effect.die("unused"),

@@ -1709,8 +1709,11 @@ async function navigateToTabTarget(args: {
     });
     return;
   }
-  await navigate({
-    to: "/draft/$draftId",
-    params: buildDraftThreadRouteParams(tab.target.draftId),
-  });
+  if (tab.target.kind === "draft") {
+    await navigate({
+      to: "/draft/$draftId",
+      params: buildDraftThreadRouteParams(tab.target.draftId),
+    });
+  }
+  // 文件标签无路由
 }

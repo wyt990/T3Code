@@ -32,8 +32,11 @@ export function useActiveServerThreadKeyForContext(): string | null {
       if (!tab) {
         return { key: null, kind: "none" as ActiveTabContextKind };
       }
-      if (tab.target.kind !== "server") {
+      if (tab.target.kind === "draft") {
         return { key: null, kind: "draft" as ActiveTabContextKind };
+      }
+      if (tab.target.kind === "file") {
+        return { key: null, kind: "none" as ActiveTabContextKind };
       }
       const r = tab.target.threadRef;
       return {

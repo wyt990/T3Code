@@ -24,6 +24,16 @@ import type {
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
+  ProjectListDirectoryInput,
+  ProjectListDirectoryResult,
+  ProjectFileStatInput,
+  ProjectFileStatResult,
+  ProjectCreateDirectoryInput,
+  ProjectDeleteFileInput,
+  ProjectRenameFileInput,
+  ProjectRenameFileResult,
 } from "./project.ts";
 import type {
   SshConfirmHostKeyInput,
@@ -297,6 +307,12 @@ export interface EnvironmentApi {
   projects: {
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
+    readFile: (input: ProjectReadFileInput) => Promise<ProjectReadFileResult>;
+    listDirectory: (input: ProjectListDirectoryInput) => Promise<ProjectListDirectoryResult>;
+    fileStat: (input: ProjectFileStatInput) => Promise<ProjectFileStatResult>;
+    createDirectory: (input: ProjectCreateDirectoryInput) => Promise<void>;
+    deleteFile: (input: ProjectDeleteFileInput) => Promise<void>;
+    renameFile: (input: ProjectRenameFileInput) => Promise<ProjectRenameFileResult>;
   };
   filesystem: {
     browse: (input: FilesystemBrowseInput) => Promise<FilesystemBrowseResult>;

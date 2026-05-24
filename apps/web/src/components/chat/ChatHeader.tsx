@@ -10,7 +10,7 @@ import { memo, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import GitActionsControl from "../GitActionsControl";
 import { type DraftId } from "~/composerDraftStore";
-import { Brain, DiffIcon, ServerIcon, TerminalSquareIcon, UsersRoundIcon } from "lucide-react";
+import { Brain, DiffIcon, FolderTree, ServerIcon, TerminalSquareIcon, UsersRoundIcon } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
@@ -77,11 +77,14 @@ export const ChatHeader = memo(function ChatHeader({
     environmentOpen,
     multiAgentShow,
     multiAgentOpen,
+    fileExplorerShow,
+    fileExplorerOpen,
   } = useLayoutStore(
     useShallow((s) => {
       const ctx = s.panels.find((p) => p.id === "context");
       const env = s.panels.find((p) => p.id === "environment");
       const ma = s.panels.find((p) => p.id === "multiAgent");
+      const fe = s.panels.find((p) => p.id === "fileExplorer");
       return {
         contextShow: ctx?.visible === true,
         contextOpen: ctx ? ctx.railDocked !== false : false,
@@ -89,6 +92,8 @@ export const ChatHeader = memo(function ChatHeader({
         environmentOpen: env ? env.railDocked !== false : false,
         multiAgentShow: ma?.visible === true,
         multiAgentOpen: ma ? ma.railDocked !== false : false,
+        fileExplorerShow: fe?.visible === true,
+        fileExplorerOpen: fe ? fe.railDocked !== false : false,
       };
     }),
   );
@@ -103,6 +108,10 @@ export const ChatHeader = memo(function ChatHeader({
 
   const onToggleMultiAgentRail = useCallback((nextPressed: boolean) => {
     useLayoutStore.getState().updatePanel("multiAgent", { railDocked: nextPressed });
+  }, []);
+
+  const onToggleFileExplorerRail = useCallback((nextPressed: boolean) => {
+    useLayoutStore.getState().updatePanel("fileExplorer", { railDocked: nextPressed });
   }, []);
 
   return (
@@ -266,6 +275,29 @@ export const ChatHeader = memo(function ChatHeader({
               {multiAgentOpen
                 ? "隐藏多代理侧栏（布局中的「多代理」仍控制是否显示此按钮）"
                 : "显示多代理侧栏"}
+            </TooltipPopup>
+          </Tooltip>
+        )}
+        {fileExplorerShow && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  className="shrink-0"
+                  pressed={fileExplorerOpen}
+                  onPressedChange={onToggleFileExplorerRail}
+                  aria-label="切换文件浏览侧栏"
+                  variant="outline"
+                  size="xs"
+                >
+                  <FolderTree className="size-3" />
+                </Toggle>
+              }
+            />
+            <TooltipPopup side="bottom">
+              {fileExplorerOpen
+                ? "隐藏文件浏览侧栏（布局中的「文件」仍控制是否显示此按钮）"
+                : "显示文件浏览侧栏"}
             </TooltipPopup>
           </Tooltip>
         )}

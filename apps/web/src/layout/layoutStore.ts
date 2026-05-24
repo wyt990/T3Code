@@ -10,7 +10,7 @@ export interface PanelConfig {
   /** 是否在布局中启用（对「上下文 / 环境 / 多代理」仅表示是否显示标题栏快捷按钮）。 */
   visible: boolean;
   /**
-   * 仅用于 `context` / `environment` / `multiAgent`：右侧栏是否展开。
+   * 仅用于 `context` / `environment` / `multiAgent` / `fileExplorer`：右侧栏是否展开。
    * 布局标签复选框只改 `visible`；标题栏按钮只改 `railDocked`。缺省视为 `true`。
    */
   railDocked?: boolean;
@@ -22,7 +22,7 @@ export interface PanelConfig {
 }
 
 /** 标题栏快捷开关与布局复选框绑定的右栏面板（与 `visible` / `railDocked` 拆分语义）。 */
-export const RAIL_QUICK_TOGGLE_PANEL_IDS = new Set(["context", "environment", "multiAgent"]);
+export const RAIL_QUICK_TOGGLE_PANEL_IDS = new Set(["context", "environment", "multiAgent", "fileExplorer"]);
 
 export function isRailQuickTogglePanelId(panelId: string): boolean {
   return RAIL_QUICK_TOGGLE_PANEL_IDS.has(panelId);
@@ -102,6 +102,16 @@ const DEFAULT_TEMPLATES: LayoutTemplate[] = [
         order: 2,
         collapsed: false,
       },
+      {
+        id: "fileExplorer",
+        title: "文件",
+        visible: false,
+        width: 100,
+        height: 100,
+        position: "right",
+        order: 3,
+        collapsed: false,
+      },
     ],
   },
   {
@@ -179,6 +189,16 @@ const DEFAULT_TEMPLATES: LayoutTemplate[] = [
         order: 3,
         collapsed: false,
       },
+      {
+        id: "fileExplorer",
+        title: "文件",
+        visible: false,
+        width: 100,
+        height: 100,
+        position: "right",
+        order: 4,
+        collapsed: false,
+      },
     ],
   },
   {
@@ -254,6 +274,16 @@ const DEFAULT_TEMPLATES: LayoutTemplate[] = [
         height: 100,
         position: "right",
         order: 3,
+        collapsed: false,
+      },
+      {
+        id: "fileExplorer",
+        title: "文件",
+        visible: false,
+        width: 100,
+        height: 100,
+        position: "right",
+        order: 4,
         collapsed: false,
       },
     ],
@@ -404,6 +434,20 @@ export const useLayoutStore = create<LayoutState>()(
         panels: state.panels,
         customLayouts: state.customLayouts,
       }),
+      // 确保新增的默认面板（如 fileExplorer）能合并到旧的持久化数据中
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Partial<LayoutState>) };
+        if (merged.panels) {
+          const defaultPanels = DEFAULT_TEMPLATES.at(0)?.panels ?? [];
+          const existingIds = new Set(merged.panels.map((p) => p.id));
+          for (const dp of defaultPanels) {
+            if (!existingIds.has(dp.id)) {
+              merged.panels = [...merged.panels, dp];
+            }
+          }
+        }
+        return merged;
+      },
     },
   ),
 );

@@ -11,6 +11,7 @@ import type { Effect } from "effect";
 
 import type { ProjectWriteFileInput, ProjectWriteFileResult } from "@t3tools/contracts";
 import { WorkspacePathOutsideRootError } from "./WorkspacePaths.ts";
+import type { WorkspaceDirectoryEntry, WorkspaceFileStat } from "./WorkspaceExecution.ts";
 
 export class WorkspaceFileSystemError extends Schema.TaggedErrorClass<WorkspaceFileSystemError>()(
   "WorkspaceFileSystemError",
@@ -39,6 +40,41 @@ export interface WorkspaceFileSystemShape {
     ProjectWriteFileResult,
     WorkspaceFileSystemError | WorkspacePathOutsideRootError
   >;
+
+  readonly readFile: (input: {
+    readonly cwd: string;
+    readonly relativePath: string;
+  }) => Effect.Effect<string, WorkspaceFileSystemError | WorkspacePathOutsideRootError>;
+
+  readonly listDirectory: (input: {
+    readonly cwd: string;
+    readonly relativePath: string;
+  }) => Effect.Effect<
+    ReadonlyArray<WorkspaceDirectoryEntry>,
+    WorkspaceFileSystemError | WorkspacePathOutsideRootError
+  >;
+
+  readonly stat: (input: {
+    readonly cwd: string;
+    readonly relativePath: string;
+  }) => Effect.Effect<WorkspaceFileStat, WorkspaceFileSystemError | WorkspacePathOutsideRootError>;
+
+  readonly createDirectory: (input: {
+    readonly cwd: string;
+    readonly relativePath: string;
+  }) => Effect.Effect<void, WorkspaceFileSystemError | WorkspacePathOutsideRootError>;
+
+  readonly deleteFile: (input: {
+    readonly cwd: string;
+    readonly relativePath: string;
+    readonly recursive?: boolean;
+  }) => Effect.Effect<void, WorkspaceFileSystemError | WorkspacePathOutsideRootError>;
+
+  readonly renameFile: (input: {
+    readonly cwd: string;
+    readonly fromPath: string;
+    readonly toPath: string;
+  }) => Effect.Effect<string, WorkspaceFileSystemError | WorkspacePathOutsideRootError>;
 }
 
 /**

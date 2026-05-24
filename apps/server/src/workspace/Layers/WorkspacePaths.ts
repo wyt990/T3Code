@@ -89,12 +89,11 @@ export const makeWorkspacePaths = Effect.gen(function* () {
 
       const absolutePath = path.resolve(input.workspaceRoot, normalizedInputPath);
       const relativeToRoot = toPosixRelativePath(path.relative(input.workspaceRoot, absolutePath));
+      const normalizedRelative = relativeToRoot.length === 0 ? "." : relativeToRoot;
       if (
-        relativeToRoot.length === 0 ||
-        relativeToRoot === "." ||
-        relativeToRoot.startsWith("../") ||
-        relativeToRoot === ".." ||
-        path.isAbsolute(relativeToRoot)
+        normalizedRelative.startsWith("../") ||
+        normalizedRelative === ".." ||
+        path.isAbsolute(normalizedRelative)
       ) {
         return yield* new WorkspacePathOutsideRootError({
           workspaceRoot: input.workspaceRoot,
@@ -104,7 +103,7 @@ export const makeWorkspacePaths = Effect.gen(function* () {
 
       return {
         absolutePath,
-        relativePath: relativeToRoot,
+        relativePath: normalizedRelative,
       };
     });
 

@@ -33,6 +33,9 @@ it.effect("writes workspace files over remote WorkspaceExecution.fileSystem", ()
         writeFileString: (input) =>
           Ref.update(writes, (current) => [...current, input]).pipe(Effect.asVoid),
         makeDirectory: () => Effect.void,
+        unlink: () => Effect.die("unused"),
+        rmdir: () => Effect.die("unused"),
+        rename: () => Effect.die("unused"),
       },
       terminal: {
         open: () => Effect.die("unused"),

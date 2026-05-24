@@ -31,7 +31,10 @@ export function closeTabsAndSyncRoute(args: CloseTabsAndSyncRouteArgs): void {
   const closingDraftIds = clearClosedDrafts
     ? closableTabIds.flatMap((tabId) => {
         const tab = tabs.tabsById[tabId];
-        return tab?.target.kind === "draft" ? [tab.target.draftId] : [];
+        if (tab?.target.kind === "draft") {
+          return [tab.target.draftId];
+        }
+        return [];
       })
     : [];
   const closedTargets = closableTabIds.flatMap((tabId) => {
@@ -76,7 +79,9 @@ export function closeTabsAndSyncRoute(args: CloseTabsAndSyncRouteArgs): void {
       fallbackTarget: fallbackTarget
         ? fallbackTarget.kind === "server"
           ? `会话(${fallbackTarget.threadRef.environmentId}/${fallbackTarget.threadRef.threadId})`
-          : `草稿(${fallbackTarget.draftId})`
+          : fallbackTarget.kind === "draft"
+            ? `草稿(${fallbackTarget.draftId})`
+            : `文件(${fallbackTarget.filePath})`
         : "(无，导航到首页)",
     },
   );

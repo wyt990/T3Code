@@ -68,6 +68,19 @@ import {
   ProjectWriteFileError,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
+  ProjectReadFileError,
+  ProjectListDirectoryInput,
+  ProjectListDirectoryResult,
+  ProjectListDirectoryError,
+  ProjectFileStatInput,
+  ProjectFileStatResult,
+  ProjectFileStatError,
+  ProjectCreateDirectoryInput,
+  ProjectDeleteFileInput,
+  ProjectRenameFileInput,
+  ProjectRenameFileResult,
 } from "./project.ts";
 import {
   TerminalClearInput,
@@ -158,6 +171,12 @@ export const WS_METHODS = {
   projectsRemove: "projects.remove",
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
+  projectsReadFile: "projects.readFile",
+  projectsListDirectory: "projects.listDirectory",
+  projectsFileStat: "projects.fileStat",
+  projectsCreateDirectory: "projects.createDirectory",
+  projectsDeleteFile: "projects.deleteFile",
+  projectsRenameFile: "projects.renameFile",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -377,6 +396,37 @@ export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   payload: ProjectWriteFileInput,
   success: ProjectWriteFileResult,
   error: ProjectWriteFileError,
+});
+
+export const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
+  payload: ProjectReadFileInput,
+  success: ProjectReadFileResult,
+  error: ProjectReadFileError,
+});
+
+export const WsProjectsListDirectoryRpc = Rpc.make(WS_METHODS.projectsListDirectory, {
+  payload: ProjectListDirectoryInput,
+  success: ProjectListDirectoryResult,
+  error: ProjectListDirectoryError,
+});
+
+export const WsProjectsFileStatRpc = Rpc.make(WS_METHODS.projectsFileStat, {
+  payload: ProjectFileStatInput,
+  success: ProjectFileStatResult,
+  error: ProjectFileStatError,
+});
+
+export const WsProjectsCreateDirectoryRpc = Rpc.make(WS_METHODS.projectsCreateDirectory, {
+  payload: ProjectCreateDirectoryInput,
+});
+
+export const WsProjectsDeleteFileRpc = Rpc.make(WS_METHODS.projectsDeleteFile, {
+  payload: ProjectDeleteFileInput,
+});
+
+export const WsProjectsRenameFileRpc = Rpc.make(WS_METHODS.projectsRenameFile, {
+  payload: ProjectRenameFileInput,
+  success: ProjectRenameFileResult,
 });
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
@@ -950,6 +1000,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpdateSettingsRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
+  WsProjectsReadFileRpc,
+  WsProjectsListDirectoryRpc,
+  WsProjectsFileStatRpc,
+  WsProjectsCreateDirectoryRpc,
+  WsProjectsDeleteFileRpc,
+  WsProjectsRenameFileRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsSshListConnectionsRpc,

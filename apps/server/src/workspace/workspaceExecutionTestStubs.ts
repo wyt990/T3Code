@@ -9,4 +9,7 @@ export const unusedWorkspaceExecutionFileSystem = (): WorkspaceExecutionFileSyst
   readFileBytes: () => Effect.die("unused in test"),
   writeFileString: () => Effect.die("unused in test"),
   makeDirectory: () => Effect.die("unused in test"),
+  unlink: () => Effect.die("unused in test"),
+  rmdir: () => Effect.die("unused in test"),
+  rename: () => Effect.die("unused in test"),
 });

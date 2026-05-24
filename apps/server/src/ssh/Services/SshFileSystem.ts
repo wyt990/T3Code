@@ -41,6 +41,22 @@ export interface SshFileSystemShape {
     readonly path: string;
     readonly recursive?: boolean;
   }) => Effect.Effect<void, SshError>;
+
+  readonly unlink: (input: {
+    readonly connectionId: string;
+    readonly path: string;
+  }) => Effect.Effect<void, SshError>;
+
+  readonly rmdir: (input: {
+    readonly connectionId: string;
+    readonly path: string;
+  }) => Effect.Effect<void, SshError>;
+
+  readonly rename: (input: {
+    readonly connectionId: string;
+    readonly fromPath: string;
+    readonly toPath: string;
+  }) => Effect.Effect<void, SshError>;
 }
 
 export class SshFileSystem extends Context.Service<SshFileSystem, SshFileSystemShape>()(
