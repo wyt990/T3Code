@@ -844,7 +844,7 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
 
           return session;
         }).pipe(Effect.scoped),
-      );
+      ) as unknown as Effect.Effect<any>;
 
     const sendTurn: CursorAdapterShape["sendTurn"] = (input) =>
       Effect.gen(function* () {

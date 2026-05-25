@@ -386,6 +386,7 @@ export const OrchestrationProjectShell = Schema.Struct({
   scripts: Schema.Array(ProjectScript),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  deletedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
 });
 export type OrchestrationProjectShell = typeof OrchestrationProjectShell.Type;
 

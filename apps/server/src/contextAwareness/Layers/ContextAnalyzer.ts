@@ -518,7 +518,7 @@ export const makeContextAnalyzer = Effect.gen(function* () {
       suggestions,
       dependencyGraph,
     } as ContextAnalysisResponse;
-  });
+  }) as unknown as ContextAnalyzerShape["analyzeContext"];
 
   const getContextPool: ContextAnalyzerShape["getContextPool"] = Effect.fn(
     "ContextAnalyzer.getContextPool",
@@ -546,7 +546,7 @@ export const makeContextAnalyzer = Effect.gen(function* () {
   )(function* (workspaceRoot: string) {
     const access = yield* resolveAccessForGraph(workspaceRoot);
     return yield* Effect.promise(() => buildImportDependencyGraph(access, 160));
-  });
+  }) as unknown as ContextAnalyzerShape["buildDependencyGraph"];
 
   const analyzeChangeImpact: ContextAnalyzerShape["analyzeChangeImpact"] = Effect.fn(
     "ContextAnalyzer.analyzeChangeImpact",

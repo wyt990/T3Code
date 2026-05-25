@@ -9,6 +9,7 @@ it("resolveSshClaudeAgentModels uses cached remote models when present", () => {
         slug: "deepseek-v4-flash",
         name: "DeepSeek V4 Flash",
         capabilities: { optionDescriptors: [] },
+        isCustom: false,
       },
     ],
     customModels: [],
@@ -38,6 +39,7 @@ it("resolveSshClaudeAgentModels merges custom models with remote cache", () => {
         slug: "deepseek-v4-flash",
         name: "DeepSeek V4 Flash",
         capabilities: { optionDescriptors: [] },
+        isCustom: false,
       },
     ],
     customModels: ["my-custom-model"],
@@ -49,7 +51,9 @@ it("resolveSshClaudeAgentModels merges custom models with remote cache", () => {
 
 it("resolveSshOpenCodeModels returns probed models when present", () => {
   const models = resolveSshOpenCodeModels({
-    probedModels: [{ slug: "gpt-4", name: "GPT-4", capabilities: { optionDescriptors: [] } }],
+    probedModels: [
+      { slug: "gpt-4", name: "GPT-4", capabilities: { optionDescriptors: [] }, isCustom: false },
+    ],
     customModels: [],
   });
   assert.equal(models[0]?.slug, "gpt-4");

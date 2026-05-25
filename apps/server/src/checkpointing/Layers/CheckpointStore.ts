@@ -17,7 +17,11 @@ import { GitCommandError } from "@t3tools/contracts";
 import { GitCore } from "../../git/Services/GitCore.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { WorkspaceExecutionResolver } from "../../workspace/Services/WorkspaceExecution.ts";
-import { CheckpointStore, type CheckpointStoreShape } from "../Services/CheckpointStore.ts";
+import {
+  CheckpointStore,
+  type CaptureCheckpointInput,
+  type CheckpointStoreShape,
+} from "../Services/CheckpointStore.ts";
 import { CheckpointRef } from "@t3tools/contracts";
 
 const CHECKPOINT_DIFF_MAX_OUTPUT_BYTES = 10_000_000;
@@ -131,7 +135,7 @@ const makeCheckpointStore = Effect.gen(function* () {
 
   const captureCheckpoint: CheckpointStoreShape["captureCheckpoint"] = Effect.fn(
     "captureCheckpoint",
-  )(function* (input) {
+  )(function* (input: CaptureCheckpointInput) {
     const operation = "CheckpointStore.captureCheckpoint";
 
     yield* Effect.acquireUseRelease(
@@ -215,7 +219,7 @@ const makeCheckpointStore = Effect.gen(function* () {
       }),
       Effect.mapError(mapCaptureCheckpointError("CheckpointStore.captureCheckpoint")),
     );
-  });
+  }) as unknown as CheckpointStoreShape["captureCheckpoint"];
 
   const hasCheckpointRef: CheckpointStoreShape["hasCheckpointRef"] = (input) =>
     resolveCheckpointCommit(input.cwd, input.checkpointRef).pipe(

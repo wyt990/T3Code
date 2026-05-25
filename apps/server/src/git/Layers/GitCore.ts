@@ -714,7 +714,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
     executeRaw = options.executeOverride;
   } else {
     const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    executeRaw = Effect.fnUntraced(function* (input) {
+    executeRaw = Effect.fnUntraced(function* (input: ExecuteGitInput) {
       const commandInput = {
         ...input,
         args: [...input.args],
@@ -913,7 +913,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
           }),
         ),
       );
-    });
+    }) as unknown as GitCoreShape["execute"];
   }
 
   const execute: GitCoreShape["execute"] = (input) =>
@@ -1496,12 +1496,14 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
   });
 
   const statusDetailsLocal: GitCoreShape["statusDetailsLocal"] = Effect.fn("statusDetailsLocal")(
-    function* (cwd) {
+    function* (cwd: string) {
       return yield* readStatusDetailsLocal(cwd);
     },
-  );
+  ) as unknown as GitCoreShape["statusDetailsLocal"];
 
-  const statusDetails: GitCoreShape["statusDetails"] = Effect.fn("statusDetails")(function* (cwd) {
+  const statusDetails: GitCoreShape["statusDetails"] = Effect.fn("statusDetails")(function* (
+    cwd: string,
+  ) {
     yield* refreshStatusUpstreamIfStale(cwd).pipe(
       Effect.catchIf(
         (error): error is GitCommandError =>
@@ -1511,7 +1513,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       Effect.ignoreCause({ log: true }),
     );
     return yield* readStatusDetailsLocal(cwd);
-  });
+  }) as unknown as GitCoreShape["statusDetails"];
 
   const status: GitCoreShape["status"] = (input) =>
     statusDetails(input.cwd).pipe(
@@ -1894,7 +1896,9 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       return relativePaths.filter((relativePath) => !ignoredPaths.has(relativePath));
     });
 
-  const listBranches: GitCoreShape["listBranches"] = Effect.fn("listBranches")(function* (input) {
+  const listBranches: GitCoreShape["listBranches"] = Effect.fn("listBranches")(function* (
+    input: Parameters<GitCoreShape["listBranches"]>[0],
+  ) {
     const branchRecencyPromise = readBranchRecency(input.cwd).pipe(
       Effect.catch(() => Effect.succeed(new Map<string, number>())),
     );
@@ -2113,7 +2117,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       nextCursor: branches.nextCursor,
       totalCount: branches.totalCount,
     };
-  });
+  }) as unknown as GitCoreShape["listBranches"];
 
   const createWorktree: GitCoreShape["createWorktree"] = Effect.fn("createWorktree")(
     function* (input) {

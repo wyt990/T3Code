@@ -38,7 +38,13 @@ const makeProjectionQueryTestLayer = (
 ): Layer.Layer<ProjectionSnapshotQuery> => {
   const stub: ProjectionSnapshotQueryShape = {
     getSnapshot: () => Effect.die("unused"),
-    getShellSnapshot: () => Effect.succeed({ projects, threads: [] }),
+    getShellSnapshot: () =>
+      Effect.succeed({
+        projects,
+        threads: [],
+        updatedAt: new Date().toISOString(),
+        snapshotSequence: 0,
+      }),
     getCounts: () => Effect.die("unused"),
     getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
     getProjectShellById: () => Effect.die("unused"),

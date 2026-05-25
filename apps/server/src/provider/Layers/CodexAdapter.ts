@@ -1473,7 +1473,7 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
 
         return started;
       }),
-    );
+    ) as unknown as Effect.Effect<any>;
 
   const resolveAttachment = Effect.fn("resolveAttachment")(function* (
     input: ProviderSendTurnInput,

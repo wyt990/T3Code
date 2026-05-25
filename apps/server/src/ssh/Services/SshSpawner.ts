@@ -224,7 +224,7 @@ export const spawnClaudeCodeProcessOverSsh = (
     kill: () => {
       killed = true;
       if (delegate) {
-        return delegate.kill();
+        return delegate.kill("SIGTERM");
       }
       if (spawnOptions.signal && !spawnOptions.signal.aborted) {
         spawnOptions.signal.dispatchEvent(new Event("abort"));
@@ -240,14 +240,20 @@ export const spawnClaudeCodeProcessOverSsh = (
       } else {
         errorListeners.add(listener as (error: Error) => void);
       }
-      delegate?.on(event, listener);
+      (delegate?.on as (event: string, listener: (...args: unknown[]) => void) => void)(
+        event,
+        listener as (...args: unknown[]) => void,
+      );
     },
     once: (event, listener) => {
       if (bootstrapError !== null && event === "error") {
         (listener as (error: Error) => void)(bootstrapError);
         return;
       }
-      delegate?.once(event, listener);
+      (delegate?.once as (event: string, listener: (...args: unknown[]) => void) => void)(
+        event,
+        listener as (...args: unknown[]) => void,
+      );
     },
     off: (event, listener) => {
       if (event === "exit") {
@@ -257,7 +263,10 @@ export const spawnClaudeCodeProcessOverSsh = (
       } else {
         errorListeners.delete(listener as (error: Error) => void);
       }
-      delegate?.off(event, listener);
+      (delegate?.off as (event: string, listener: (...args: unknown[]) => void) => void)(
+        event,
+        listener as (...args: unknown[]) => void,
+      );
     },
   };
 };

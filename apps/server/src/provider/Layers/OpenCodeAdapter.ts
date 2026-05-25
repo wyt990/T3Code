@@ -5,6 +5,7 @@ import {
   type ProviderRuntimeEvent,
   type ProviderSession,
   RuntimeItemId,
+  ProviderSessionStartInput,
   RuntimeRequestId,
   ThreadId,
   type ToolLifecycleItemType,
@@ -998,7 +999,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
       });
 
       const startSession: OpenCodeAdapterShape["startSession"] = Effect.fn("startSession")(
-        function* (input) {
+        function* (input: ProviderSessionStartInput) {
           const settings = yield* serverSettings.getSettings.pipe(
             Effect.mapError(
               (error) =>
@@ -1134,7 +1135,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
 
           return session;
         },
-      );
+      ) as unknown as OpenCodeAdapterShape["startSession"];
 
       const sendTurn: OpenCodeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
         const context = ensureSessionContext(sessions, input.threadId);

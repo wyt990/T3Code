@@ -1,6 +1,7 @@
 import * as ChildProcess from "node:child_process";
 import * as Crypto from "node:crypto";
 import * as FS from "node:fs";
+import * as Http from "node:http";
 import * as OS from "node:os";
 import * as Path from "node:path";
 
@@ -1546,6 +1547,33 @@ function startBackend(): void {
   ensureInitialBackendWindowOpen();
 }
 
+function sendGracefulShutdown(): void {
+  const port = backendPort;
+  if (!port || port <= 0) return;
+
+  const postData = "";
+  const options: Http.RequestOptions = {
+    hostname: "127.0.0.1",
+    port,
+    path: "/shutdown",
+    method: "POST",
+    headers: {
+      "Content-Length": Buffer.byteLength(postData),
+    },
+    timeout: 3_000,
+  };
+
+  const req = Http.request(options);
+  req.on("error", () => {
+    // Best-effort: if the server is already gone or unreachable, proceed with kill.
+  });
+  req.on("timeout", () => {
+    req.destroy();
+  });
+  req.write(postData);
+  req.end();
+}
+
 function stopBackend(): void {
   cancelBackendReadinessWait();
   backendListeningDetector = null;
@@ -1560,6 +1588,12 @@ function stopBackend(): void {
 
   if (child.exitCode === null && child.signalCode === null) {
     expectedBackendExitChildren.add(child);
+    // Ask the server to stop all provider sessions gracefully before killing.
+    // On Windows, child.kill("SIGTERM") calls TerminateProcess which kills the
+    // process instantly without running Effect finalizers. The /shutdown
+    // endpoint gives the server a chance to write .jsonl result entries and
+    // update provider_session_runtime status before the process dies.
+    sendGracefulShutdown();
     child.kill("SIGTERM");
     setTimeout(() => {
       if (child.exitCode === null && child.signalCode === null) {
@@ -1609,6 +1643,7 @@ async function stopBackendAndWaitForExit(timeoutMs = 5_000): Promise<void> {
     }
 
     backendChild.once("exit", onExit);
+    sendGracefulShutdown();
     backendChild.kill("SIGTERM");
 
     forceKillTimer = setTimeout(() => {

@@ -70,20 +70,17 @@ const make = Effect.gen(function* () {
 
   const worker = yield* makeDrainableWorker(processProjectDeletedSafely);
 
-  const start: ProjectDeletedReactorShape["start"] = Effect.fn("start")(function* () {
-    yield* Effect.forkScoped(
-      Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
-        if (event.type !== "project.deleted") {
-          return Effect.void;
-        }
-        return worker.enqueue(event);
-      }),
-    );
-  });
+  const start: ProjectDeletedReactorShape["start"] = () =>
+    Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
+      if (event.type !== "project.deleted") {
+        return Effect.void;
+      }
+      return worker.enqueue(event);
+    }).pipe(Effect.forkDetach, Effect.asVoid);
 
   return {
     start,
-    drain: worker.drain,
+    drain: () => worker.drain,
   } satisfies ProjectDeletedReactorShape;
 });
 

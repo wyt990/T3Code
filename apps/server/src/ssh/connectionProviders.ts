@@ -67,7 +67,7 @@ export const buildSshChatProviderTemplate = (
     probe: {
       installed: false,
       version: null,
-      status: "stopped",
+      status: "warning",
       auth: { status: "unknown" },
     },
   });

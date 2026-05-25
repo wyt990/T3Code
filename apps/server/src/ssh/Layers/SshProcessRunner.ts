@@ -264,10 +264,10 @@ export const makeSshProcessRunner = Effect.gen(function* () {
         connectionId: input.connectionId,
         lane,
         command: input.command,
-        cwd: input.cwd,
-        args: input.args,
-        env: input.env,
-        signal: input.signal,
+        ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+        ...(input.args === undefined ? {} : { args: input.args }),
+        ...(input.env === undefined ? {} : { env: input.env }),
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
       }),
     );
   });
@@ -287,9 +287,9 @@ export const makeSshProcessRunner = Effect.gen(function* () {
       });
 
       const remoteCommand = buildRemoteCommand({
-        cwd: input.cwd,
+        cwd: input.cwd ?? ".",
         command: input.command,
-        args: input.args,
+        ...(input.args === undefined ? {} : { args: input.args }),
       });
 
       // 使用 bash -ilc 包装命令以确保加载完整的 shell 环境

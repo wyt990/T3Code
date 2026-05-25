@@ -498,7 +498,9 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
     readonly binaryPath: string;
     readonly hostname?: string;
     readonly timeoutMs?: number;
-  }) => Effect.Effect<OpenCodeServerProcess, OpenCodeRuntimeError, Scope.Scope> = (input) =>
+  }) => Effect.Effect<OpenCodeServerProcess, OpenCodeRuntimeError, Scope.Scope | SshPortForward> = (
+    input,
+  ) =>
     Effect.gen(function* () {
       const runtimeScope = yield* Scope.Scope;
       const connectionId = input.execution.sshConnectionId;
@@ -667,7 +669,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           exitCode: server.exitCode,
           external: false,
         })),
-      );
+      ) as unknown as Effect.Effect<any>;
     }
 
     return startOpenCodeServerProcess({

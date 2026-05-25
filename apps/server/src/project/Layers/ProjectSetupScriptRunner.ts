@@ -66,7 +66,7 @@ const makeProjectSetupScriptRunner = Effect.gen(function* () {
         terminalId,
         cwd,
       } as const;
-    });
+    }) as unknown as Effect.Effect<any>;
 
   return {
     runForThread,

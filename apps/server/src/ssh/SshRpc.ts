@@ -12,7 +12,7 @@ import type {
   SshUpsertConnectionInput,
 } from "@t3tools/contracts";
 import { SshListDirectoryError } from "@t3tools/contracts";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 import type { ConnectConfig } from "ssh2";
 
 import { RemoteProviderProbe } from "../provider/remoteProviderProbe.ts";
@@ -136,7 +136,7 @@ const runTestSshConnection = (input: SshTestConnectionInput) =>
         connectionId: input.connectionId,
         error: connectError instanceof Error ? connectError.message : String(connectError),
         ...(connectError instanceof Error && (connectError as { code?: string }).code !== undefined
-          ? { code: (connectError as { code: string }).code }
+          ? { code: (connectError as unknown as { code: string }).code }
           : {}),
       });
     }
@@ -209,17 +209,14 @@ export const testSshConnection = (input: SshTestConnectionInput) =>
     ),
     Effect.catchCause((cause) =>
       Effect.gen(function* () {
-        const failure = cause.failures?.[0];
-        const causeTag = failure?._tag ?? "unknown";
+        const failReason = cause.reasons.find(Cause.isFailReason);
         yield* Effect.logWarning("SSH 测试连接全部失败原因", {
           connectionId: input.connectionId,
-          causeTag,
+          cause: Cause.pretty(cause),
         });
-        const error =
-          causeTag === "Die" ? failure?.defect : (failure?.error ?? "Unknown SSH connection error");
         return {
           ok: false,
-          error: formatSshUserMessage(error),
+          error: formatSshUserMessage(failReason?.error ?? "Unknown SSH connection error"),
         } satisfies SshTestConnectionResult;
       }),
     ),

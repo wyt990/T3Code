@@ -45,6 +45,16 @@ const probeCache = new Map<string, Map<ProviderKind, RemoteProviderProbeResult>>
 
 type ConnectionProbeResult = ReadonlyMap<ProviderKind, RemoteProviderProbeResult>;
 
+type InFlightAction =
+  | {
+      readonly kind: "join";
+      readonly deferred: Deferred.Deferred<ConnectionProbeResult, never>;
+    }
+  | {
+      readonly kind: "owner";
+      readonly deferred: Deferred.Deferred<ConnectionProbeResult, never>;
+    };
+
 const emptyConnectionProbeResult = (): ConnectionProbeResult =>
   new Map<ProviderKind, RemoteProviderProbeResult>();
 
@@ -260,6 +270,7 @@ const invalidateRemoteProviderProbeCaches = (
 
 export const makeRemoteProviderProbe = Effect.gen(function* () {
   const serverSettings = yield* ServerSettingsService;
+  const sshProcessRunner = yield* SshProcessRunner;
   const probeLaneSemaphoresRef = yield* SynchronizedRef.make(
     new Map<string, Semaphore.Semaphore>(),
   );
@@ -306,10 +317,7 @@ export const makeRemoteProviderProbe = Effect.gen(function* () {
   }> =>
     withProbeLaneExclusive(
       input.connectionId,
-      Effect.gen(function* () {
-        const sshProcessRunner = yield* SshProcessRunner;
-        return yield* sshProcessRunner.exec({ ...input, lane: "probe" });
-      }).pipe(
+      sshProcessRunner.exec({ ...input, lane: "probe" }).pipe(
         Effect.map((result) => ({
           stdout: result.stdout,
           stderr: result.stderr,
@@ -389,38 +397,47 @@ export const makeRemoteProviderProbe = Effect.gen(function* () {
       });
     });
 
-  const probeConnection: RemoteProviderProbeShape["probeConnection"] = (connectionId) =>
-    Effect.gen(function* () {
-      const cached = probeCache.get(connectionId);
-      if (cached !== undefined) {
-        return cached;
-      }
+  const probeConnection = Effect.fn("RemoteProviderProbe.probeConnection")(function* (
+    connectionId: string,
+  ) {
+    const cached = probeCache.get(connectionId);
+    if (cached !== undefined) {
+      return cached;
+    }
 
-      const deferred = yield* Deferred.make<ConnectionProbeResult>();
-      const role = yield* SynchronizedRef.modify(probeInFlightRef, (inFlight) => {
+    const deferred = yield* Deferred.make<ConnectionProbeResult>();
+    const action = yield* SynchronizedRef.modify(
+      probeInFlightRef,
+      (
+        inFlight,
+      ): readonly [
+        InFlightAction,
+        Map<string, Deferred.Deferred<ConnectionProbeResult, never>>,
+      ] => {
         const existing = inFlight.get(connectionId);
         if (existing !== undefined) {
-          return [{ role: "join" as const, deferred: existing }, inFlight] as const;
+          return [{ kind: "join", deferred: existing }, inFlight];
         }
         const next = new Map(inFlight);
         next.set(connectionId, deferred);
-        return [{ role: "owner" as const, deferred }, next] as const;
-      });
+        return [{ kind: "owner", deferred }, next];
+      },
+    );
 
-      if (role.role === "join") {
-        return yield* Deferred.await(role.deferred);
-      }
+    if (action.kind === "join") {
+      return yield* Deferred.await(action.deferred);
+    }
 
-      const result = yield* runProbeConnectionImpl(connectionId).pipe(
-        Effect.catch(() => Effect.succeed(emptyConnectionProbeResult())),
-        Effect.tap((value) => completeInFlightProbe(connectionId, role.deferred, value)),
-        Effect.tapError(() =>
-          completeInFlightProbe(connectionId, role.deferred, emptyConnectionProbeResult()),
-        ),
-      );
+    const result = yield* runProbeConnectionImpl(connectionId).pipe(
+      Effect.catch(() => Effect.succeed(emptyConnectionProbeResult())),
+      Effect.tap((value) => completeInFlightProbe(connectionId, action.deferred, value)),
+      Effect.tapError(() =>
+        completeInFlightProbe(connectionId, action.deferred, emptyConnectionProbeResult()),
+      ),
+    );
 
-      return result;
-    }).pipe(Effect.withSpan("RemoteProviderProbe.probeConnection"));
+    return result;
+  });
 
   return {
     probeConnection,
