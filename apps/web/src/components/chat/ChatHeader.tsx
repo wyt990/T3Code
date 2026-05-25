@@ -10,7 +10,14 @@ import { memo, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import GitActionsControl from "../GitActionsControl";
 import { type DraftId } from "~/composerDraftStore";
-import { Brain, DiffIcon, FolderTree, ServerIcon, TerminalSquareIcon, UsersRoundIcon } from "lucide-react";
+import {
+  Brain,
+  DiffIcon,
+  FolderTree,
+  ServerIcon,
+  TerminalSquareIcon,
+  UsersRoundIcon,
+} from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";

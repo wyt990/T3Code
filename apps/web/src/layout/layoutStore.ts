@@ -22,7 +22,12 @@ export interface PanelConfig {
 }
 
 /** 标题栏快捷开关与布局复选框绑定的右栏面板（与 `visible` / `railDocked` 拆分语义）。 */
-export const RAIL_QUICK_TOGGLE_PANEL_IDS = new Set(["context", "environment", "multiAgent", "fileExplorer"]);
+export const RAIL_QUICK_TOGGLE_PANEL_IDS = new Set([
+  "context",
+  "environment",
+  "multiAgent",
+  "fileExplorer",
+]);
 
 export function isRailQuickTogglePanelId(panelId: string): boolean {
   return RAIL_QUICK_TOGGLE_PANEL_IDS.has(panelId);

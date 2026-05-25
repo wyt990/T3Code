@@ -320,29 +320,18 @@ export function FileEditor({ filePath, workspaceRoot, environmentId, className }
       {/* ── Toolbar ── */}
       <div className="flex items-center gap-0.5 px-2 py-0.5 border-b border-border shrink-0 bg-background select-none">
         <FileIcon className="size-3.5 text-muted-foreground shrink-0 ml-0.5" aria-hidden />
-        <span
-          className="text-xs font-medium truncate max-w-[220px] mr-1"
-          title={filePath}
-        >
+        <span className="text-xs font-medium truncate max-w-[220px] mr-1" title={filePath}>
           {fileName}
         </span>
         {fileDirty && (
-          <Circle
-            className="size-2 fill-current text-accent shrink-0"
-            aria-label="文件已修改"
-          />
+          <Circle className="size-2 fill-current text-accent shrink-0" aria-label="文件已修改" />
         )}
 
         <div className="flex-1" />
 
         {isEditing && (
           <>
-            <button
-              type="button"
-              className={btnClass}
-              title="撤销 (Ctrl+Z)"
-              onClick={handleUndo}
-            >
+            <button type="button" className={btnClass} title="撤销 (Ctrl+Z)" onClick={handleUndo}>
               <Undo2 className="size-3.5" />
             </button>
             <button
@@ -374,12 +363,7 @@ export function FileEditor({ filePath, workspaceRoot, environmentId, className }
         </button>
 
         {isEditing && (
-          <button
-            type="button"
-            className={btnClass}
-            title="跳转到行"
-            onClick={openGotoLine}
-          >
+          <button type="button" className={btnClass} title="跳转到行" onClick={openGotoLine}>
             <ArrowDownToLine className="size-3.5" />
           </button>
         )}
@@ -444,11 +428,7 @@ export function FileEditor({ filePath, workspaceRoot, environmentId, className }
       )}
 
       {/* ── Editor ── */}
-      <div
-        ref={editorRef}
-        className="flex-1 overflow-auto"
-        onClick={handleEditorClick}
-      />
+      <div ref={editorRef} className="flex-1 overflow-auto" onClick={handleEditorClick} />
 
       {/* ── Status bar ── */}
       <div className="flex items-center gap-3 px-3 py-0.5 border-t border-border shrink-0 text-[11px] text-muted-foreground bg-background select-none">

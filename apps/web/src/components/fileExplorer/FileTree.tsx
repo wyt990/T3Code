@@ -247,10 +247,12 @@ export function FileTree({ workspaceRoot, environmentId, rootDir = "." }: FileTr
       setFileContents(filePath, "");
       // 在主标签栏创建文件标签
       const fileName = basename(filePath);
-      useUiStateStore.getState().createTab(
-        { kind: "file", filePath, workspaceRoot, environmentId, fileName },
-        { newTabId: nextTabId() },
-      );
+      useUiStateStore
+        .getState()
+        .createTab(
+          { kind: "file", filePath, workspaceRoot, environmentId, fileName },
+          { newTabId: nextTabId() },
+        );
       triggerRefresh();
     } catch {
       // Silently fail
@@ -303,10 +305,12 @@ export function FileTree({ workspaceRoot, environmentId, rootDir = "." }: FileTr
           // 关闭旧文件标签，创建新路径文件标签
           useUiStateStore.getState().closeTab(existingFileTab.id);
           const fileName = newName.trim();
-          useUiStateStore.getState().createTab(
-            { kind: "file", filePath: toPath, workspaceRoot, environmentId, fileName },
-            { newTabId: nextTabId() },
-          );
+          useUiStateStore
+            .getState()
+            .createTab(
+              { kind: "file", filePath: toPath, workspaceRoot, environmentId, fileName },
+              { newTabId: nextTabId() },
+            );
           if (contents !== undefined) {
             state.setFileContents(toPath, contents);
           }
@@ -317,13 +321,7 @@ export function FileTree({ workspaceRoot, environmentId, rootDir = "." }: FileTr
       }
       setRenameTarget(null);
     },
-    [
-      renameTarget,
-      environmentId,
-      workspaceRoot,
-      setRenameTarget,
-      triggerRefresh,
-    ],
+    [renameTarget, environmentId, workspaceRoot, setRenameTarget, triggerRefresh],
   );
 
   const handleRenameCancel = useCallback(() => {

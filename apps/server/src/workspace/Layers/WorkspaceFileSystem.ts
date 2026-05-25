@@ -263,9 +263,9 @@ export const makeWorkspaceFileSystem = Effect.gen(function* () {
       );
       const entries: WorkspaceDirectoryEntry[] = [];
       for (const name of names) {
-        const statOption = yield* fileSystem.stat(path.join(normalizedInputPath, name)).pipe(
-          Effect.option,
-        );
+        const statOption = yield* fileSystem
+          .stat(path.join(normalizedInputPath, name))
+          .pipe(Effect.option);
         if (Option.isNone(statOption)) continue; // 跳过无法访问的条目（如系统保护目录）
         const info = statOption.value;
         entries.push({

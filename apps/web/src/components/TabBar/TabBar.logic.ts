@@ -248,8 +248,17 @@ export function tabTargetToDraft(target: TabTarget): DraftId | null {
   return target.kind === "draft" ? target.draftId : null;
 }
 
-export function tabTargetToFile(target: TabTarget): { filePath: string; workspaceRoot: string; environmentId: string; fileName: string } | null {
-  return target.kind === "file" ? { filePath: target.filePath, workspaceRoot: target.workspaceRoot, environmentId: target.environmentId, fileName: target.fileName } : null;
+export function tabTargetToFile(
+  target: TabTarget,
+): { filePath: string; workspaceRoot: string; environmentId: string; fileName: string } | null {
+  return target.kind === "file"
+    ? {
+        filePath: target.filePath,
+        workspaceRoot: target.workspaceRoot,
+        environmentId: target.environmentId,
+        fileName: target.fileName,
+      }
+    : null;
 }
 
 /**
@@ -327,7 +336,8 @@ export function pickAutoMergeCandidate(state: UiTabsState): MergeNeighborCandida
     const rightTab = state.tabsById[right];
     const leftTab = state.tabsById[left];
     // 文件标签不参与合并
-    if (!rightTab || !leftTab || rightTab.target.kind === "file" || leftTab.target.kind === "file") continue;
+    if (!rightTab || !leftTab || rightTab.target.kind === "file" || leftTab.target.kind === "file")
+      continue;
     if (isMerged(right) || isMerged(left)) continue;
     return { leftTabId: left, rightTabId: right };
   }

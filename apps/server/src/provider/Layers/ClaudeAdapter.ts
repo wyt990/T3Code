@@ -49,6 +49,9 @@ import {
   resolvePromptInjectedEffort,
 } from "@t3tools/shared/model";
 import { T3_CODE_SIDEBAR_CHECKLIST_ZH_SUPPLEMENT } from "../T3AgentSidebarLocaleInstructions.ts";
+import { appendFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import {
   Cause,
   DateTime,
@@ -2386,6 +2389,54 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     });
   });
 
+  /**
+   * Append a synthetic "result" entry to the Claude session .jsonl file.
+   *
+   * The Claude Code CLI only writes the "result" entry to the session file
+   * on graceful exit. In --resume (interactive) mode the CLI never exits
+   * gracefully — it is force-killed by query.close(). Without a "result"
+   * entry, the CLI treats the session as incomplete and silently starts a
+   * new session on the next --resume, permanently breaking conversation
+   * continuity across process restarts.
+   *
+   * This write is best-effort: errors are silently swallowed so a missing
+   * or unwritable session file never blocks session teardown.
+   */
+  const appendSessionResultEntry = Effect.fn("appendSessionResultEntry")(function* (
+    context: ClaudeSessionContext,
+  ) {
+    const sessionId = context.resumeSessionId;
+    const cwd = context.session.cwd;
+    if (!sessionId || !cwd) return;
+
+    const sanitized = cwd.replace(/[\/\\:]/g, "-");
+    const jsonlPath = join(homedir(), ".claude", "projects", sanitized, `${sessionId}.jsonl`);
+
+    if (!existsSync(jsonlPath)) return;
+
+    const resultEntry = `${JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      num_turns: context.turns.length,
+      result: "",
+      stop_reason: null,
+      total_cost_usd: 0,
+      duration_ms: 0,
+      duration_api_ms: 0,
+      usage: { input_tokens: 0, output_tokens: 0 },
+      modelUsage: {},
+      permission_denials: [],
+      uuid: yield* Random.nextUUIDv4,
+      session_id: sessionId,
+    })}\n`;
+
+    yield* Effect.try({
+      try: () => appendFileSync(jsonlPath, resultEntry, "utf-8"),
+      catch: () => undefined,
+    });
+  });
+
   const stopSessionInternal = Effect.fn("stopSessionInternal")(function* (
     context: ClaudeSessionContext,
     options?: { readonly emitExitEvent?: boolean },
@@ -2432,6 +2483,13 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     } catch (cause) {
       yield* emitRuntimeError(context, "Failed to close Claude runtime query.", cause);
     }
+
+    // Append a synthetic 'result' entry to the session .jsonl file so
+    // --resume can recover the session after process restart. The CLI
+    // only writes 'result' on graceful exit, which --resume mode never
+    // reaches because the interactive session is force-killed.
+    // The write is best-effort: errors are silently ignored.
+    yield* appendSessionResultEntry(context);
 
     const updatedAt = yield* nowIso;
     context.session = {

@@ -13,7 +13,13 @@ export const TABS_PERSISTED_VERSION = 2;
 export type TabTarget =
   | { kind: "server"; threadRef: ScopedThreadRef }
   | { kind: "draft"; draftId: DraftId }
-  | { kind: "file"; filePath: string; workspaceRoot: string; environmentId: EnvironmentId; fileName: string };
+  | {
+      kind: "file";
+      filePath: string;
+      workspaceRoot: string;
+      environmentId: EnvironmentId;
+      fileName: string;
+    };
 
 export interface Tab {
   id: string;
@@ -630,7 +636,12 @@ function isValidTabTarget(target: unknown): target is TabTarget {
     return typeof (candidate as { draftId?: unknown }).draftId === "string";
   }
   if (candidate.kind === "file") {
-    const f = candidate as { filePath?: unknown; workspaceRoot?: unknown; environmentId?: unknown; fileName?: unknown };
+    const f = candidate as {
+      filePath?: unknown;
+      workspaceRoot?: unknown;
+      environmentId?: unknown;
+      fileName?: unknown;
+    };
     return (
       typeof f.filePath === "string" &&
       typeof f.workspaceRoot === "string" &&
