@@ -19,7 +19,7 @@ import {
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { GitCommandError, type GitBranch } from "@t3tools/contracts";
-import { buildProxyProcessEnv } from "@t3tools/contracts/settings";
+import { buildProxyProcessEnv, buildProxyShellExport } from "@t3tools/contracts/settings";
 import { dedupeRemoteBranchesWithLocalMatches } from "@t3tools/shared/git";
 import { compactTraceAttributes } from "../../observability/Attributes.ts";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../../observability/Metrics.ts";
@@ -729,6 +729,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
           Effect.provideService(ServerConfig, serverConfig),
         );
         const proxyEnv = buildProxyProcessEnv(serverSettings.proxy);
+        const proxyShellExport = buildProxyShellExport(serverSettings.proxy);
         yield* Effect.logDebug("[GitCore] resolving SSH execution for cwd", {
           cwd: commandInput.cwd,
           operation: commandInput.operation,
@@ -746,14 +747,15 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
             cwd: commandInput.cwd,
             operation: commandInput.operation,
             args: commandInput.args,
-            hasProxy: Object.keys(proxyEnv).length > 0,
+            hasProxyShellExport: proxyShellExport.length > 0,
             hasCustomEnv: input.env !== undefined,
             hasStdin: input.stdin !== undefined,
           });
 
+          const gitCommand = buildGitShellCommand(commandInput.args);
           const result = yield* sshExecution
             .exec({
-              command: buildGitShellCommand(commandInput.args),
+              command: proxyShellExport + gitCommand,
               cwd: commandInput.cwd,
               sshLane: "git",
               env: {

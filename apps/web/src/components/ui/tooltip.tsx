@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 
 import { cn } from "~/lib/utils";
@@ -18,6 +19,7 @@ function TooltipPopup({
   sideOffset = 4,
   side = "top",
   anchor,
+  copyAction,
   children,
   ...props
 }: TooltipPrimitive.Popup.Props & {
@@ -25,13 +27,19 @@ function TooltipPopup({
   side?: TooltipPrimitive.Positioner.Props["side"];
   sideOffset?: TooltipPrimitive.Positioner.Props["sideOffset"];
   anchor?: TooltipPrimitive.Positioner.Props["anchor"];
+  /** Renders a copy control; placement follows resolved `data-side` on the positioner. */
+  copyAction?: ReactNode;
 }) {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Positioner
         align={align}
         anchor={anchor}
-        className="z-50 h-(--positioner-height) w-(--positioner-width) max-w-(--available-width) transition-[top,left,right,bottom,transform] data-instant:transition-none"
+        className={cn(
+          "z-50 h-(--positioner-height) w-(--positioner-width) max-w-(--available-width) transition-[top,left,right,bottom,transform] data-instant:transition-none",
+          copyAction &&
+            "[&[data-side=bottom]_[data-slot=tooltip-copy-action]]:top-1.5 [&[data-side=bottom]_[data-slot=tooltip-copy-action]]:right-1.5 [&[data-side=top]_[data-slot=tooltip-copy-action]]:bottom-1.5 [&[data-side=top]_[data-slot=tooltip-copy-action]]:right-1.5 [&[data-side=left]_[data-slot=tooltip-copy-action]]:top-1.5 [&[data-side=left]_[data-slot=tooltip-copy-action]]:right-1.5 [&[data-side=right]_[data-slot=tooltip-copy-action]]:top-1.5 [&[data-side=right]_[data-slot=tooltip-copy-action]]:right-1.5 [&[data-side=bottom]_[data-slot=tooltip-copy-body]]:pt-8 [&[data-side=top]_[data-slot=tooltip-copy-body]]:pb-8",
+        )}
         data-slot="tooltip-positioner"
         side={side}
         sideOffset={sideOffset}
@@ -45,10 +53,27 @@ function TooltipPopup({
           {...props}
         >
           <TooltipPrimitive.Viewport
-            className="relative size-full overflow-clip px-(--viewport-inline-padding) py-1 [--viewport-inline-padding:--spacing(2)] data-instant:transition-none **:data-current:data-ending-style:opacity-0 **:data-current:data-starting-style:opacity-0 **:data-previous:data-ending-style:opacity-0 **:data-previous:data-starting-style:opacity-0 **:data-current:w-[calc(var(--popup-width)-2*var(--viewport-inline-padding)-2px)] **:data-previous:w-[calc(var(--popup-width)-2*var(--viewport-inline-padding)-2px)] **:data-previous:truncate **:data-current:opacity-100 **:data-previous:opacity-100 **:data-current:transition-opacity **:data-previous:transition-opacity"
+            className={cn(
+              "relative size-full px-(--viewport-inline-padding) py-1 [--viewport-inline-padding:--spacing(2)] data-instant:transition-none **:data-current:data-ending-style:opacity-0 **:data-current:data-starting-style:opacity-0 **:data-previous:data-ending-style:opacity-0 **:data-previous:data-starting-style:opacity-0 **:data-current:w-[calc(var(--popup-width)-2*var(--viewport-inline-padding)-2px)] **:data-previous:w-[calc(var(--popup-width)-2*var(--viewport-inline-padding)-2px)] **:data-previous:truncate **:data-current:opacity-100 **:data-previous:opacity-100 **:data-current:transition-opacity **:data-previous:transition-opacity",
+              copyAction ? "overflow-visible" : "overflow-clip",
+            )}
             data-slot="tooltip-viewport"
           >
-            {children}
+            {copyAction ? (
+              <div className="relative">
+                <div className="absolute z-10" data-slot="tooltip-copy-action">
+                  {copyAction}
+                </div>
+                <div
+                  className="max-h-[min(50vh,28rem)] overflow-auto pr-9 [--viewport-inline-padding:0]"
+                  data-slot="tooltip-copy-body"
+                >
+                  {children}
+                </div>
+              </div>
+            ) : (
+              children
+            )}
           </TooltipPrimitive.Viewport>
         </TooltipPrimitive.Popup>
       </TooltipPrimitive.Positioner>

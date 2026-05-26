@@ -234,39 +234,54 @@ export const spawnClaudeCodeProcessOverSsh = (
     on: (event, listener) => {
       if (bootstrapError !== null && event === "error") {
         (listener as (error: Error) => void)(bootstrapError);
+        return;
       }
       if (event === "exit") {
         exitListeners.add(listener as (code: number | null, signal: NodeJS.Signals | null) => void);
-      } else {
+      } else if (event === "error") {
         errorListeners.add(listener as (error: Error) => void);
       }
-      (delegate?.on as (event: string, listener: (...args: unknown[]) => void) => void)(
-        event,
-        listener as (...args: unknown[]) => void,
-      );
+      delegate?.on(event, listener as never);
     },
     once: (event, listener) => {
       if (bootstrapError !== null && event === "error") {
         (listener as (error: Error) => void)(bootstrapError);
         return;
       }
-      (delegate?.once as (event: string, listener: (...args: unknown[]) => void) => void)(
-        event,
-        listener as (...args: unknown[]) => void,
-      );
+      if (delegate) {
+        delegate.once(event, listener as never);
+        return;
+      }
+      const wrapped =
+        event === "exit"
+          ? (code: number | null, signal: NodeJS.Signals | null) => {
+              exitListeners.delete(
+                wrapped as (code: number | null, signal: NodeJS.Signals | null) => void,
+              );
+              (listener as (code: number | null, signal: NodeJS.Signals | null) => void)(
+                code,
+                signal,
+              );
+            }
+          : (error: Error) => {
+              errorListeners.delete(wrapped as (error: Error) => void);
+              (listener as (error: Error) => void)(error);
+            };
+      if (event === "exit") {
+        exitListeners.add(wrapped as (code: number | null, signal: NodeJS.Signals | null) => void);
+      } else {
+        errorListeners.add(wrapped as (error: Error) => void);
+      }
     },
     off: (event, listener) => {
       if (event === "exit") {
         exitListeners.delete(
           listener as (code: number | null, signal: NodeJS.Signals | null) => void,
         );
-      } else {
+      } else if (event === "error") {
         errorListeners.delete(listener as (error: Error) => void);
       }
-      (delegate?.off as (event: string, listener: (...args: unknown[]) => void) => void)(
-        event,
-        listener as (...args: unknown[]) => void,
-      );
+      delegate?.off(event, listener as never);
     },
   };
 };

@@ -892,6 +892,23 @@ function workEntryRawCommand(
   return rawCommand === workEntry.command.trim() ? null : rawCommand;
 }
 
+function workEntryTooltipCopyText(
+  workEntry: TimelineWorkEntry,
+  workspaceRoot: string | undefined,
+): string {
+  const detail = workEntry.detail?.trim();
+  if (detail) {
+    return detail;
+  }
+  const rawCommand = workEntryRawCommand(workEntry);
+  if (rawCommand) {
+    return rawCommand;
+  }
+  const preview = workEntryPreview(workEntry, workspaceRoot);
+  const heading = toolWorkEntryHeading(workEntry);
+  return preview ? `${heading} - ${preview}` : heading;
+}
+
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   if (workEntry.requestKind === "command") return TerminalIcon;
   if (workEntry.requestKind === "file-read") return EyeIcon;
@@ -949,6 +966,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       : rawPreview;
   const rawCommand = workEntryRawCommand(workEntry);
   const displayText = preview ? `${heading} - ${preview}` : heading;
+  const tooltipCopyText = workEntryTooltipCopyText(workEntry, workspaceRoot);
   const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0;
   const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail;
 
@@ -989,6 +1007,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                     <TooltipPopup
                       align="start"
                       className="max-w-[min(56rem,calc(100vw-2rem))] px-0 py-0"
+                      copyAction={<MessageCopyButton text={tooltipCopyText} />}
                       side="top"
                     >
                       <div className="max-w-[min(56rem,calc(100vw-2rem))] overflow-x-auto px-1.5 py-1 font-mono text-[11px] leading-4 whitespace-nowrap">
@@ -1019,9 +1038,12 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
                   {preview && <span className="text-muted-foreground/55"> - {preview}</span>}
                 </p>
               </TooltipTrigger>
-              <TooltipPopup className="max-w-[min(720px,calc(100vw-2rem))]">
-                <p className="whitespace-pre-wrap wrap-break-word text-xs leading-5">
-                  {displayText}
+              <TooltipPopup
+                className="max-w-[min(720px,calc(100vw-2rem))]"
+                copyAction={<MessageCopyButton text={tooltipCopyText} />}
+              >
+                <p className="whitespace-pre-wrap wrap-break-word font-mono text-[11px] leading-4">
+                  {tooltipCopyText}
                 </p>
               </TooltipPopup>
             </Tooltip>

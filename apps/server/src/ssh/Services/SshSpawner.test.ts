@@ -97,6 +97,12 @@ describe("spawnClaudeCodeProcessOverSsh", () => {
       },
     );
 
+    // Claude Agent SDK registers listeners synchronously during initialize.
+    expect(() => {
+      spawned.on("error", () => {});
+      spawned.on("exit", () => {});
+    }).not.toThrow();
+
     spawned.stdin.write("ping");
     await new Promise((resolve) => setTimeout(resolve, 50));
 

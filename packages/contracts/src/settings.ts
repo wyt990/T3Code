@@ -154,6 +154,27 @@ export function buildProxyProcessEnv(proxy: ProxySettings): Record<string, strin
   };
 }
 
+/**
+ * Shell export prefix (e.g. `export http_proxy=...; export https_proxy=... && `)
+ * for remote SSH commands where `AcceptEnv` rejects custom env vars.
+ * Returns empty string when proxy is disabled or has no URLs.
+ */
+export function buildProxyShellExport(proxy: ProxySettings): string {
+  if (!proxy.enabled) return "";
+  const { httpProxy, httpsProxy } = resolveEffectiveProxyUrls(proxy);
+  if (!httpProxy && !httpsProxy) return "";
+  const vars: string[] = [];
+  if (httpProxy) {
+    vars.push(`export http_proxy=${httpProxy}`);
+    vars.push(`export HTTP_PROXY=${httpProxy}`);
+  }
+  if (httpsProxy) {
+    vars.push(`export https_proxy=${httpsProxy}`);
+    vars.push(`export HTTPS_PROXY=${httpsProxy}`);
+  }
+  return vars.join(" && ") + " && ";
+}
+
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   defaultThreadEnvMode: ThreadEnvMode.pipe(
