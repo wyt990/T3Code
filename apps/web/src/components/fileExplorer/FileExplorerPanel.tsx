@@ -175,11 +175,13 @@ export function FileExplorerPanel({
           </button>
         </div>
       )}
-      <FileTree
-        workspaceRoot={workspaceRoot}
-        environmentId={environmentId}
-        rootDir={currentRootDir}
-      />
+      <div className="flex-1 min-h-0 overflow-auto">
+        <FileTree
+          workspaceRoot={workspaceRoot}
+          environmentId={environmentId}
+          rootDir={currentRootDir}
+        />
+      </div>
     </div>
   );
 }

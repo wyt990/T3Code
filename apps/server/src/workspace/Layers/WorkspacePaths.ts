@@ -80,14 +80,16 @@ export const makeWorkspacePaths = Effect.gen(function* () {
   const resolveRelativePathWithinRoot: WorkspacePathsShape["resolveRelativePathWithinRoot"] =
     Effect.fn("WorkspacePaths.resolveRelativePathWithinRoot")(function* (input) {
       const normalizedInputPath = input.relativePath.trim();
-      if (path.isAbsolute(normalizedInputPath)) {
-        return yield* new WorkspacePathOutsideRootError({
-          workspaceRoot: input.workspaceRoot,
-          relativePath: input.relativePath,
-        });
-      }
 
-      const absolutePath = path.resolve(input.workspaceRoot, normalizedInputPath);
+      // Resolve the absolute path: if the input is already absolute, resolve it
+      // directly (e.g. a drive-letter path on Windows); otherwise resolve
+      // against the workspace root.  Both branches must pass the same
+      // "stays-within-root" check below, so an attacker can't escape by
+      // supplying an absolute path that points outside the project.
+      const absolutePath = path.isAbsolute(normalizedInputPath)
+        ? path.resolve(normalizedInputPath)
+        : path.resolve(input.workspaceRoot, normalizedInputPath);
+
       const relativeToRoot = toPosixRelativePath(path.relative(input.workspaceRoot, absolutePath));
       const normalizedRelative = relativeToRoot.length === 0 ? "." : relativeToRoot;
       if (

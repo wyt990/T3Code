@@ -37,6 +37,8 @@ import { useFileExplorerStore } from "./fileExplorerStore";
 import { readEnvironmentApi } from "../../environmentApi";
 import { cn } from "~/lib/utils";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { toastManager } from "../ui/toast";
+import { stackedThreadToast } from "../ui/toastHelpers";
 
 // ── Language detection ──
 
@@ -223,16 +225,43 @@ export function FileEditor({ filePath, workspaceRoot, environmentId, className }
   // ── Save ──
   const handleSave = useCallback(async () => {
     const api = readEnvironmentApi(environmentId);
-    if (!api) return;
+    if (!api) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "保存失败",
+          description: "环境连接不可用，请检查连接状态。",
+        }),
+      );
+      return;
+    }
     const currentContents = viewRef.current?.state.doc.toString() ?? "";
-    if (!currentContents) return;
-    await api.projects.writeFile({
-      cwd: workspaceRoot,
-      relativePath: filePath,
-      contents: currentContents,
-    });
-    setFileDirty(filePath, false);
-  }, [environmentId, workspaceRoot, filePath, setFileDirty]);
+    try {
+      await api.projects.writeFile({
+        cwd: workspaceRoot,
+        relativePath: filePath,
+        contents: currentContents,
+      });
+      setFileDirty(filePath, false);
+      toastManager.add(
+        stackedThreadToast({
+          type: "success",
+          title: "保存成功",
+          description: fileName,
+          timeout: 2000,
+        }),
+      );
+    } catch (error) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "保存失败",
+          description:
+            error instanceof Error ? error.message : "写入文件时发生未知错误。",
+        }),
+      );
+    }
+  }, [environmentId, workspaceRoot, filePath, fileName, setFileDirty]);
 
   // ── Keyboard shortcuts (Ctrl+S save) ──
   useEffect(() => {
@@ -344,7 +373,7 @@ export function FileEditor({ filePath, workspaceRoot, environmentId, className }
             </button>
             <button
               type="button"
-              className={cn(btnClass, "text-accent hover:text-accent")}
+              className={cn(btnClass, "text-primary hover:text-primary")}
               title="保存 (Ctrl+S)"
               onClick={handleSave}
             >

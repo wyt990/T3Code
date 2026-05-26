@@ -480,7 +480,16 @@ export function FileTree({ workspaceRoot, environmentId, rootDir = "." }: FileTr
       ) : null;
     }
 
-    return dir.entries.map((entry) => {
+    const sortedEntries = [...dir.entries].sort((a, b) => {
+      // 目录优先于文件
+      if (a.type !== b.type) {
+        return a.type === "directory" ? -1 : 1;
+      }
+      // 名称字母序，不区分大小写
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+
+    return sortedEntries.map((entry) => {
       const childPath = entry.fullPath;
       const isExpanded = !!expandedPaths[childPath];
 

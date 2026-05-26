@@ -158,9 +158,16 @@ export function TabbedShell(props: Readonly<TabbedShellProps>) {
         useUiStateStore.getState().activateTab(tabId);
         return;
       }
+      // When the target already matches the current URL (e.g. a file tab is
+      // active and the user clicks a same-project session tab), navigating
+      // would be a no-op so useUrlTargetSync never fires. Activate directly.
+      if (urlTarget && targetsEqual(tab.target, urlTarget)) {
+        useUiStateStore.getState().activateTab(tabId);
+        return;
+      }
       void navigateToTarget(navigate, tab.target);
     },
-    [navigate, tabs.tabsById],
+    [navigate, tabs.tabsById, urlTarget],
   );
 
   const onCloseTab = useCallback(
